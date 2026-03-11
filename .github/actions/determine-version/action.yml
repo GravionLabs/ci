@@ -1,0 +1,90 @@
+name: 'Determine Version'
+description: >
+  Determines the semantic version of the repository from its git history using
+  GitVersion. Produces version strings suitable for Docker, npm/Angular, Python
+  (PEP 440), NuGet, and .NET assemblies.
+  Requires the caller to check out with fetch-depth: 0.
+
+inputs:
+  gitversion-version-spec:
+    description: 'GitVersion tool version to install (semver range)'
+    required: false
+    default: '6.x'
+  config-file-path:
+    description: 'Path to the GitVersion.yml configuration file'
+    required: false
+    default: 'GitVersion.yml'
+
+outputs:
+  semver:
+    description: 'Full SemVer (e.g. 1.2.3-alpha.4) — use for Docker tags, npm, Angular'
+    value: ${{ steps.gitversion.outputs.semVer }}
+  major-minor-patch:
+    description: 'Stable version string without pre-release (e.g. 1.2.3)'
+    value: ${{ steps.gitversion.outputs.majorMinorPatch }}
+  major:
+    description: 'Major version number (e.g. 1) — use for Docker major tag'
+    value: ${{ steps.gitversion.outputs.major }}
+  minor:
+    description: 'Minor version number (e.g. 2) — use for Docker minor tag'
+    value: ${{ steps.gitversion.outputs.minor }}
+  patch:
+    description: 'Patch version number (e.g. 3)'
+    value: ${{ steps.gitversion.outputs.patch }}
+  pre-release-tag:
+    description: 'Full pre-release tag (e.g. alpha.4); empty on stable releases'
+    value: ${{ steps.gitversion.outputs.preReleaseTag }}
+  full-semver:
+    description: 'SemVer including build metadata (e.g. 1.2.3-alpha.4+5)'
+    value: ${{ steps.gitversion.outputs.fullSemVer }}
+  informational-version:
+    description: 'Long version with branch and SHA (e.g. 1.2.3-alpha.4+Branch.main.Sha.abc) — use for .NET InformationalVersion'
+    value: ${{ steps.gitversion.outputs.informationalVersion }}
+  assembly-sem-ver:
+    description: 'Assembly-compatible version (e.g. 1.2.3.0) — use for .NET AssemblyVersion / FileVersion'
+    value: ${{ steps.gitversion.outputs.assemblySemVer }}
+  nuget-version:
+    description: 'NuGet-compatible version (e.g. 1.2.3-alpha0004) — use for NuGet packages'
+    value: ${{ steps.gitversion.outputs.nuGetVersionV2 }}
+  python-version:
+    description: 'PEP 440-compatible version (e.g. 1.2.3a4) — use for Python / uv packages'
+    value: ${{ steps.python-version.outputs.python-version }}
+  npm-version:
+    description: 'npm-compatible SemVer (e.g. 1.2.3-alpha.4) — use for npm / Angular packages'
+    value: ${{ steps.gitversion.outputs.semVer }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup GitVersion
+      uses: gittools/actions/gitversion/setup@v4.2.0
+      with:
+        versionSpec: ${{ inputs.gitversion-version-spec }}
+
+    - name: Determine version
+      id: gitversion
+      uses: gittools/actions/gitversion/execute@v4.2.0
+      with:
+        configFilePath: ${{ inputs.config-file-path }}
+
+    - name: Convert to PEP 440 (Python version)
+      id: python-version
+      shell: bash
+      run: |
+        MMP="${{ steps.gitversion.outputs.majorMinorPatch }}"
+        LABEL="${{ steps.gitversion.outputs.preReleaseLabel }}"
+        NUM="${{ steps.gitversion.outputs.preReleaseNumber }}"
+
+        if [ -z "$LABEL" ]; then
+          PYTHON_VER="$MMP"
+        elif [ "$LABEL" = "alpha" ]; then
+          PYTHON_VER="${MMP}a${NUM}"
+        elif [ "$LABEL" = "beta" ]; then
+          PYTHON_VER="${MMP}b${NUM}"
+        elif [ "$LABEL" = "rc" ] || [ "$LABEL" = "preview" ]; then
+          PYTHON_VER="${MMP}rc${NUM}"
+        else
+          PYTHON_VER="${MMP}.dev${NUM:-0}"
+        fi
+
+        echo "python-version=$PYTHON_VER" >> "$GITHUB_OUTPUT"
