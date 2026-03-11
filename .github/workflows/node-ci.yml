@@ -1,0 +1,47 @@
+name: Node.js CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use for the build'
+        required: false
+        type: string
+        default: '20'
+      working-directory:
+        description: 'Working directory containing the Node.js project'
+        required: false
+        type: string
+        default: '.'
+      run-tests:
+        description: 'Whether to run the test suite'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build & Test (Node ${{ inputs.node-version }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: jerome-kaufmann/workflow-templates/.github/actions/setup-node@main
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Run tests
+        if: ${{ inputs.run-tests }}
+        run: npm test --if-present
