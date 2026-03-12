@@ -48,6 +48,8 @@ runs:
   steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
 
       - name: Setup .NET
         uses: ./setup-dotnet
