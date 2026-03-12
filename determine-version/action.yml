@@ -17,16 +17,16 @@ inputs:
 
 outputs:
   semver:
-    description: 'Full SemVer (e.g. 1.2.3-alpha.4) — use for Docker tags, npm, Angular'
+    description: 'Full SemVer (e.g. 1.2.3-alpha.4) — use for npm, Angular, NuGet, Docker'
     value: ${{ steps.gitversion.outputs.semVer }}
   major-minor-patch:
-    description: 'Stable version string without pre-release (e.g. 1.2.3)'
+    description: 'Stable version without pre-release (e.g. 1.2.3)'
     value: ${{ steps.gitversion.outputs.majorMinorPatch }}
   major:
-    description: 'Major version number (e.g. 1) — use for Docker major tag'
+    description: 'Major version number (e.g. 1)'
     value: ${{ steps.gitversion.outputs.major }}
   minor:
-    description: 'Minor version number (e.g. 2) — use for Docker minor tag'
+    description: 'Minor version number (e.g. 2)'
     value: ${{ steps.gitversion.outputs.minor }}
   patch:
     description: 'Patch version number (e.g. 3)'
@@ -34,24 +34,33 @@ outputs:
   pre-release-tag:
     description: 'Full pre-release tag (e.g. alpha.4); empty on stable releases'
     value: ${{ steps.gitversion.outputs.preReleaseTag }}
-  full-semver:
-    description: 'SemVer including build metadata (e.g. 1.2.3-alpha.4+5)'
-    value: ${{ steps.gitversion.outputs.fullSemVer }}
+  pre-release-label:
+    description: 'Pre-release label (e.g. alpha, beta, rc); empty on stable releases'
+    value: ${{ steps.gitversion.outputs.preReleaseLabel }}
+  pre-release-number:
+    description: 'Pre-release number (e.g. 4)'
+    value: ${{ steps.gitversion.outputs.preReleaseNumber }}
   informational-version:
-    description: 'Long version with branch and SHA (e.g. 1.2.3-alpha.4+Branch.main.Sha.abc) — use for .NET InformationalVersion'
+    description: 'Long version with branch and SHA — use for .NET AssemblyInformationalVersion'
     value: ${{ steps.gitversion.outputs.informationalVersion }}
   assembly-sem-ver:
-    description: 'Assembly-compatible version (e.g. 1.2.3.0) — use for .NET AssemblyVersion / FileVersion'
+    description: 'Assembly-compatible version (e.g. 1.2.0.0) — use for .NET AssemblyVersion'
     value: ${{ steps.gitversion.outputs.assemblySemVer }}
+  assembly-sem-file-ver:
+    description: 'Assembly file version (e.g. 1.2.3.0) — use for .NET AssemblyFileVersion'
+    value: ${{ steps.gitversion.outputs.assemblySemFileVer }}
   nuget-version:
-    description: 'NuGet-compatible version (e.g. 1.2.3-alpha0004) — use for NuGet packages'
-    value: ${{ steps.gitversion.outputs.nuGetVersionV2 }}
+    description: 'NuGet-compatible version (e.g. 1.2.3-alpha.4)'
+    value: ${{ steps.gitversion.outputs.semVer }}
+  npm-version:
+    description: 'npm-compatible SemVer (e.g. 1.2.3-alpha.4)'
+    value: ${{ steps.gitversion.outputs.semVer }}
   python-version:
     description: 'PEP 440-compatible version (e.g. 1.2.3a4) — use for Python / uv packages'
     value: ${{ steps.python-version.outputs.python-version }}
-  npm-version:
-    description: 'npm-compatible SemVer (e.g. 1.2.3-alpha.4) — use for npm / Angular packages'
-    value: ${{ steps.gitversion.outputs.semVer }}
+  docker-version:
+    description: 'SemVer with short commit hash (e.g. 1.2.3-alpha.4-abc1234) — use for Docker image tags'
+    value: ${{ steps.docker-version.outputs.docker-version }}
 
 runs:
   using: 'composite'
@@ -88,3 +97,25 @@ runs:
         fi
 
         echo "python-version=$PYTHON_VER" >> "$GITHUB_OUTPUT"
+
+    - name: Compute Docker version
+      id: docker-version
+      shell: bash
+      run: |
+        SEMVER="${{ steps.gitversion.outputs.semVer }}"
+        SHORT_SHA="${{ steps.gitversion.outputs.shortSha }}"
+        echo "docker-version=${SEMVER}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+    - name: Print versions
+      shell: bash
+      run: |
+        echo "SemVer:               ${{ steps.gitversion.outputs.semVer }}"
+        echo "MajorMinorPatch:      ${{ steps.gitversion.outputs.majorMinorPatch }}"
+        echo "PreReleaseTag:        ${{ steps.gitversion.outputs.preReleaseTag }}"
+        echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
+        echo "AssemblySemVer:       ${{ steps.gitversion.outputs.assemblySemVer }}"
+        echo "AssemblySemFileVer:   ${{ steps.gitversion.outputs.assemblySemFileVer }}"
+        echo "NuGet:                ${{ steps.gitversion.outputs.semVer }}"
+        echo "npm:                  ${{ steps.gitversion.outputs.semVer }}"
+        echo "Python (PEP 440):     ${{ steps.python-version.outputs.python-version }}"
+        echo "Docker:               ${{ steps.gitversion.outputs.semVer }}-${{ steps.gitversion.outputs.shortSha }}"
