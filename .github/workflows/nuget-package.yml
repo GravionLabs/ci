@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Build
-        uses: Gravion/ci/build-dotnet@main
+        uses: GravionLabs/ci/build-dotnet@main
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
           dotnet-project: ${{ inputs.dotnet-project }}
@@ -87,7 +87,7 @@ jobs:
           feed-token: ${{ secrets.feed-token }}
 
       - name: Test
-        uses: Gravion/ci/test-dotnet@main
+        uses: GravionLabs/ci/test-dotnet@main
         with:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
@@ -96,7 +96,7 @@ jobs:
           upload-results: 'true'
 
       - name: Pack
-        uses: Gravion/ci/pack-nuget-package@main
+        uses: GravionLabs/ci/pack-nuget-package@main
         with:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
@@ -110,7 +110,7 @@ jobs:
     environment: nuget-publish
     steps:
       - name: Publish NuGet packages
-        uses: Gravion/ci/publish-nuget-package@main
+        uses: GravionLabs/ci/publish-nuget-package@main
         with:
           feed-url: ${{ inputs.publish-feed-url }}
           api-key: ${{ secrets.publish-api-key }}
