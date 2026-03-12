@@ -1,0 +1,32 @@
+name: 'Create Version Tag'
+description: >
+  Creates and pushes a git tag for the given version. Idempotent: skips
+  silently if the tag already exists.
+  Requires contents: write permission in the calling workflow.
+
+inputs:
+  version:
+    description: 'Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4)'
+    required: true
+  tag-prefix:
+    description: 'Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)'
+    required: false
+    default: 'v'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create and push tag
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
+      run: |
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists — skipping."
+        else
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag $TAG."
+        fi

@@ -1,0 +1,63 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+
+  test-determine-version:
+    name: 'Test: determine-version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # required by GitVersion
+
+      - name: Run determine-version
+        id: version
+        uses: ./determine-version
+
+      - name: Assert outputs are non-empty
+        shell: bash
+        run: |
+          ERRORS=0
+          check() {
+            if [ -z "$2" ]; then
+              echo "ERROR: output '$1' is empty"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "$1: $2"
+            fi
+          }
+          check semver             "${{ steps.version.outputs.semver }}"
+          check major-minor-patch  "${{ steps.version.outputs.major-minor-patch }}"
+          check major              "${{ steps.version.outputs.major }}"
+          check minor              "${{ steps.version.outputs.minor }}"
+          check patch              "${{ steps.version.outputs.patch }}"
+          check python-version     "${{ steps.version.outputs.python-version }}"
+          check nuget-version      "${{ steps.version.outputs.nuget-version }}"
+          check docker-version     "${{ steps.version.outputs.docker-version }}"
+          [ $ERRORS -eq 0 ] || exit 1
+
+  test-create-version-tag:
+    name: 'Test: create-version-tag'
+    runs-on: ubuntu-latest
+    # Only run on the default branch to avoid duplicate tags from PRs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # required by determine-version (GitVersion)
+
+      - name: Run determine-version
+        id: version
+        uses: ./determine-version
+
+      - name: Run create-version-tag
+        uses: ./create-version-tag
+        with:
+          version: ${{ steps.version.outputs.semver }}

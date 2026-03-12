@@ -1,0 +1,117 @@
+name: NuGet Package CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: 'Version of .NET SDK to use (e.g. 8.x, 9.x, 10.x)'
+        type: string
+        required: false
+        default: '10.x'
+      dotnet-project:
+        description: 'Path to the .NET project file (e.g. MyProject.csproj)'
+        type: string
+        required: false
+        default: '**/*.csproj'
+      configuration:
+        description: 'Build configuration (e.g. Debug or Release)'
+        type: string
+        required: false
+        default: 'Release'
+      version:
+        description: 'Version to use for the NuGet package (e.g. 1.2.3)'
+        type: string
+        required: true
+      feed-url:
+        description: 'URL of the NuGet feed for restore (optional private feed)'
+        type: string
+        required: false
+        default: ''
+      feed-name:
+        description: 'Name to register the private feed as'
+        type: string
+        required: false
+        default: 'private-feed'
+      feed-username:
+        description: 'Username for the private feed'
+        type: string
+        required: false
+        default: ''
+      publish-feed-url:
+        description: |
+          URL of the target NuGet feed to publish to:
+            GitHub Packages:   https://nuget.pkg.github.com/{owner}/index.json
+            Azure Artifacts:   https://pkgs.dev.azure.com/{org}/_packaging/{feed}/nuget/v3/index.json
+            JFrog Artifactory: https://{domain}/artifactory/api/nuget/v3/{repo}
+        type: string
+        required: true
+      nuget-config:
+        description: 'Path to a NuGet configuration file (optional)'
+        type: string
+        required: false
+        default: 'nuget.config'
+      verbosity:
+        description: 'Verbosity level (quiet, minimal, normal, detailed, diagnostic)'
+        type: string
+        required: false
+        default: 'minimal'
+      coverage-format:
+        description: 'Coverage report format (cobertura, opencover, lcov, json)'
+        type: string
+        required: false
+        default: 'cobertura'
+    secrets:
+      feed-token:
+        description: 'Access token for the private restore feed'
+        required: false
+      publish-api-key:
+        description: 'API key or PAT for the target publish feed'
+        required: true
+
+jobs:
+  build-test-pack:
+    name: Build, Test & Pack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build
+        uses: Gravion/ci/build-dotnet@main
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+          dotnet-project: ${{ inputs.dotnet-project }}
+          configuration: ${{ inputs.configuration }}
+          nuget-config: ${{ inputs.nuget-config }}
+          verbosity: ${{ inputs.verbosity }}
+          feed-url: ${{ inputs.feed-url }}
+          feed-name: ${{ inputs.feed-name }}
+          feed-username: ${{ inputs.feed-username }}
+          feed-token: ${{ secrets.feed-token }}
+
+      - name: Test
+        uses: Gravion/ci/test-dotnet@main
+        with:
+          dotnet-project: ${{ inputs.dotnet-project }}
+          configuration: ${{ inputs.configuration }}
+          verbosity: ${{ inputs.verbosity }}
+          coverage-format: ${{ inputs.coverage-format }}
+          upload-results: 'true'
+
+      - name: Pack
+        uses: Gravion/ci/pack-nuget-package@main
+        with:
+          dotnet-project: ${{ inputs.dotnet-project }}
+          configuration: ${{ inputs.configuration }}
+          version: ${{ inputs.version }}
+
+  publish:
+    name: Publish
+    needs: build-test-pack
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: nuget-publish
+    steps:
+      - name: Publish NuGet packages
+        uses: Gravion/ci/publish-nuget-package@main
+        with:
+          feed-url: ${{ inputs.publish-feed-url }}
+          api-key: ${{ secrets.publish-api-key }}
+          download-artifact: 'true'

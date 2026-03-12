@@ -1,0 +1,54 @@
+name: 'Test .NET'
+description: 'Runs .NET unit tests with Coverlet code coverage collection'
+
+inputs:
+  configuration:
+    description: 'Build configuration (e.g. Debug or Release)'
+    required: false
+    default: 'Release'
+  dotnet-project:
+    description: 'Path to the .NET test project or solution file (e.g. MyTests.csproj or MySolution.sln)'
+    required: false
+    default: '**/*.csproj'
+  coverage-format:
+    description: 'Coverage report format (cobertura, opencover, lcov, json)'
+    required: false
+    default: 'cobertura'
+  upload-results:
+    description: 'Whether to upload test results and coverage report as artifacts'
+    required: false
+    default: 'true'
+  verbosity:
+    description: 'Verbosity level (quiet, minimal, normal, detailed, diagnostic)'
+    required: false
+    default: 'minimal'
+
+runs:
+  using: 'composite'
+  steps:
+      - name: Test with coverage
+        shell: bash
+        run: |
+          dotnet test ${{ inputs.dotnet-project }} \
+            --configuration ${{ inputs.configuration }} \
+            --no-build \
+            --verbosity ${{ inputs.verbosity }} \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./test-results \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverage-format }}
+
+      - name: Upload test results artifact
+        if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./test-results/**/*.xml
+          if-no-files-found: warn
+
+      - name: Upload coverage artifact
+        if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: ./test-results/**/coverage.${{ inputs.coverage-format }}.xml
+          if-no-files-found: warn
