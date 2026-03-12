@@ -1,0 +1,76 @@
+name: 'Build .NET'
+description: 'Build .NET projects'
+
+inputs:
+  dotnet-version:
+    description: 'Version of .NET SDK to use (e.g. 8.x, 9.x, 10.x)'
+    required: false
+    default: '10.x'
+  configuration:
+    description: 'Build configuration (e.g. Debug or Release)'
+    required: false
+    default: 'Release'
+  dotnet-project:
+    description: 'Path to the .NET project or solution file to build (e.g. MyProject.csproj or MySolution.sln)'
+    required: false
+    default: '**/*.csproj'
+  publish:
+    description: 'Whether to publish the app after building (only for deployable apps, not libraries)'
+    required: false
+    default: 'false'
+  nuget-config:
+    description: 'Path to a NuGet configuration file (optional, e.g. nuget.config)'
+    required: false
+    default: 'nuget.config'
+  verbosity:
+    description: 'Verbosity level (quiet, minimal, normal, detailed, diagnostic)'
+    required: false
+    default: 'minimal'
+  feed-url:
+    description: 'URL of the private NuGet feed (GitHub Packages, Azure Artifacts, JFrog Artifactory)'
+    required: false
+    default: ''
+  feed-name:
+    description: 'Name to register the private feed as'
+    required: false
+    default: 'private-feed'
+  feed-username:
+    description: 'Username for the private feed'
+    required: false
+    default: ''
+  feed-token:
+    description: 'Access token or PAT for the private feed'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: ./setup-dotnet
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+          feed-url: ${{ inputs.feed-url }}
+          feed-name: ${{ inputs.feed-name }}
+          feed-username: ${{ inputs.feed-username }}
+          feed-token: ${{ inputs.feed-token }}
+
+      - name: Restore dependencies
+        shell: bash
+        run: dotnet restore ${{ inputs.dotnet-project }} ${{ inputs.nuget-config != '' && format('--configfile {0}', inputs.nuget-config) || '' }}
+
+      - name: Build
+        shell: bash
+        run: dotnet build ${{ inputs.dotnet-project }} --configuration ${{ inputs.configuration }} --no-restore --verbosity ${{ inputs.verbosity }}
+
+      - name: Publish app (framework-dependent)
+        if: ${{ inputs.publish == 'true' }}
+        shell: bash
+        run: |
+          dotnet publish ${{ inputs.dotnet-project }} \
+            --configuration ${{ inputs.configuration }} \
+            --output ./publish \
+            --no-build

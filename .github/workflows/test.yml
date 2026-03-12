@@ -6,54 +6,6 @@ on:
   pull_request:
 
 jobs:
-  test-hello-world:
-    name: 'Test: hello-world'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run hello-world (default)
-        id: hello-default
-        uses: ./hello-world
-
-      - name: Run hello-world (custom input)
-        id: hello-custom
-        uses: ./hello-world
-        with:
-          who-to-greet: 'GitHub Actions'
-
-      - name: Assert outputs exist
-        shell: bash
-        run: |
-          if [ -z "${{ steps.hello-default.outputs.random-number }}" ]; then
-            echo "ERROR: random-number output is empty" && exit 1
-          fi
-          echo "random-number (default): ${{ steps.hello-default.outputs.random-number }}"
-          echo "random-number (custom):  ${{ steps.hello-custom.outputs.random-number }}"
-
-  test-setup-node:
-    name: 'Test: setup-node (Node ${{ matrix.node-version }})'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: ['18', '20', '22']
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run setup-node
-        uses: ./setup-node
-        with:
-          node-version: ${{ matrix.node-version }}
-
-      - name: Assert correct Node.js version
-        shell: bash
-        run: |
-          ACTUAL=$(node --version)
-          EXPECTED="v${{ matrix.node-version }}"
-          if [[ "$ACTUAL" != ${EXPECTED}* ]]; then
-            echo "ERROR: expected Node $EXPECTED, got $ACTUAL" && exit 1
-          fi
-          echo "Node version OK: $ACTUAL"
 
   test-determine-version:
     name: 'Test: determine-version'

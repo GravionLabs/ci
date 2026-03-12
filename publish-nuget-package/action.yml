@@ -1,0 +1,48 @@
+name: 'Publish NuGet Package'
+description: 'Publishes NuGet packages to a feed (GitHub Packages, Azure Artifacts, JFrog Artifactory)'
+
+inputs:
+  feed-url:
+    description: |
+      URL of the target NuGet feed:
+        GitHub Packages:   https://nuget.pkg.github.com/{owner}/index.json
+        Azure Artifacts:   https://pkgs.dev.azure.com/{org}/_packaging/{feed}/nuget/v3/index.json
+        JFrog Artifactory: https://{domain}/artifactory/api/nuget/v3/{repo}
+    required: true
+  api-key:
+    description: 'API key or PAT for the target feed (GitHub PAT, Azure DevOps PAT, JFrog API key)'
+    required: true
+  nupkgs-path:
+    description: 'Path to the .nupkg files to publish'
+    required: false
+    default: './nupkgs/*.nupkg'
+  download-artifact:
+    description: 'Whether to download the nupkgs artifact before publishing (set to true when running in a separate job)'
+    required: false
+    default: 'false'
+  artifact-name:
+    description: 'Name of the artifact to download (only used when download-artifact is true)'
+    required: false
+    default: 'nupkgs'
+  skip-duplicate:
+    description: 'Skip pushing packages that already exist in the feed instead of failing'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+      - name: Download nupkgs artifact
+        if: ${{ inputs.download-artifact == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ./nupkgs
+
+      - name: Publish NuGet packages
+        shell: bash
+        run: |
+          dotnet nuget push "${{ inputs.nupkgs-path }}" \
+            --source "${{ inputs.feed-url }}" \
+            --api-key "${{ inputs.api-key }}" \
+            ${{ inputs.skip-duplicate == 'true' && '--skip-duplicate' || '' }}
