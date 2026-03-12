@@ -36,9 +36,9 @@ jobs:
           check major              "${{ steps.version.outputs.major }}"
           check minor              "${{ steps.version.outputs.minor }}"
           check patch              "${{ steps.version.outputs.patch }}"
-          check full-semver        "${{ steps.version.outputs.full-semver }}"
           check python-version     "${{ steps.version.outputs.python-version }}"
           check nuget-version      "${{ steps.version.outputs.nuget-version }}"
+          check docker-version     "${{ steps.version.outputs.docker-version }}"
           [ $ERRORS -eq 0 ] || exit 1
 
   test-create-version-tag:
