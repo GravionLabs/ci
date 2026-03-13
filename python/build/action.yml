@@ -1,0 +1,64 @@
+name: 'Build Python Package'
+description: 'Checks out the repository, sets the package version, syncs dependencies, and builds a Python package using uv'
+
+inputs:
+  python-version:
+    description: 'Python version to use (e.g. 3.12, 3.13)'
+    required: false
+    default: '3.14'
+  uv-version:
+    description: 'uv version to install (e.g. 0.6.0); omit for latest'
+    required: false
+    default: ''
+  version:
+    description: 'Version to set on the package (e.g. 1.2.3 or 1.2.3a4 for pre-releases)'
+    required: true
+  working-directory:
+    description: 'Directory containing pyproject.toml'
+    required: false
+    default: '.'
+  upload-artifact:
+    description: 'Whether to upload the built dist/ directory as an artifact'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'Name of the artifact to upload'
+    required: false
+    default: 'dist'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ github.token }}
+
+    - name: Setup Python (uv)
+      uses: ./python/setup
+      with:
+        python-version: ${{ inputs.python-version }}
+        uv-version: ${{ inputs.uv-version }}
+
+    - name: Set package version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: uv version "${{ inputs.version }}"
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: uv sync --locked --all-extras
+
+    - name: Build package
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: uv build
+
+    - name: Upload dist artifact
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.working-directory }}/dist/
+        if-no-files-found: error

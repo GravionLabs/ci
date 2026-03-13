@@ -1,0 +1,50 @@
+name: 'Publish Python Package'
+description: 'Publishes Python packages to PyPI (via Trusted Publishing) or a private feed (GitHub Packages, Azure Artifacts, JFrog Artifactory)'
+
+inputs:
+  feed-url:
+    description: |
+      URL of the target package index. Leave empty to publish to PyPI via Trusted Publishing.
+        GitHub Packages:   https://nuget.pkg.github.com/{owner}/
+        Azure Artifacts:   https://pkgs.dev.azure.com/{org}/_packaging/{feed}/pypi/upload/
+        JFrog Artifactory: https://{domain}/artifactory/api/pypi/{repo}
+    required: false
+    default: ''
+  api-token:
+    description: 'API token or PAT for the target feed (not required when using PyPI Trusted Publishing)'
+    required: false
+    default: ''
+  download-artifact:
+    description: 'Whether to download the dist artifact before publishing (set to true when running in a separate job)'
+    required: false
+    default: 'false'
+  artifact-name:
+    description: 'Name of the artifact to download (only used when download-artifact is true)'
+    required: false
+    default: 'dist'
+  skip-existing:
+    description: 'Skip publishing packages that already exist in the feed instead of failing'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download dist artifact
+      if: ${{ inputs.download-artifact == 'true' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ./dist
+
+    - name: Publish package
+      shell: bash
+      env:
+        UV_PUBLISH_URL: ${{ inputs.feed-url }}
+        UV_PUBLISH_TOKEN: ${{ inputs.api-token }}
+      run: |
+        ARGS=""
+        if [ "${{ inputs.skip-existing }}" = "true" ]; then
+          ARGS="$ARGS --skip-existing"
+        fi
+        uv publish dist/* $ARGS

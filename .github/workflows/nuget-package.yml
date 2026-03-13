@@ -18,10 +18,11 @@ on:
         type: string
         required: false
         default: 'Release'
-      version:
-        description: 'Version to use for the NuGet package (e.g. 1.2.3)'
+      gitversion-config-file:
+        description: 'Path to a GitVersion.yml configuration file (optional)'
         type: string
-        required: true
+        required: false
+        default: ''
       feed-url:
         description: 'URL of the NuGet feed for restore (optional private feed)'
         type: string
@@ -60,6 +61,11 @@ on:
         type: string
         required: false
         default: 'cobertura'
+      force-publish:
+        description: 'Publish regardless of the current branch (e.g. to release pre-release/beta versions from feature branches)'
+        type: boolean
+        required: false
+        default: false
     secrets:
       feed-token:
         description: 'Access token for the private restore feed'
@@ -69,12 +75,30 @@ on:
         required: true
 
 jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      nuget-version: ${{ steps.version.outputs.nuget-version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        uses: GravionLabs/ci/versioning/determine-version@main
+        with:
+          config-file-path: ${{ inputs.gitversion-config-file }}
+
   build-test-pack:
     name: Build, Test & Pack
     runs-on: ubuntu-latest
+    needs: determine-version
     steps:
       - name: Build
-        uses: GravionLabs/ci/build-dotnet@main
+        uses: GravionLabs/ci/dotnet/build@main
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
           dotnet-project: ${{ inputs.dotnet-project }}
@@ -87,7 +111,7 @@ jobs:
           feed-token: ${{ secrets.feed-token }}
 
       - name: Test
-        uses: GravionLabs/ci/test-dotnet@main
+        uses: GravionLabs/ci/dotnet/test@main
         with:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
@@ -96,21 +120,21 @@ jobs:
           upload-results: 'true'
 
       - name: Pack
-        uses: GravionLabs/ci/pack-nuget-package@main
+        uses: GravionLabs/ci/dotnet/nuget/pack@main
         with:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
-          version: ${{ inputs.version }}
+          version: ${{ needs.determine-version.outputs.nuget-version }}
 
   publish:
     name: Publish
-    needs: build-test-pack
-    if: github.ref == 'refs/heads/main'
+    needs: [determine-version, build-test-pack]
+    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
     runs-on: ubuntu-latest
     environment: nuget-publish
     steps:
       - name: Publish NuGet packages
-        uses: GravionLabs/ci/publish-nuget-package@main
+        uses: GravionLabs/ci/dotnet/nuget/publish@main
         with:
           feed-url: ${{ inputs.publish-feed-url }}
           api-key: ${{ secrets.publish-api-key }}

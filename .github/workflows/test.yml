@@ -17,9 +17,7 @@ jobs:
 
       - name: Run determine-version
         id: version
-        uses: ./determine-version
-
-      - name: Assert outputs are non-empty
+        uses: ./versioning/determine-version
         shell: bash
         run: |
           ERRORS=0
@@ -55,9 +53,9 @@ jobs:
 
       - name: Run determine-version
         id: version
-        uses: ./determine-version
+        uses: ./versioning/determine-version
 
       - name: Run create-version-tag
-        uses: ./create-version-tag
+        uses: ./versioning/create-version-tag
         with:
           version: ${{ steps.version.outputs.semver }}

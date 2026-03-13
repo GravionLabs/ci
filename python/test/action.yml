@@ -1,0 +1,53 @@
+name: 'Test Python Package'
+description: 'Runs pytest with code coverage using uv. Requires python/build to have run in the same job.'
+
+inputs:
+  working-directory:
+    description: 'Directory containing pyproject.toml'
+    required: false
+    default: '.'
+  pytest-args:
+    description: 'Additional arguments to pass to pytest (e.g. tests/ -k "not slow")'
+    required: false
+    default: ''
+  coverage-report:
+    description: 'Coverage report format (xml, html, term, term-missing); set to empty to disable coverage'
+    required: false
+    default: 'xml'
+  upload-results:
+    description: 'Whether to upload test results and coverage report as artifacts'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run pytest
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        COVERAGE_ARGS=""
+        if [ -n "${{ inputs.coverage-report }}" ]; then
+          COVERAGE_ARGS="--cov --cov-report=${{ inputs.coverage-report }}:coverage.${{ inputs.coverage-report }}"
+        fi
+
+        uv run pytest \
+          --junit-xml=test-results/results.xml \
+          $COVERAGE_ARGS \
+          ${{ inputs.pytest-args }}
+
+    - name: Upload test results artifact
+      if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: ${{ inputs.working-directory }}/test-results/results.xml
+        if-no-files-found: warn
+
+    - name: Upload coverage artifact
+      if: ${{ inputs.upload-results == 'true' && inputs.coverage-report != '' && (success() || failure()) }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage
+        path: ${{ inputs.working-directory }}/coverage.${{ inputs.coverage-report }}
+        if-no-files-found: warn
