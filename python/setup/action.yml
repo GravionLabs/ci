@@ -1,0 +1,22 @@
+name: 'Setup Python (uv)'
+description: 'Installs uv, sets up Python, and caches dependencies'
+
+inputs:
+  python-version:
+    description: 'Python version to use (e.g. 3.12, 3.13)'
+    required: false
+    default: '3.14'
+  uv-version:
+    description: 'uv version to install (e.g. 0.6.0); omit for latest'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: ${{ inputs.uv-version != '' && inputs.uv-version || 'latest' }}
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true

@@ -52,7 +52,7 @@ runs:
           token: ${{ github.token }}
 
       - name: Setup .NET
-        uses: ./setup-dotnet
+        uses: ./dotnet/setup
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
           feed-url: ${{ inputs.feed-url }}
