@@ -104,12 +104,21 @@ def render_outputs_table(outputs: dict) -> str:
 def process_readme(content: str) -> tuple[str, list[str]]:
     """
     Replace all marker-bounded sections with generated tables.
-    Returns (updated_content, list_of_warnings).
+    Returns (updated_content, list_of_errors).
+    On any error the original section is left untouched and the error is recorded;
+    the caller is responsible for deciding whether to write the file.
     """
-    warnings: list[str] = []
+    errors: list[str] = []
     result = []
     lines = content.splitlines(keepends=True)
     i = 0
+
+    def _find_end_marker(start: int, end_marker: str) -> int | None:
+        """Return the line index of end_marker, or None if EOF is reached first."""
+        j = start
+        while j < len(lines) and end_marker not in lines[j]:
+            j += 1
+        return j if j < len(lines) else None
 
     while i < len(lines):
         line = lines[i]
@@ -118,49 +127,68 @@ def process_readme(content: str) -> tuple[str, list[str]]:
         m = INPUT_START.search(line)
         if m:
             source = m.group("source")
-            result.append(line)
             i += 1
-            # Skip old content until end marker
-            while i < len(lines) and INPUT_END not in lines[i]:
-                i += 1
-            # Generate new table
+            end_idx = _find_end_marker(i, INPUT_END)
+            if end_idx is None:
+                errors.append(
+                    f"ERROR: Missing end marker '{INPUT_END}' for source='{source}' "
+                    f"— leaving section untouched to avoid truncating README.md."
+                )
+                result.append(line)
+                result.extend(lines[i:])
+                i = len(lines)
+                continue
+            original_section = lines[i:end_idx]
+            end_line = lines[end_idx]
+            i = end_idx + 1
             try:
                 action = load_action(source)
                 table = render_inputs_table(action.get("inputs") or {})
+                result.append(line)
                 result.append(table)
+                result.append(end_line)
             except Exception as e:
-                warnings.append(f"WARNING: Could not generate inputs for {source}: {e}")
-                result.append(f"_Error generating inputs table: {e}_\n")
-            # Append end marker
-            if i < len(lines):
-                result.append(lines[i])
-                i += 1
+                errors.append(f"ERROR: Could not generate inputs for '{source}': {e} — leaving section untouched.")
+                result.append(line)
+                result.extend(original_section)
+                result.append(end_line)
             continue
 
         # Check for outputs marker
         m = OUTPUT_START.search(line)
         if m:
             source = m.group("source")
-            result.append(line)
             i += 1
-            while i < len(lines) and OUTPUT_END not in lines[i]:
-                i += 1
+            end_idx = _find_end_marker(i, OUTPUT_END)
+            if end_idx is None:
+                errors.append(
+                    f"ERROR: Missing end marker '{OUTPUT_END}' for source='{source}' "
+                    f"— leaving section untouched to avoid truncating README.md."
+                )
+                result.append(line)
+                result.extend(lines[i:])
+                i = len(lines)
+                continue
+            original_section = lines[i:end_idx]
+            end_line = lines[end_idx]
+            i = end_idx + 1
             try:
                 action = load_action(source)
                 table = render_outputs_table(action.get("outputs") or {})
+                result.append(line)
                 result.append(table)
+                result.append(end_line)
             except Exception as e:
-                warnings.append(f"WARNING: Could not generate outputs for {source}: {e}")
-                result.append(f"_Error generating outputs table: {e}_\n")
-            if i < len(lines):
-                result.append(lines[i])
-                i += 1
+                errors.append(f"ERROR: Could not generate outputs for '{source}': {e} — leaving section untouched.")
+                result.append(line)
+                result.extend(original_section)
+                result.append(end_line)
             continue
 
         result.append(line)
         i += 1
 
-    return "".join(result), warnings
+    return "".join(result), errors
 
 
 def main() -> int:
@@ -173,10 +201,17 @@ def main() -> int:
     args = parser.parse_args()
 
     original = README.read_text(encoding="utf-8")
-    updated, warnings = process_readme(original)
+    updated, errors = process_readme(original)
 
-    for w in warnings:
-        print(w, file=sys.stderr)
+    for e in errors:
+        print(e, file=sys.stderr)
+
+    if errors:
+        print(
+            f"README.md not written — {len(errors)} error(s) occurred during generation.",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.check:
         if updated != original:
