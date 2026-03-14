@@ -37,7 +37,7 @@ runs:
         echo "Inspecting: $pkg"
         # unzip -Z1 lists only filenames (one per line), avoiding header/metadata noise from unzip -l
         file_list=$(unzip -Z1 "$pkg")
-        echo "$file_list"
+        printf '%s\n' "$file_list"
         echo ""
 
         failed=0
@@ -49,7 +49,7 @@ runs:
           # to prevent false positives (e.g. README.md matching READMExmd) and -- to guard against
           # patterns starting with -
           pattern="${pattern//$'\r'/}"
-          if echo "$file_list" | grep -Fxq -- "$pattern"; then
+          if grep -Fxq -- "$pattern" <<< "$file_list"; then
             echo "  OK: $pattern"
           else
             echo "::error::Missing expected file in package: $pattern" >&2
