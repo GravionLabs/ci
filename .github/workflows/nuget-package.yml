@@ -66,6 +66,17 @@ on:
         type: boolean
         required: false
         default: false
+      verify-package-files:
+        description: |
+          Optional newline-separated list of file paths that must exist inside the packed .nupkg.
+          When provided, the package contents are verified immediately after packing.
+          Example:
+            lib/net8.0/MyLib.dll
+            lib/net10.0/MyLib.xml
+            README.md
+        type: string
+        required: false
+        default: ''
     secrets:
       feed-token:
         description: 'Access token for the private restore feed'
@@ -125,6 +136,12 @@ jobs:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
           version: ${{ needs.determine-version.outputs.nuget-version }}
+
+      - name: Verify Package Contents
+        if: inputs.verify-package-files != ''
+        uses: GravionLabs/ci/dotnet/nuget/verify-package@main
+        with:
+          files: ${{ inputs.verify-package-files }}
 
   publish:
     name: Publish
