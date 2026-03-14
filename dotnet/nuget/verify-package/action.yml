@@ -1,0 +1,52 @@
+name: 'Verify NuGet Package Contents'
+description: |
+  Inspects a packed .nupkg file and asserts that all expected paths are present.
+  Must be called in the same job as the pack action so that ./nupkgs/ is already populated.
+
+inputs:
+  files:
+    description: |
+      Newline-separated list of file paths that must exist inside the .nupkg.
+      Example:
+        lib/net8.0/MyLib.dll
+        lib/net10.0/MyLib.xml
+        README.md
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Verify package contents
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        pkg=$(ls ./nupkgs/*.nupkg 2>/dev/null | head -1)
+        if [[ -z "$pkg" ]]; then
+          echo "::error::No .nupkg found in ./nupkgs/" >&2
+          exit 1
+        fi
+
+        echo "Inspecting: $pkg"
+        files_list=$(unzip -l "$pkg")
+        echo "$files_list"
+        echo ""
+
+        failed=0
+        while IFS= read -r pattern; do
+          # Skip empty lines
+          [[ -z "$pattern" ]] && continue
+
+          if echo "$files_list" | grep -q "$pattern"; then
+            echo "  OK: $pattern"
+          else
+            echo "::error::Missing expected file in package: $pattern" >&2
+            failed=1
+          fi
+        done <<< "${{ inputs.files }}"
+
+        if [[ $failed -ne 0 ]]; then
+          exit 1
+        fi
+
+        echo "All expected package contents verified."

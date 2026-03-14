@@ -18,6 +18,8 @@ jobs:
       - name: Run determine-version
         id: version
         uses: ./versioning/determine-version
+
+      - name: Validate outputs
         shell: bash
         run: |
           ERRORS=0
