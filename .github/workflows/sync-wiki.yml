@@ -1,0 +1,37 @@
+name: Sync Wiki
+
+on:
+  workflow_call:
+    inputs:
+      docs-path:
+        description: 'Path to the docs directory to sync (relative to workspace root)'
+        type: string
+        required: false
+        default: 'docs'
+      readme-path:
+        description: 'Path to the README file that maps to Home.md in the wiki'
+        type: string
+        required: false
+        default: 'README.md'
+    secrets:
+      token:
+        description: 'GitHub token with contents: write permission. Defaults to the calling workflow''s GITHUB_TOKEN via secrets: inherit.'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    name: Sync docs to GitHub Wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync wiki
+        uses: GravionLabs/ci/wiki/sync@main
+        with:
+          token: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          docs-path: ${{ inputs.docs-path }}
+          readme-path: ${{ inputs.readme-path }}

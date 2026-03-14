@@ -1,0 +1,96 @@
+name: 'Sync Wiki'
+description: 'Syncs docs/**/*.md and README.md to the GitHub Wiki. Automatically initializes the wiki if it has never been used.'
+
+inputs:
+  token:
+    description: 'GitHub token with contents: write permission (e.g. secrets.GITHUB_TOKEN)'
+    required: true
+  repository:
+    description: 'GitHub repository (owner/repo) whose wiki should be synced'
+    required: false
+    default: ${{ github.repository }}
+  docs-path:
+    description: 'Path to the docs directory to sync (relative to workspace root)'
+    required: false
+    default: 'docs'
+  readme-path:
+    description: 'Path to the README file that maps to Home.md in the wiki'
+    required: false
+    default: 'README.md'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Clone or initialize wiki repository
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        WIKI_URL="https://x-access-token:${{ inputs.token }}@github.com/${{ inputs.repository }}.wiki.git"
+
+        HAS_WIKI=$(gh api "repos/${{ inputs.repository }}" --jq '.has_wiki' 2>/dev/null || echo "false")
+        if [ "$HAS_WIKI" != "true" ]; then
+          echo "::warning::Wiki is disabled for ${{ inputs.repository }}. Enable it under Settings → General → Features → Wikis."
+          echo "WIKI_SKIP=true" >> "$GITHUB_ENV"
+          exit 0
+        fi
+
+        if git clone "$WIKI_URL" wiki; then
+          echo "Cloned existing wiki."
+        else
+          echo "Initializing wiki for the first time..."
+          mkdir wiki
+          cd wiki
+          git init -b master
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "# Wiki" > Home.md
+          echo "" >> Home.md
+          echo "This wiki is automatically synced from the [${{ inputs.repository }}](https://github.com/${{ inputs.repository }}) repository." >> Home.md
+          git add Home.md
+          git commit -m "Initialize wiki"
+          git remote add origin "$WIKI_URL"
+          git push -u origin master
+          cd ..
+        fi
+
+        cd wiki
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        cd ..
+
+    - name: Copy docs to wiki
+      if: env.WIKI_SKIP != 'true'
+      shell: bash
+      run: |
+        # README.md → Home.md
+        cp "${{ inputs.readme-path }}" wiki/Home.md
+
+        # docs/**/*.md → flat wiki pages with capitalized path-based names:
+        #   docs/overview.md              → Overview.md
+        #   docs/concepts/plugins.md      → Concepts-Plugins.md
+        find "${{ inputs.docs-path }}" -name '*.md' | sort | while IFS= read -r file; do
+          rel="${file#${{ inputs.docs-path }}/}"
+          wiki_name=$(echo "$rel" | awk -F'/' '{
+            for (i = 1; i <= NF; i++) {
+              w = $i
+              sub(/\.md$/, "", w)
+              printf "%s%s", toupper(substr(w, 1, 1)) substr(w, 2), (i < NF ? "-" : ".md")
+            }
+            print ""
+          }')
+          cp "$file" "wiki/${wiki_name}"
+        done
+
+    - name: Commit and push wiki changes
+      if: env.WIKI_SKIP != 'true'
+      shell: bash
+      run: |
+        cd wiki
+        git add -A
+        if git diff --cached --quiet; then
+          echo "No wiki changes to commit."
+        else
+          git commit -m "docs: sync wiki from main [skip ci]"
+          git push
+        fi

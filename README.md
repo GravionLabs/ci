@@ -22,10 +22,13 @@ python/
 versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 └── create-version-tag/     # Create and push a git tag
+wiki/
+└── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
-└── node-ci.yml             # Reusable Node.js CI workflow
+├── node-ci.yml             # Reusable Node.js CI workflow
+└── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
 ---
@@ -604,6 +607,59 @@ uses: GravionLabs/ci/dotnet/build@v1.0.0
 # or
 uses: GravionLabs/ci/dotnet/build@<commit-sha>
 ```
+
+---
+
+## `wiki/sync`
+
+Syncs `docs/**/*.md` and `README.md` to the GitHub Wiki. Automatically initializes the wiki on first run if no pages have been created yet.
+
+File names are derived from the docs path: `docs/concepts/plugins.md` → `Concepts-Plugins.md`. `README.md` maps to `Home.md`.
+
+> Requires **Wikis** to be enabled in the repository settings (Settings → General → Features → Wikis).
+
+**Usage (via reusable workflow — recommended):**
+
+```yaml
+# .github/workflows/sync-wiki.yml
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'docs/**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    uses: GravionLabs/ci/.github/workflows/sync-wiki.yml@main
+    secrets: inherit
+```
+
+**Usage (composite action directly):**
+
+```yaml
+- uses: GravionLabs/ci/wiki/sync@main
+  with:
+    token: ${{ secrets.GITHUB_TOKEN }}
+    docs-path: docs          # optional, default: docs
+    readme-path: README.md   # optional, default: README.md
+```
+
+**Inputs**
+
+| Name          | Description                                                             | Required | Default              |
+|---------------|-------------------------------------------------------------------------|----------|----------------------|
+| `token`       | GitHub token with `contents: write` permission                          | Yes      |                      |
+| `repository`  | Target repository (`owner/repo`). Defaults to the calling repository.   | No       | `github.repository`  |
+| `docs-path`   | Path to the docs directory                                              | No       | `docs`               |
+| `readme-path` | Path to the README file (maps to `Home.md` in the wiki)                 | No       | `README.md`          |
+
 
 
 
