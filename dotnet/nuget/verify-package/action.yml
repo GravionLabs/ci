@@ -18,18 +18,26 @@ runs:
   steps:
     - name: Verify package contents
       shell: bash
+      env:
+        EXPECTED_FILES: ${{ inputs.files }}
       run: |
         set -euo pipefail
 
-        pkg=$(ls ./nupkgs/*.nupkg 2>/dev/null | head -1)
-        if [[ -z "$pkg" ]]; then
+        # Use glob directly instead of ls to avoid word-splitting issues
+        pkgs=( ./nupkgs/*.nupkg )
+        if [[ ! -e "${pkgs[0]}" ]]; then
           echo "::error::No .nupkg found in ./nupkgs/" >&2
           exit 1
         fi
+        if [[ ${#pkgs[@]} -gt 1 ]]; then
+          echo "::warning::Multiple .nupkg files found; verifying only ${pkgs[0]}"
+        fi
+        pkg="${pkgs[0]}"
 
         echo "Inspecting: $pkg"
-        files_list=$(unzip -l "$pkg")
-        echo "$files_list"
+        # unzip -Z1 lists only filenames (one per line), avoiding header/metadata noise from unzip -l
+        file_list=$(unzip -Z1 "$pkg")
+        echo "$file_list"
         echo ""
 
         failed=0
@@ -37,13 +45,17 @@ runs:
           # Skip empty lines
           [[ -z "$pattern" ]] && continue
 
-          if echo "$files_list" | grep -q "$pattern"; then
+          # Strip potential CRLF from pattern, use -F (fixed string) and -x (exact line match)
+          # to prevent false positives (e.g. README.md matching READMExmd) and -- to guard against
+          # patterns starting with -
+          pattern="${pattern//$'\r'/}"
+          if echo "$file_list" | grep -Fxq -- "$pattern"; then
             echo "  OK: $pattern"
           else
             echo "::error::Missing expected file in package: $pattern" >&2
             failed=1
           fi
-        done <<< "${{ inputs.files }}"
+        done <<< "$EXPECTED_FILES"
 
         if [[ $failed -ne 0 ]]; then
           exit 1
