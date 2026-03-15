@@ -77,6 +77,21 @@ on:
         type: string
         required: false
         default: ''
+      create-release:
+        description: 'Create a GitHub Release after publishing. Defaults to true on main.'
+        type: boolean
+        required: false
+        default: true
+      changelog-file:
+        description: 'Path to a CHANGELOG.md file to use for release notes'
+        type: string
+        required: false
+        default: 'CHANGELOG.md'
+      release-tag-prefix:
+        description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
+        type: string
+        required: false
+        default: 'v'
     secrets:
       feed-token:
         description: 'Access token for the private restore feed'
@@ -156,3 +171,18 @@ jobs:
           feed-url: ${{ inputs.publish-feed-url }}
           api-key: ${{ secrets.publish-api-key }}
           download-artifact: 'true'
+
+  release:
+    name: Release
+    needs: [determine-version, publish]
+    if: inputs.create-release == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: GravionLabs/ci/versioning/gh-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+          tag-prefix: ${{ inputs.release-tag-prefix }}
+          changelog-file: ${{ inputs.changelog-file }}

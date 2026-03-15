@@ -1,0 +1,102 @@
+name: 'Create GitHub Release'
+description: >
+  Creates a version tag and a GitHub Release.
+  Optionally extracts the matching section from a CHANGELOG.md for the release body.
+  Skips silently if the release already exists. Marks pre-release automatically
+  when the version contains a pre-release identifier (e.g. 1.2.3-alpha.4).
+  Requires contents: write permission in the calling workflow.
+
+inputs:
+  version:
+    description: 'Version to release (e.g. 1.2.3 or 1.2.3-alpha.4)'
+    required: true
+  tag-prefix:
+    description: 'Prefix for the git tag (e.g. "v" → v1.2.3)'
+    required: false
+    default: 'v'
+  changelog-file:
+    description: 'Path to a CHANGELOG.md file to extract release notes from'
+    required: false
+    default: 'CHANGELOG.md'
+  generate-release-notes:
+    description: 'Fall back to GitHub auto-generated release notes if no changelog section is found'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ github.token }}
+        fetch-depth: 0
+
+    - name: Create version tag
+      uses: GravionLabs/ci/versioning/create-version-tag@main
+      with:
+        version: ${{ inputs.version }}
+        tag-prefix: ${{ inputs.tag-prefix }}
+
+    - name: Extract changelog section
+      id: changelog
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        CHANGELOG: ${{ inputs.changelog-file }}
+      run: |
+        if [ ! -f "$CHANGELOG" ]; then
+          echo "No changelog file found at $CHANGELOG — skipping extraction."
+          echo "notes=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Extract the section whose header contains the version string.
+        # Supports formats: ## [1.2.3], ## [1.2.3] — Description, ## 1.2.3 ...
+        notes=$(awk -v ver="$VERSION" '
+          /^## / {
+            if (found) { exit }
+            if (index($0, ver) > 0) { found = 1; next }
+          }
+          found { print }
+        ' "$CHANGELOG")
+
+        if [ -z "$notes" ]; then
+          echo "No changelog section found for version $VERSION."
+          echo "notes=" >> "$GITHUB_OUTPUT"
+        else
+          {
+            echo "notes<<GH_RELEASE_NOTES_EOF"
+            printf '%s\n' "$notes"
+            echo "GH_RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
+        VERSION: ${{ inputs.version }}
+        NOTES: ${{ steps.changelog.outputs.notes }}
+        GENERATE_NOTES: ${{ inputs.generate-release-notes }}
+      run: |
+        if gh release view "$TAG" &>/dev/null; then
+          echo "Release $TAG already exists — skipping."
+          exit 0
+        fi
+
+        # Mark as pre-release when version contains a pre-release identifier.
+        if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-'; then
+          PRERELEASE_FLAG="--prerelease"
+        else
+          PRERELEASE_FLAG=""
+        fi
+
+        if [ -n "$NOTES" ]; then
+          gh release create "$TAG" --title "$TAG" --notes "$NOTES" $PRERELEASE_FLAG
+        elif [ "$GENERATE_NOTES" = "true" ]; then
+          gh release create "$TAG" --title "$TAG" --generate-notes $PRERELEASE_FLAG
+        else
+          gh release create "$TAG" --title "$TAG" --notes "" $PRERELEASE_FLAG
+        fi
