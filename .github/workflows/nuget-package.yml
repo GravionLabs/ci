@@ -77,11 +77,6 @@ on:
         type: string
         required: false
         default: ''
-      create-release:
-        description: 'Create a GitHub Release after publishing. Defaults to true on main.'
-        type: boolean
-        required: false
-        default: true
       changelog-file:
         description: 'Path to a CHANGELOG.md file to use for release notes'
         type: string
@@ -175,7 +170,7 @@ jobs:
   release:
     name: Release
     needs: [determine-version, publish]
-    if: inputs.create-release == true
+    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
