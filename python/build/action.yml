@@ -35,7 +35,7 @@ runs:
         token: ${{ github.token }}
 
     - name: Setup Python (uv)
-      uses: ./python/setup
+      uses: GravionLabs/ci/python/setup@main
       with:
         python-version: ${{ inputs.python-version }}
         uv-version: ${{ inputs.uv-version }}

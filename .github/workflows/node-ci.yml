@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: GravionLabs/ci/setup-node@main
+        uses: GravionLabs/ci/node/setup@main
         with:
           node-version: ${{ inputs.node-version }}
 
