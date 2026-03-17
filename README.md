@@ -113,7 +113,7 @@ Runs unit tests with Coverlet code coverage via the XPlat collector (`--collect:
 ```yaml
 - uses: GravionLabs/ci/dotnet/test@main
   with:
-    dotnet-project: 'tests/MyApp.Tests/MyApp.Tests.csproj'
+    test-projects: 'test/**/*.Test.csproj'
     coverage-format: cobertura
 ```
 
@@ -122,12 +122,15 @@ Runs unit tests with Coverlet code coverage via the XPlat collector (`--collect:
 <!-- action-docs:inputs source="dotnet/test/action.yml" -->
 | Name              | Description                                                                            | Required | Default     |
 |-------------------|----------------------------------------------------------------------------------------|----------|-------------|
+| `test-projects`   | Path or glob for the .NET test projects to run (e.g. `test/**/*.Test.csproj`)         | No       | `''`*       |
 | `configuration`   | Build configuration (e.g. Debug or Release)                                            | No       | Release     |
-| `dotnet-project`  | Path to the .NET test project or solution file (e.g. MyTests.csproj or MySolution.sln) | No       | **/*.csproj |
+| `dotnet-project`  | Deprecated alias for `test-projects`; used only when `test-projects` is not set       | No       | `''`        |
 | `coverage-format` | Coverage report format (cobertura, opencover, lcov, json)                              | No       | cobertura   |
 | `upload-results`  | Whether to upload test results and coverage report as artifacts                        | No       | true        |
 | `verbosity`       | Verbosity level (quiet, minimal, normal, detailed, diagnostic)                         | No       | minimal     |
 <!-- /action-docs:inputs -->
+
+`*` Effective default: `test/**/*.Test.csproj`
 
 > The test project must have `coverlet.collector` as a NuGet dependency.
 
@@ -479,6 +482,7 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
     with:
       dotnet-project: 'src/MyLib/MyLib.csproj'
+      test-projects: 'test/**/*.Test.csproj'
       gitversion-config-file: GitVersion.yml
       publish-feed-url: https://nuget.pkg.github.com/GravionLabs/index.json
       verify-package-files: |
@@ -495,6 +499,7 @@ jobs:
 |--------------------------|---------------------------------------------------------------|----------|----------------|
 | `dotnet-version`         | .NET SDK version                                              | No       | `10.x`         |
 | `dotnet-project`         | Path to project or solution                                   | No       | `**/*.csproj`  |
+| `test-projects`         | Path or glob for the test projects to run                     | No       | `test/**/*.Test.csproj`  |
 | `configuration`          | Build configuration                                           | No       | `Release`      |
 | `gitversion-config-file` | Path to `GitVersion.yml`                                      | No       | `''`           |
 | `feed-url`               | Private restore feed URL                                      | No       | `''`           |
@@ -659,8 +664,6 @@ jobs:
 | `repository`  | Target repository (`owner/repo`). Defaults to the calling repository.   | No       | `github.repository`  |
 | `docs-path`   | Path to the docs directory                                              | No       | `docs`               |
 | `readme-path` | Path to the README file (maps to `Home.md` in the wiki)                 | No       | `README.md`          |
-
-
 
 
 

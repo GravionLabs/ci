@@ -13,6 +13,11 @@ on:
         type: string
         required: false
         default: '**/*.csproj'
+      test-projects:
+        description: 'Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj)'
+        type: string
+        required: false
+        default: 'test/**/*.Test.csproj'
       configuration:
         description: 'Build configuration (e.g. Debug or Release)'
         type: string
@@ -134,7 +139,7 @@ jobs:
       - name: Test
         uses: GravionLabs/ci/dotnet/test@main
         with:
-          dotnet-project: ${{ inputs.dotnet-project }}
+          test-projects: ${{ inputs.test-projects }}
           configuration: ${{ inputs.configuration }}
           verbosity: ${{ inputs.verbosity }}
           coverage-format: ${{ inputs.coverage-format }}
