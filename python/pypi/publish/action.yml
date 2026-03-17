@@ -10,7 +10,7 @@ inputs:
         JFrog Artifactory: https://{domain}/artifactory/api/pypi/{repo}
     required: false
     default: ''
-  api-token:
+  api-key:
     description: 'API token or PAT for the target feed (not required when using PyPI Trusted Publishing)'
     required: false
     default: ''
@@ -41,7 +41,7 @@ runs:
       shell: bash
       env:
         UV_PUBLISH_URL: ${{ inputs.feed-url }}
-        UV_PUBLISH_TOKEN: ${{ inputs.api-token }}
+        UV_PUBLISH_TOKEN: ${{ inputs.api-key }}
       run: |
         ARGS=""
         if [ "${{ inputs.skip-existing }}" = "true" ]; then

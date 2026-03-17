@@ -1,0 +1,47 @@
+name: 'Build Docker Image'
+description: 'Builds a multi-architecture Docker image without pushing (validates the build)'
+
+inputs:
+  image-name:
+    description: 'Image name used for labelling (e.g. ghcr.io/org/myapp or org/myapp)'
+    required: true
+  dockerfile:
+    description: 'Path to the Dockerfile'
+    required: false
+    default: 'Dockerfile'
+  context:
+    description: 'Docker build context path'
+    required: false
+    default: '.'
+  platforms:
+    description: 'Comma-separated target platforms (e.g. linux/amd64,linux/arm64)'
+    required: false
+    default: 'linux/amd64,linux/arm64'
+  build-args:
+    description: 'Newline-separated list of build arguments (KEY=VALUE)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ github.token }}
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        push: false
+        tags: ${{ inputs.image-name }}:build
+        build-args: ${{ inputs.build-args }}

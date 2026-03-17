@@ -11,9 +11,9 @@ inputs:
     required: false
     default: 'Release'
   dotnet-project:
-    description: 'Path to the .NET project or solution file to build (e.g. MyProject.csproj or MySolution.sln)'
+    description: 'Path to a .NET project (.csproj) or solution (.sln/.slnx) file to build'
     required: false
-    default: '**/*.csproj'
+    default: '**/*.{sln,slnx}'
   publish:
     description: 'Whether to publish the app after building (only for deployable apps, not libraries)'
     required: false
@@ -62,16 +62,21 @@ runs:
 
       - name: Restore dependencies
         shell: bash
-        run: dotnet restore ${{ inputs.dotnet-project }} ${{ inputs.nuget-config != '' && format('--configfile {0}', inputs.nuget-config) || '' }}
+        run: |
+          shopt -s globstar nullglob
+          dotnet restore ${{ inputs.dotnet-project }} ${{ inputs.nuget-config != '' && format('--configfile {0}', inputs.nuget-config) || '' }}
 
       - name: Build
         shell: bash
-        run: dotnet build ${{ inputs.dotnet-project }} --configuration ${{ inputs.configuration }} --no-restore --verbosity ${{ inputs.verbosity }}
+        run: |
+          shopt -s globstar nullglob
+          dotnet build ${{ inputs.dotnet-project }} --configuration ${{ inputs.configuration }} --no-restore --verbosity ${{ inputs.verbosity }}
 
       - name: Publish app (framework-dependent)
         if: ${{ inputs.publish == 'true' }}
         shell: bash
         run: |
+          shopt -s globstar nullglob
           dotnet publish ${{ inputs.dotnet-project }} \
             --configuration ${{ inputs.configuration }} \
             --output ./publish \

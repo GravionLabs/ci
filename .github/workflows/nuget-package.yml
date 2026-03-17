@@ -9,11 +9,11 @@ on:
         required: false
         default: '10.x'
       dotnet-project:
-        description: 'Path to the .NET project file (e.g. MyProject.csproj)'
+        description: 'Path to a .NET project (.csproj) or solution (.sln/.slnx) file'
         type: string
         required: false
-        default: '**/*.csproj'
-      test-projects:
+        default: '**/*.{sln,slnx}'
+      test-project:
         description: 'Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj)'
         type: string
         required: false
@@ -116,7 +116,7 @@ jobs:
         id: version
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
-          config-file-path: ${{ inputs.gitversion-config-file }}
+          gitversion-config-file: ${{ inputs.gitversion-config-file }}
 
   build-test-pack:
     name: Build, Test & Pack
@@ -139,7 +139,7 @@ jobs:
       - name: Test
         uses: GravionLabs/ci/dotnet/test@main
         with:
-          test-projects: ${{ inputs.test-projects }}
+          test-project: ${{ inputs.test-project }}
           configuration: ${{ inputs.configuration }}
           verbosity: ${{ inputs.verbosity }}
           coverage-format: ${{ inputs.coverage-format }}

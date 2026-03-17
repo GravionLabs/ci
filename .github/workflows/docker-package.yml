@@ -1,0 +1,146 @@
+name: Docker Image CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Image name without registry prefix (e.g. org/myapp)'
+        type: string
+        required: true
+      registry:
+        description: 'Container registry hostname (e.g. ghcr.io, docker.io)'
+        type: string
+        required: false
+        default: 'ghcr.io'
+      dockerfile:
+        description: 'Path to the Dockerfile'
+        type: string
+        required: false
+        default: 'Dockerfile'
+      context:
+        description: 'Docker build context path'
+        type: string
+        required: false
+        default: '.'
+      platforms:
+        description: 'Comma-separated target platforms (e.g. linux/amd64,linux/arm64)'
+        type: string
+        required: false
+        default: 'linux/amd64,linux/arm64'
+      build-args:
+        description: 'Newline-separated list of build arguments (KEY=VALUE)'
+        type: string
+        required: false
+        default: ''
+      gitversion-config-file:
+        description: 'Path to a GitVersion.yml configuration file (optional)'
+        type: string
+        required: false
+        default: ''
+      main-branch:
+        description: 'Name of the main branch; semantic version tags are only published from this branch'
+        type: string
+        required: false
+        default: 'main'
+      force-publish:
+        description: 'Publish regardless of the current branch (e.g. to release pre-release images from feature branches)'
+        type: boolean
+        required: false
+        default: false
+      changelog-file:
+        description: 'Path to a CHANGELOG.md file to use for release notes'
+        type: string
+        required: false
+        default: 'CHANGELOG.md'
+      release-tag-prefix:
+        description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
+        type: string
+        required: false
+        default: 'v'
+    secrets:
+      registry-username:
+        description: 'Username for authenticating to the registry'
+        required: true
+      registry-token:
+        description: 'Token or password for authenticating to the registry (e.g. GITHUB_TOKEN for ghcr.io)'
+        required: true
+
+jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      docker-version: ${{ steps.version.outputs.docker-version }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+      patch: ${{ steps.version.outputs.patch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        uses: GravionLabs/ci/versioning/determine-version@main
+        with:
+          gitversion-config-file: ${{ inputs.gitversion-config-file }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint Dockerfile
+        uses: GravionLabs/ci/docker/lint@main
+        with:
+          dockerfile: ${{ inputs.dockerfile }}
+
+  build-publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    needs: [determine-version, lint]
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Build
+        uses: GravionLabs/ci/docker/build@main
+        with:
+          image-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          dockerfile: ${{ inputs.dockerfile }}
+          context: ${{ inputs.context }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+
+      - name: Publish
+        uses: GravionLabs/ci/docker/publish@main
+        with:
+          image-name: ${{ inputs.image-name }}
+          registry: ${{ inputs.registry }}
+          registry-username: ${{ secrets.registry-username }}
+          registry-token: ${{ secrets.registry-token }}
+          dockerfile: ${{ inputs.dockerfile }}
+          context: ${{ inputs.context }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          docker-version: ${{ needs.determine-version.outputs.docker-version }}
+          major: ${{ needs.determine-version.outputs.major }}
+          minor: ${{ needs.determine-version.outputs.minor }}
+          patch: ${{ needs.determine-version.outputs.patch }}
+          main-branch: ${{ inputs.main-branch }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [determine-version, build-publish]
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: GravionLabs/ci/versioning/gh-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+          tag-prefix: ${{ inputs.release-tag-prefix }}
+          changelog-file: ${{ inputs.changelog-file }}

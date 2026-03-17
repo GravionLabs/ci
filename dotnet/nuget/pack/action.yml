@@ -3,9 +3,9 @@ description: 'Packs a .NET project as a NuGet package and uploads it as an artif
 
 inputs:
   dotnet-project:
-    description: 'Path to the .NET project file to pack (e.g. MyProject.csproj)'
+    description: 'Path to a .NET project (.csproj) or solution (.sln/.slnx) file to pack'
     required: false
-    default: '**/*.csproj'
+    default: '**/*.{sln,slnx}'
   configuration:
     description: 'Build configuration (e.g. Debug or Release)'
     required: false
@@ -20,6 +20,7 @@ runs:
       - name: Pack NuGet package
         shell: bash
         run: |
+          shopt -s globstar nullglob
           dotnet pack ${{ inputs.dotnet-project }} \
             --configuration ${{ inputs.configuration }} \
             --output ./nupkgs \

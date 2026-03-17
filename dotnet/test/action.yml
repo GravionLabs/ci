@@ -2,18 +2,14 @@ name: 'Test .NET'
 description: 'Runs .NET unit tests with Coverlet code coverage collection'
 
 inputs:
-  test-projects:
+  test-project:
     description: 'Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj)'
     required: false
-    default: ''
+    default: 'test/**/*.Test.csproj'
   configuration:
     description: 'Build configuration (e.g. Debug or Release)'
     required: false
     default: 'Release'
-  dotnet-project:
-    description: 'Deprecated alias for test-projects; used only when test-projects is not set'
-    required: false
-    default: ''
   coverage-format:
     description: 'Coverage report format (cobertura, opencover, lcov, json)'
     required: false
@@ -33,57 +29,14 @@ runs:
       - name: Test with coverage
         shell: bash
         run: |
-          TEST_PROJECTS='${{ inputs.test-projects }}'
-          if [ -z "$TEST_PROJECTS" ]; then
-            TEST_PROJECTS='${{ inputs.dotnet-project }}'
-          fi
-
-          if [ -z "$TEST_PROJECTS" ]; then
-            TEST_PROJECTS='test/**/*.Test.csproj'
-          fi
-
           shopt -s globstar nullglob
-
-          declare -a RESOLVED_PROJECTS=()
-          while IFS= read -r pattern; do
-            if [ -z "$pattern" ]; then
-              continue
-            fi
-
-            mapfile -t matches < <(compgen -G "$pattern" || true)
-            if [ "${#matches[@]}" -gt 0 ]; then
-              RESOLVED_PROJECTS+=("${matches[@]}")
-            else
-              RESOLVED_PROJECTS+=("$pattern")
-            fi
-          done <<< "$TEST_PROJECTS"
-
-          if [ "${#RESOLVED_PROJECTS[@]}" -eq 0 ]; then
-            echo "No test projects resolved from input: $TEST_PROJECTS" >&2
-            exit 1
-          fi
-
-          declare -A SEEN_PROJECTS=()
-          declare -a UNIQUE_PROJECTS=()
-          for project in "${RESOLVED_PROJECTS[@]}"; do
-            if [ -n "${SEEN_PROJECTS[$project]+x}" ]; then
-              continue
-            fi
-
-            SEEN_PROJECTS["$project"]=1
-            UNIQUE_PROJECTS+=("$project")
-          done
-
-          for project in "${UNIQUE_PROJECTS[@]}"; do
-            echo "Running tests for $project"
-            dotnet test "$project" \
-              --configuration ${{ inputs.configuration }} \
-              --no-build \
-              --verbosity ${{ inputs.verbosity }} \
-              --collect:"XPlat Code Coverage" \
-              --results-directory ./test-results \
-              -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverage-format }}
-          done
+          dotnet test ${{ inputs.test-project }} \
+            --configuration ${{ inputs.configuration }} \
+            --no-build \
+            --verbosity ${{ inputs.verbosity }} \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./test-results \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverage-format }}
 
       - name: Upload test results artifact
         if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}

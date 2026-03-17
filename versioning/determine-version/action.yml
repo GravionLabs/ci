@@ -10,7 +10,7 @@ inputs:
     description: 'GitVersion tool version to install (semver range)'
     required: false
     default: '6.x'
-  config-file-path:
+  gitversion-config-file:
     description: 'Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)'
     required: false
     default: ''
@@ -74,7 +74,7 @@ runs:
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4.2.0
       with:
-        configFilePath: ${{ inputs.config-file-path != '' && inputs.config-file-path || '' }}
+        configFilePath: ${{ inputs.gitversion-config-file != '' && inputs.gitversion-config-file || '' }}
 
     - name: Convert to PEP 440 (Python version)
       id: python-version

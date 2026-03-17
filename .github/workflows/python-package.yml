@@ -48,7 +48,7 @@ on:
         required: false
         default: false
     secrets:
-      publish-api-token:
+      publish-api-key:
         description: 'API token for the target feed. Not required when using PyPI Trusted Publishing.'
         required: false
 
@@ -68,7 +68,7 @@ jobs:
         id: version
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
-          config-file-path: ${{ inputs.gitversion-config-file }}
+          gitversion-config-file: ${{ inputs.gitversion-config-file }}
 
   build-test:
     name: Build & Test
@@ -104,5 +104,5 @@ jobs:
         uses: GravionLabs/ci/python/pypi/publish@main
         with:
           feed-url: ${{ inputs.publish-feed-url }}
-          api-token: ${{ secrets.publish-api-token }}
+          api-key: ${{ secrets.publish-api-key }}
           download-artifact: 'true'

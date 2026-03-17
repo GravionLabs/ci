@@ -19,6 +19,10 @@ python/
 ├── setup/                  # Set up uv and Python with dependency cache
 └── pypi/
     └── publish/            # Publish to PyPI (Trusted Publishing) or a private feed
+docker/
+├── lint/                   # Lint a Dockerfile using hadolint
+├── build/                  # Build a multi-arch Docker image (no push — validates build)
+└── publish/                # Build and push a multi-arch Docker image with version tags
 versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 └── create-version-tag/     # Create and push a git tag
@@ -27,6 +31,7 @@ wiki/
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
+├── docker-package.yml      # Reusable Docker CI/CD workflow (version → lint → build → publish → release)
 ├── node-ci.yml             # Reusable Node.js CI workflow
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
@@ -76,7 +81,7 @@ Checks out the repository, sets up .NET, restores, builds, and optionally publis
 ```yaml
 - uses: GravionLabs/ci/dotnet/build@main
   with:
-    dotnet-project: 'src/MyApp/MyApp.csproj'
+    dotnet-project: 'MyApp.sln'
     configuration: Release
     publish: 'true'                        # only for deployable apps
     feed-url: ${{ vars.NUGET_FEED_URL }}
@@ -86,18 +91,18 @@ Checks out the repository, sets up .NET, restores, builds, and optionally publis
 **Inputs**
 
 <!-- action-docs:inputs source="dotnet/build/action.yml" -->
-| Name             | Description                                                                                  | Required | Default      |
-|------------------|----------------------------------------------------------------------------------------------|----------|--------------|
-| `dotnet-version` | Version of .NET SDK to use (e.g. 8.x, 9.x, 10.x)                                             | No       | 10.x         |
-| `configuration`  | Build configuration (e.g. Debug or Release)                                                  | No       | Release      |
-| `dotnet-project` | Path to the .NET project or solution file to build (e.g. MyProject.csproj or MySolution.sln) | No       | **/*.csproj  |
-| `publish`        | Whether to publish the app after building (only for deployable apps, not libraries)          | No       | false        |
-| `nuget-config`   | Path to a NuGet configuration file (optional, e.g. nuget.config)                             | No       | nuget.config |
-| `verbosity`      | Verbosity level (quiet, minimal, normal, detailed, diagnostic)                               | No       | minimal      |
-| `feed-url`       | URL of the private NuGet feed (GitHub Packages, Azure Artifacts, JFrog Artifactory)          | No       |              |
-| `feed-name`      | Name to register the private feed as                                                         | No       | private-feed |
-| `feed-username`  | Username for the private feed                                                                | No       |              |
-| `feed-token`     | Access token or PAT for the private feed                                                     | No       |              |
+| Name             | Description                                                                         | Required | Default         |
+|------------------|-------------------------------------------------------------------------------------|----------|-----------------|
+| `dotnet-version` | Version of .NET SDK to use (e.g. 8.x, 9.x, 10.x)                                    | No       | 10.x            |
+| `configuration`  | Build configuration (e.g. Debug or Release)                                         | No       | Release         |
+| `dotnet-project` | Path to a .NET project (.csproj) or solution (.sln/.slnx) file to build             | No       | **/*.{sln,slnx} |
+| `publish`        | Whether to publish the app after building (only for deployable apps, not libraries) | No       | false           |
+| `nuget-config`   | Path to a NuGet configuration file (optional, e.g. nuget.config)                    | No       | nuget.config    |
+| `verbosity`      | Verbosity level (quiet, minimal, normal, detailed, diagnostic)                      | No       | minimal         |
+| `feed-url`       | URL of the private NuGet feed (GitHub Packages, Azure Artifacts, JFrog Artifactory) | No       |                 |
+| `feed-name`      | Name to register the private feed as                                                | No       | private-feed    |
+| `feed-username`  | Username for the private feed                                                       | No       |                 |
+| `feed-token`     | Access token or PAT for the private feed                                            | No       |                 |
 <!-- /action-docs:inputs -->
 
 ---
@@ -113,24 +118,21 @@ Runs unit tests with Coverlet code coverage via the XPlat collector (`--collect:
 ```yaml
 - uses: GravionLabs/ci/dotnet/test@main
   with:
-    test-projects: 'test/**/*.Test.csproj'
+    test-project: 'test/**/*.Test.csproj'
     coverage-format: cobertura
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="dotnet/test/action.yml" -->
-| Name              | Description                                                                            | Required | Default     |
-|-------------------|----------------------------------------------------------------------------------------|----------|-------------|
-| `test-projects`   | Path or glob for the .NET test projects to run (e.g. `test/**/*.Test.csproj`)         | No       | `''`*       |
-| `configuration`   | Build configuration (e.g. Debug or Release)                                            | No       | Release     |
-| `dotnet-project`  | Deprecated alias for `test-projects`; used only when `test-projects` is not set       | No       | `''`        |
-| `coverage-format` | Coverage report format (cobertura, opencover, lcov, json)                              | No       | cobertura   |
-| `upload-results`  | Whether to upload test results and coverage report as artifacts                        | No       | true        |
-| `verbosity`       | Verbosity level (quiet, minimal, normal, detailed, diagnostic)                         | No       | minimal     |
+| Name              | Description                                                                 | Required | Default               |
+|-------------------|-----------------------------------------------------------------------------|----------|-----------------------|
+| `test-project`    | Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj) | No       | test/**/*.Test.csproj |
+| `configuration`   | Build configuration (e.g. Debug or Release)                                 | No       | Release               |
+| `coverage-format` | Coverage report format (cobertura, opencover, lcov, json)                   | No       | cobertura             |
+| `upload-results`  | Whether to upload test results and coverage report as artifacts             | No       | true                  |
+| `verbosity`       | Verbosity level (quiet, minimal, normal, detailed, diagnostic)              | No       | minimal               |
 <!-- /action-docs:inputs -->
-
-`*` Effective default: `test/**/*.Test.csproj`
 
 > The test project must have `coverlet.collector` as a NuGet dependency.
 
@@ -147,18 +149,18 @@ Packs a .NET project as a NuGet package and uploads the `.nupkg` files as the `n
 ```yaml
 - uses: GravionLabs/ci/dotnet/nuget/pack@main
   with:
-    dotnet-project: 'src/MyLib/MyLib.csproj'
+    dotnet-project: 'MyLib.sln'
     version: ${{ steps.version.outputs.nuget-version }}
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="dotnet/nuget/pack/action.yml" -->
-| Name             | Description                                                   | Required | Default     |
-|------------------|---------------------------------------------------------------|----------|-------------|
-| `dotnet-project` | Path to the .NET project file to pack (e.g. MyProject.csproj) | No       | **/*.csproj |
-| `configuration`  | Build configuration (e.g. Debug or Release)                   | No       | Release     |
-| `version`        | Version to use for the NuGet package (e.g. 1.2.3)             | **Yes**  | —           |
+| Name             | Description                                                            | Required | Default         |
+|------------------|------------------------------------------------------------------------|----------|-----------------|
+| `dotnet-project` | Path to a .NET project (.csproj) or solution (.sln/.slnx) file to pack | No       | **/*.{sln,slnx} |
+| `configuration`  | Build configuration (e.g. Debug or Release)                            | No       | Release         |
+| `version`        | Version to use for the NuGet package (e.g. 1.2.3)                      | **Yes**  | —               |
 <!-- /action-docs:inputs -->
 
 ---
@@ -212,7 +214,7 @@ must already be populated.
 ```yaml
 - uses: GravionLabs/ci/dotnet/nuget/pack@main
   with:
-    dotnet-project: 'src/MyLib/MyLib.csproj'
+    dotnet-project: 'MyLib.sln'
     version: ${{ steps.version.outputs.nuget-version }}
 
 - uses: GravionLabs/ci/dotnet/nuget/verify-package@main
@@ -340,7 +342,7 @@ Supports [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (n
 - uses: GravionLabs/ci/python/pypi/publish@main
   with:
     feed-url: https://pkgs.dev.azure.com/myorg/_packaging/myfeed/pypi/upload/
-    api-token: ${{ secrets.AZURE_DEVOPS_PAT }}
+    api-key: ${{ secrets.AZURE_DEVOPS_PAT }}
     download-artifact: 'true'
 ```
 
@@ -350,7 +352,7 @@ Supports [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (n
 | Name                | Description                                                                                                                                                                                                                                                                                               | Required | Default |
 |---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
 | `feed-url`          | URL of the target package index. Leave empty to publish to PyPI via Trusted Publishing.   GitHub Packages:   https://nuget.pkg.github.com/{owner}/   Azure Artifacts:   https://pkgs.dev.azure.com/{org}/_packaging/{feed}/pypi/upload/   JFrog Artifactory: https://{domain}/artifactory/api/pypi/{repo} | No       |         |
-| `api-token`         | API token or PAT for the target feed (not required when using PyPI Trusted Publishing)                                                                                                                                                                                                                    | No       |         |
+| `api-key`           | API token or PAT for the target feed (not required when using PyPI Trusted Publishing)                                                                                                                                                                                                                    | No       |         |
 | `download-artifact` | Whether to download the dist artifact before publishing (set to true when running in a separate job)                                                                                                                                                                                                      | No       | false   |
 | `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                                                                                                                                                                                               | No       | dist    |
 | `skip-existing`     | Skip publishing packages that already exist in the feed instead of failing                                                                                                                                                                                                                                | No       | true    |
@@ -389,7 +391,7 @@ jobs:
 | Name                      | Description                                                                                   | Required | Default |
 |---------------------------|-----------------------------------------------------------------------------------------------|----------|---------|
 | `gitversion-version-spec` | GitVersion tool version to install (semver range)                                             | No       | 6.x     |
-| `config-file-path`        | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set) | No       |         |
+| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set) | No       |         |
 <!-- /action-docs:inputs -->
 
 **Outputs**
@@ -454,6 +456,96 @@ steps:
 
 ---
 
+## Docker Actions
+
+### `docker/lint`
+
+Lints a Dockerfile using [hadolint](https://github.com/hadolint/hadolint). Includes checkout.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/docker/lint@main
+  with:
+    dockerfile: Dockerfile
+```
+
+<!-- action-docs:inputs source="docker/lint/action.yml" -->
+| Name               | Description                                                          | Required | Default      |
+|--------------------|----------------------------------------------------------------------|----------|--------------|
+| `dockerfile`       | Path to the Dockerfile to lint                                       | No       | `Dockerfile` |
+| `hadolint-config`  | Path to a hadolint configuration file (e.g. .hadolint.yaml)         | No       | ``           |
+<!-- /action-docs:inputs -->
+
+---
+
+### `docker/build`
+
+Builds a multi-architecture Docker image (ARM64 + AMD64) without pushing. Validates the build succeeds. Includes checkout.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/docker/build@main
+  with:
+    image-name: ghcr.io/org/myapp
+```
+
+<!-- action-docs:inputs source="docker/build/action.yml" -->
+| Name          | Description                                                              | Required | Default                    |
+|---------------|--------------------------------------------------------------------------|----------|----------------------------|
+| `image-name`  | Image name used for labelling (e.g. ghcr.io/org/myapp or org/myapp)     | **Yes**  | —                          |
+| `dockerfile`  | Path to the Dockerfile                                                   | No       | `Dockerfile`               |
+| `context`     | Docker build context path                                                | No       | `.`                        |
+| `platforms`   | Comma-separated target platforms                                         | No       | `linux/amd64,linux/arm64`  |
+| `build-args`  | Newline-separated list of build arguments (KEY=VALUE)                   | No       | ``                         |
+<!-- /action-docs:inputs -->
+
+---
+
+### `docker/publish`
+
+Builds and pushes a multi-arch Docker image to a container registry with version tags.
+**Does not perform a checkout** — run `docker/build` (or `actions/checkout`) in the same job first.
+
+**Tag strategy:**
+- **Always:** `{registry}/{image-name}:{docker-version}` (e.g. `ghcr.io/org/app:1.2.3-abc1234`)
+- **On main branch only:** `latest`, `{major}`, `{major}.{minor}`, `{major}.{minor}.{patch}`
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/docker/publish@main
+  with:
+    image-name: org/myapp
+    registry-username: ${{ github.actor }}
+    registry-token: ${{ secrets.GITHUB_TOKEN }}
+    docker-version: ${{ steps.version.outputs.docker-version }}
+    major: ${{ steps.version.outputs.major }}
+    minor: ${{ steps.version.outputs.minor }}
+    patch: ${{ steps.version.outputs.patch }}
+```
+
+<!-- action-docs:inputs source="docker/publish/action.yml" -->
+| Name                 | Description                                                                                                    | Required | Default                   |
+|----------------------|----------------------------------------------------------------------------------------------------------------|----------|---------------------------|
+| `image-name`         | Image name without registry prefix (e.g. org/myapp or myapp)                                                  | **Yes**  | —                         |
+| `registry`           | Container registry hostname (e.g. ghcr.io, docker.io)                                                         | No       | `ghcr.io`                 |
+| `registry-username`  | Username for authenticating to the registry                                                                    | **Yes**  | —                         |
+| `registry-token`     | Token or password for authenticating to the registry                                                           | **Yes**  | —                         |
+| `dockerfile`         | Path to the Dockerfile                                                                                         | No       | `Dockerfile`              |
+| `context`            | Docker build context path                                                                                      | No       | `.`                        |
+| `platforms`          | Comma-separated target platforms                                                                               | No       | `linux/amd64,linux/arm64` |
+| `build-args`         | Newline-separated list of build arguments (KEY=VALUE)                                                          | No       | ``                        |
+| `docker-version`     | Full Docker version tag including commit hash (e.g. 1.2.3-alpha.4-abc1234) — from determine-version output    | **Yes**  | —                         |
+| `major`              | Major version number (e.g. 1) — from determine-version output                                                 | **Yes**  | —                         |
+| `minor`              | Minor version number (e.g. 2) — from determine-version output                                                 | **Yes**  | —                         |
+| `patch`              | Patch version number (e.g. 3) — from determine-version output                                                 | **Yes**  | —                         |
+| `main-branch`        | Name of the main branch; semantic version tags are only published from this branch                             | No       | `main`                    |
+<!-- /action-docs:inputs -->
+
+---
+
 ## Reusable Workflows
 
 ### `nuget-package.yml`
@@ -481,8 +573,8 @@ jobs:
   ci:
     uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
     with:
-      dotnet-project: 'src/MyLib/MyLib.csproj'
-      test-projects: 'test/**/*.Test.csproj'
+      dotnet-project: 'MyLib.sln'
+      test-project: 'test/**/*.Test.csproj'
       gitversion-config-file: GitVersion.yml
       publish-feed-url: https://nuget.pkg.github.com/GravionLabs/index.json
       verify-package-files: |
@@ -498,8 +590,8 @@ jobs:
 | Name                     | Description                                                   | Required | Default        |
 |--------------------------|---------------------------------------------------------------|----------|----------------|
 | `dotnet-version`         | .NET SDK version                                              | No       | `10.x`         |
-| `dotnet-project`         | Path to project or solution                                   | No       | `**/*.csproj`  |
-| `test-projects`         | Path or glob for the test projects to run                     | No       | `test/**/*.Test.csproj`  |
+| `dotnet-project`         | Path to a .NET project (.csproj) or solution (.sln/.slnx)    | No       | `**/*.{sln,slnx}` |
+| `test-project`          | Path or glob for the test projects to run                     | No       | `test/**/*.Test.csproj`  |
 | `configuration`          | Build configuration                                           | No       | `Release`      |
 | `gitversion-config-file` | Path to `GitVersion.yml`                                      | No       | `''`           |
 | `feed-url`               | Private restore feed URL                                      | No       | `''`           |
@@ -526,7 +618,7 @@ jobs:
 ### `python-package.yml`
 
 A complete Python CI/CD pipeline: determine version → build → test → publish (on `main` only).
-Supports PyPI Trusted Publishing by default; pass `publish-feed-url` + `publish-api-token` for private feeds.
+Supports PyPI Trusted Publishing by default; pass `publish-feed-url` + `publish-api-key` for private feeds.
 
 **Jobs:**
 
@@ -570,9 +662,64 @@ jobs:
 
 | Name                 | Description                                             | Required |
 |----------------------|---------------------------------------------------------|----------|
-| `publish-api-token`  | API token for private feeds; omit for PyPI Trusted Publishing | No |
+| `publish-api-key`    | API token for private feeds; omit for PyPI Trusted Publishing | No |
 
 > The `publish` job uses `environment: pypi-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
+
+---
+
+### `docker-package.yml`
+
+A complete Docker CI/CD pipeline: determine version → lint Dockerfile → build multi-arch image → publish with version tags → create GitHub release (on `main` only).
+
+**Jobs:**
+- `determine-version` and `lint` run in parallel for fast feedback
+- `build-publish` builds for `linux/amd64` and `linux/arm64` and pushes to the registry
+- `release` creates a GitHub Release (on `main` only)
+
+**Tag strategy on `main`:** `latest`, `{major}`, `{major}.{minor}`, `{major}.{minor}.{patch}`, `{docker-version}`  
+**Tag strategy on other branches:** `{docker-version}` only (e.g. `1.2.3-alpha.4-abc1234`)
+
+**Usage:**
+
+```yaml
+# .github/workflows/docker.yml
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docker:
+    uses: GravionLabs/ci/.github/workflows/docker-package.yml@main
+    with:
+      image-name: ${{ github.repository }}
+    secrets:
+      registry-username: ${{ github.actor }}
+      registry-token: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      packages: write
+      contents: write
+```
+
+| Input                   | Required | Default                    | Description                                              |
+|-------------------------|----------|----------------------------|----------------------------------------------------------|
+| `image-name`            | **Yes**  | —                          | Image name without registry (e.g. `org/myapp`)           |
+| `registry`              | No       | `ghcr.io`                  | Container registry hostname                              |
+| `dockerfile`            | No       | `Dockerfile`               | Path to the Dockerfile                                   |
+| `context`               | No       | `.`                        | Docker build context path                                |
+| `platforms`             | No       | `linux/amd64,linux/arm64`  | Comma-separated target platforms                         |
+| `build-args`            | No       | `""`                       | Newline-separated build arguments (KEY=VALUE)            |
+| `gitversion-config-file`| No       | `""`                       | Path to `GitVersion.yml`                                 |
+| `main-branch`           | No       | `main`                     | Branch from which full version tags are published        |
+| `force-publish`         | No       | `false`                    | Publish regardless of branch                             |
+| `changelog-file`        | No       | `CHANGELOG.md`             | Path to changelog for release notes                      |
+| `release-tag-prefix`    | No       | `v`                        | Git tag prefix (e.g. `v` → `v1.2.3`)                    |
+
+| Secret              | Required | Description                                          |
+|---------------------|----------|------------------------------------------------------|
+| `registry-username` | **Yes**  | Username for the container registry                  |
+| `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
 
 ---
 

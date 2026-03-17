@@ -1,0 +1,108 @@
+name: 'Publish Docker Image'
+description: >
+  Builds and pushes a multi-architecture Docker image to a container registry.
+  On the main branch: publishes with semantic version tags (latest, major, major.minor,
+  major.minor.patch) plus the full docker-version tag.
+  On all other branches: publishes only the docker-version tag.
+  Does not perform a checkout — run docker/build (or actions/checkout) in the same job first.
+
+inputs:
+  image-name:
+    description: 'Image name without registry prefix (e.g. org/myapp or myapp)'
+    required: true
+  registry:
+    description: 'Container registry hostname (e.g. ghcr.io, docker.io)'
+    required: false
+    default: 'ghcr.io'
+  registry-username:
+    description: 'Username for authenticating to the registry'
+    required: true
+  registry-token:
+    description: 'Token or password for authenticating to the registry'
+    required: true
+  dockerfile:
+    description: 'Path to the Dockerfile'
+    required: false
+    default: 'Dockerfile'
+  context:
+    description: 'Docker build context path'
+    required: false
+    default: '.'
+  platforms:
+    description: 'Comma-separated target platforms (e.g. linux/amd64,linux/arm64)'
+    required: false
+    default: 'linux/amd64,linux/arm64'
+  build-args:
+    description: 'Newline-separated list of build arguments (KEY=VALUE)'
+    required: false
+    default: ''
+  docker-version:
+    description: 'Full Docker version tag including commit hash (e.g. 1.2.3-alpha.4-abc1234) — from determine-version docker-version output'
+    required: true
+  major:
+    description: 'Major version number (e.g. 1) — from determine-version major output'
+    required: true
+  minor:
+    description: 'Minor version number (e.g. 2) — from determine-version minor output'
+    required: true
+  patch:
+    description: 'Patch version number (e.g. 3) — from determine-version patch output'
+    required: true
+  main-branch:
+    description: 'Name of the main branch; semantic version tags are only published from this branch'
+    required: false
+    default: 'main'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.registry-username }}
+        password: ${{ inputs.registry-token }}
+
+    - name: Compute image tags
+      id: meta
+      shell: bash
+      run: |
+        IMAGE="${{ inputs.registry }}/${{ inputs.image-name }}"
+        V="${{ inputs.docker-version }}"
+        MAJOR="${{ inputs.major }}"
+        MINOR="${{ inputs.minor }}"
+        PATCH="${{ inputs.patch }}"
+        REF="${{ github.ref }}"
+        MAIN="refs/heads/${{ inputs.main-branch }}"
+
+        if [ "$REF" = "$MAIN" ]; then
+          TAGS="${IMAGE}:${V}
+        ${IMAGE}:latest
+        ${IMAGE}:${MAJOR}
+        ${IMAGE}:${MAJOR}.${MINOR}
+        ${IMAGE}:${MAJOR}.${MINOR}.${PATCH}"
+        else
+          TAGS="${IMAGE}:${V}"
+        fi
+
+        {
+          echo "tags<<EOF"
+          echo "$TAGS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Build and push image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        build-args: ${{ inputs.build-args }}

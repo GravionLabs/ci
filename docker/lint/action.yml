@@ -1,0 +1,26 @@
+name: 'Lint Dockerfile'
+description: 'Lints a Dockerfile using hadolint'
+
+inputs:
+  dockerfile:
+    description: 'Path to the Dockerfile to lint'
+    required: false
+    default: 'Dockerfile'
+  hadolint-config:
+    description: 'Path to a hadolint configuration file (e.g. .hadolint.yaml)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ github.token }}
+
+    - name: Lint Dockerfile
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: ${{ inputs.dockerfile }}
+        config: ${{ inputs.hadolint-config != '' && inputs.hadolint-config || '' }}
