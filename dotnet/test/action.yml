@@ -18,6 +18,10 @@ inputs:
     description: 'Whether to upload test results and coverage report as artifacts'
     required: false
     default: 'true'
+  publish-results:
+    description: 'Whether to publish test results as a GitHub Check Run and coverage as a job summary'
+    required: false
+    default: 'true'
   verbosity:
     description: 'Verbosity level (quiet, minimal, normal, detailed, diagnostic)'
     required: false
@@ -52,3 +56,22 @@ runs:
           name: coverage
           path: ./test-results/**/coverage.${{ inputs.coverage-format }}.xml
           if-no-files-found: warn
+
+      - name: Publish test results
+        if: ${{ inputs.publish-results == 'true' && (success() || failure()) }}
+        uses: dorny/test-reporter@v1
+        with:
+          name: Test Results
+          path: ./test-results/**/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false
+
+      - name: Publish coverage summary
+        if: ${{ inputs.publish-results == 'true' && (success() || failure()) }}
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: ./test-results/**/coverage.${{ inputs.coverage-format }}.xml
+          badge: true
+          fail_below_min: false
+          format: markdown
+          output: both
