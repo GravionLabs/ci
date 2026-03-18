@@ -26,36 +26,16 @@ inputs:
 runs:
   using: 'composite'
   steps:
-      - name: Generate coverage runsettings
-        shell: bash
-        run: |
-          cat > /tmp/coverage.runsettings << EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <RunSettings>
-            <DataCollectionRunSettings>
-              <DataCollectors>
-                <DataCollector friendlyName="XPlat Code Coverage">
-                  <Configuration>
-                    <Format>${{ inputs.coverage-format }}</Format>
-                  </Configuration>
-                </DataCollector>
-              </DataCollectors>
-            </DataCollectionRunSettings>
-          </RunSettings>
-          EOF
-
       - name: Test with coverage
         shell: bash
         run: |
           shopt -s globstar nullglob
           dotnet test ${{ inputs.test-project }} \
             --configuration ${{ inputs.configuration }} \
-            --no-build \
             --verbosity ${{ inputs.verbosity }} \
             --logger trx \
-            --collect:"XPlat Code Coverage" \
-            --results-directory ./test-results \
-            --settings /tmp/coverage.runsettings
+            --collect "XPlat Code Coverage;Format=${{ inputs.coverage-format }}" \
+            --results-directory ./test-results
 
       - name: Upload test results artifact
         if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
