@@ -26,6 +26,24 @@ inputs:
 runs:
   using: 'composite'
   steps:
+      - name: Generate coverage runsettings
+        shell: bash
+        run: |
+          cat > /tmp/coverage.runsettings << EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <RunSettings>
+            <DataCollectionRunSettings>
+              <DataCollectors>
+                <DataCollector friendlyName="XPlat Code Coverage">
+                  <Configuration>
+                    <Format>${{ inputs.coverage-format }}</Format>
+                  </Configuration>
+                </DataCollector>
+              </DataCollectors>
+            </DataCollectionRunSettings>
+          </RunSettings>
+          EOF
+
       - name: Test with coverage
         shell: bash
         run: |
@@ -37,7 +55,7 @@ runs:
             --logger trx \
             --collect:"XPlat Code Coverage" \
             --results-directory ./test-results \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverage-format }}
+            --settings /tmp/coverage.runsettings
 
       - name: Upload test results artifact
         if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}

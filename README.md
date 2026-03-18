@@ -752,13 +752,24 @@ jobs:
 
 ## Pinning to a Specific Version
 
-To pin to a release tag or commit SHA instead of `@main`:
+> **Recommendation:** Pin to a major version tag (e.g. `@v1`) in production workflows.
+> Using `@main` will always track the latest code, which may include breaking changes.
 
 ```yaml
-uses: GravionLabs/ci/dotnet/build@v1.0.0
-# or
+# Recommended — follows latest v1.x.y patches and features, no breaking changes
+uses: GravionLabs/ci/dotnet/build@v1
+
+# Pinned to exact release — maximum stability
+uses: GravionLabs/ci/dotnet/build@v1.2.3
+
+# Pinned to commit SHA — maximum reproducibility
 uses: GravionLabs/ci/dotnet/build@<commit-sha>
+
+# Tracks latest (may include breaking changes)
+uses: GravionLabs/ci/dotnet/build@main
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed between versions.
 
 ---
 
