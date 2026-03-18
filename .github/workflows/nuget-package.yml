@@ -1,6 +1,17 @@
 name: NuGet Package CI/CD
 
 on:
+  workflow_dispatch:
+    inputs:
+      verbosity:
+        description: 'Verbosity level for dotnet commands'
+        type: choice
+        options: [minimal, quiet, normal, detailed, diagnostic]
+        default: minimal
+      force-publish:
+        description: 'Publish regardless of the current branch'
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       dotnet-version:
@@ -17,7 +28,7 @@ on:
         description: 'Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj)'
         type: string
         required: false
-        default: 'test/**/*.Test.csproj'
+        default: 'test/**/*.Tests.csproj'
       configuration:
         description: 'Build configuration (e.g. Debug or Release)'
         type: string
