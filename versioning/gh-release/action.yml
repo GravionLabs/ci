@@ -1,7 +1,9 @@
 name: 'Create GitHub Release'
 description: >
   Creates a version tag and a GitHub Release.
-  Optionally extracts the matching section from a CHANGELOG.md for the release body.
+  Optionally uses git-cliff to auto-generate release notes from Conventional Commits.
+  When cliff-config is set, git-cliff generates the notes and can also update CHANGELOG.md.
+  Falls back to extracting a section from a CHANGELOG.md, then to GitHub auto-generated notes.
   Skips silently if the release already exists. Marks pre-release automatically
   when the version contains a pre-release identifier (e.g. 1.2.3-alpha.4).
   Requires contents: write permission in the calling workflow.
@@ -22,6 +24,19 @@ inputs:
     description: 'Fall back to GitHub auto-generated release notes if no changelog section is found'
     required: false
     default: 'true'
+  cliff-config:
+    description: >
+      Path to a cliff.toml configuration file for git-cliff.
+      When set, git-cliff generates release notes from Conventional Commits instead of
+      extracting from CHANGELOG.md. Requires git history (fetch-depth: 0).
+    required: false
+    default: ''
+  update-changelog:
+    description: >
+      When cliff-config is set, regenerate CHANGELOG.md from the full git history
+      and commit it (with [skip ci]) before creating the release tag.
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -32,6 +47,43 @@ runs:
         token: ${{ github.token }}
         fetch-depth: 0
 
+    - name: Generate release notes with git-cliff
+      id: cliff
+      if: ${{ inputs.cliff-config != '' }}
+      uses: orhun/git-cliff-action@v4
+      with:
+        config: ${{ inputs.cliff-config }}
+        args: --unreleased --tag ${{ inputs.tag-prefix }}${{ inputs.version }}
+      env:
+        GITHUB_REPO: ${{ github.repository }}
+
+    - name: Update CHANGELOG.md with git-cliff
+      if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
+      uses: orhun/git-cliff-action@v4
+      with:
+        config: ${{ inputs.cliff-config }}
+        args: --tag ${{ inputs.tag-prefix }}${{ inputs.version }}
+      env:
+        OUTPUT: ${{ inputs.changelog-file }}
+        GITHUB_REPO: ${{ github.repository }}
+
+    - name: Commit updated CHANGELOG.md
+      if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
+        CHANGELOG: ${{ inputs.changelog-file }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add "$CHANGELOG"
+        if git diff --cached --quiet; then
+          echo "No changes to $CHANGELOG — skipping commit."
+        else
+          git commit -m "docs: update $CHANGELOG for $TAG [skip ci]"
+          git push
+        fi
+
     - name: Create version tag
       uses: GravionLabs/ci/versioning/create-version-tag@main
       with:
@@ -40,6 +92,7 @@ runs:
 
     - name: Extract changelog section
       id: changelog
+      if: ${{ inputs.cliff-config == '' }}
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
@@ -79,6 +132,7 @@ runs:
         TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
         VERSION: ${{ inputs.version }}
         NOTES: ${{ steps.changelog.outputs.notes }}
+        CLIFF_NOTES: ${{ steps.cliff.outputs.content }}
         GENERATE_NOTES: ${{ inputs.generate-release-notes }}
       run: |
         if gh release view "$TAG" &>/dev/null; then
@@ -93,10 +147,15 @@ runs:
           PRERELEASE_FLAG=""
         fi
 
-        if [ -n "$NOTES" ]; then
+        # Prefer git-cliff notes, then CHANGELOG.md section, then GitHub auto-generated.
+        if [ -n "$CLIFF_NOTES" ]; then
+          echo "$CLIFF_NOTES" > /tmp/release_notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release_notes.md $PRERELEASE_FLAG
+        elif [ -n "$NOTES" ]; then
           gh release create "$TAG" --title "$TAG" --notes "$NOTES" $PRERELEASE_FLAG
         elif [ "$GENERATE_NOTES" = "true" ]; then
           gh release create "$TAG" --title "$TAG" --generate-notes $PRERELEASE_FLAG
         else
           gh release create "$TAG" --title "$TAG" --notes "" $PRERELEASE_FLAG
         fi
+

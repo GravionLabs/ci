@@ -98,6 +98,16 @@ on:
         type: string
         required: false
         default: 'CHANGELOG.md'
+      cliff-config:
+        description: 'Path to a cliff.toml file for git-cliff changelog generation (optional)'
+        type: string
+        required: false
+        default: ''
+      update-changelog:
+        description: 'When cliff-config is set, regenerate CHANGELOG.md from git history and commit it before the release tag'
+        type: boolean
+        required: false
+        default: false
       release-tag-prefix:
         description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
         type: string
@@ -201,3 +211,5 @@ jobs:
           version: ${{ needs.determine-version.outputs.semver }}
           tag-prefix: ${{ inputs.release-tag-prefix }}
           changelog-file: ${{ inputs.changelog-file }}
+          cliff-config: ${{ inputs.cliff-config }}
+          update-changelog: ${{ inputs.update-changelog }}

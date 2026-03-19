@@ -71,3 +71,5 @@ jobs:
         with:
           version: ${{ steps.version.outputs.semver }}
           changelog-file: CHANGELOG.md
+          cliff-config: cliff.toml
+          update-changelog: 'true'
