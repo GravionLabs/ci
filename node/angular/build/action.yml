@@ -1,0 +1,43 @@
+name: 'Build Angular'
+description: 'Install dependencies and build an Angular monorepo (library first, then application)'
+
+inputs:
+  node-version:
+    description: 'Version of Node.js to use (e.g. 20, 22)'
+    required: false
+    default: '22'
+  working-directory:
+    description: 'Working directory containing the Angular workspace'
+    required: false
+    default: '.'
+  lib-build-command:
+    description: 'Command to build the Angular library (runs before the app build)'
+    required: false
+    default: 'npm run build:lib'
+  app-build-command:
+    description: 'Command to build the Angular application'
+    required: false
+    default: 'npm run build:demo'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: GravionLabs/ci/node/setup@main
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npm ci
+
+    - name: Build library
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.lib-build-command }}
+
+    - name: Build application
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.app-build-command }}

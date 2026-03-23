@@ -1,0 +1,53 @@
+name: Angular CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use for the build'
+        required: false
+        type: string
+        default: '22'
+      working-directory:
+        description: 'Working directory containing the Angular workspace'
+        required: false
+        type: string
+        default: '.'
+      lib-build-command:
+        description: 'Command to build the Angular library (runs before the app build)'
+        required: false
+        type: string
+        default: 'npm run build:lib'
+      app-build-command:
+        description: 'Command to build the Angular application'
+        required: false
+        type: string
+        default: 'npm run build:demo'
+      run-tests:
+        description: 'Whether to run the test suite after the build'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build (Node ${{ inputs.node-version }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Angular workspace
+        uses: GravionLabs/ci/node/angular/build@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          working-directory: ${{ inputs.working-directory }}
+          lib-build-command: ${{ inputs.lib-build-command }}
+          app-build-command: ${{ inputs.app-build-command }}
+
+      - name: Run tests
+        if: ${{ inputs.run-tests }}
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: npm test --if-present

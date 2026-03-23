@@ -28,11 +28,16 @@ versioning/
 └── create-version-tag/     # Create and push a git tag
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
+node/
+├── setup/                  # Set up Node.js and npm cache
+└── angular/
+    └── build/              # Install deps and build an Angular monorepo (library → application)
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
 ├── docker-package.yml      # Reusable Docker CI/CD workflow (version → lint → build → publish → release)
 ├── node-ci.yml             # Reusable Node.js CI workflow
+├── angular-ci.yml          # Reusable Angular CI workflow (lib build → app build → optional tests)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -749,6 +754,64 @@ jobs:
 | `run-tests`         | Whether to run `npm test`        | No       | `true`  |
 
 ---
+
+### `node/angular/build`
+
+Composite action that installs dependencies and builds an Angular monorepo in two steps: library first, then application. Uses `GravionLabs/ci/node/setup@main` under the hood.
+
+> Designed for Angular workspaces where a library must be compiled with `ng-packagr` before the application can reference it (e.g. `@gravion/sakai-ui` → `demo`).
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/angular/build@main
+  with:
+    node-version: '22'
+    lib-build-command: 'npm run build:lib'
+    app-build-command: 'npm run build:demo'
+```
+
+**Inputs**
+
+| Name                | Description                                                 | Required | Default              |
+|---------------------|-------------------------------------------------------------|----------|----------------------|
+| `node-version`      | Node.js version to use                                      | No       | `22`                 |
+| `working-directory` | Working directory containing the Angular workspace          | No       | `.`                  |
+| `lib-build-command` | Command to build the Angular library (runs first)           | No       | `npm run build:lib`  |
+| `app-build-command` | Command to build the Angular application (runs after lib)   | No       | `npm run build:demo` |
+
+---
+
+### `angular-ci.yml`
+
+A complete CI pipeline for Angular monorepos: checkout → build library → build application → optional tests.
+
+**Usage:**
+
+```yaml
+# .github/workflows/ci.yml
+jobs:
+  ci:
+    uses: GravionLabs/ci/.github/workflows/angular-ci.yml@main
+    with:
+      node-version: '22'
+      lib-build-command: 'npm run build:lib'
+      app-build-command: 'npm run build:demo'
+      run-tests: false
+```
+
+**Inputs**
+
+| Name                | Description                                               | Required | Default              |
+|---------------------|-----------------------------------------------------------|----------|----------------------|
+| `node-version`      | Node.js version to use                                    | No       | `22`                 |
+| `working-directory` | Working directory containing the Angular workspace        | No       | `.`                  |
+| `lib-build-command` | Command to build the Angular library (runs first)         | No       | `npm run build:lib`  |
+| `app-build-command` | Command to build the Angular application                  | No       | `npm run build:demo` |
+| `run-tests`         | Whether to run `npm test` after the build                 | No       | `true`               |
+
+---
+
 
 ## Pinning to a Specific Version
 
