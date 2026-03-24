@@ -28,11 +28,34 @@ on:
         required: false
         type: boolean
         default: true
+      test-command:
+        description: 'Command to run the tests'
+        required: false
+        type: string
+        default: 'npm run test:ci'
+      coverage-format:
+        description: 'Coverage report format for the summary (cobertura, lcov)'
+        required: false
+        type: string
+        default: 'cobertura'
+      upload-results:
+        description: 'Whether to upload test results and coverage report as artifacts'
+        required: false
+        type: boolean
+        default: true
+      publish-results:
+        description: 'Whether to publish test results as a GitHub Check Run and coverage as a job summary'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
     name: Build (Node ${{ inputs.node-version }})
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -46,8 +69,13 @@ jobs:
           lib-build-command: ${{ inputs.lib-build-command }}
           app-build-command: ${{ inputs.app-build-command }}
 
-      - name: Run tests
+      - name: Test Angular workspace
         if: ${{ inputs.run-tests }}
-        shell: bash
-        working-directory: ${{ inputs.working-directory }}
-        run: npm test --if-present
+        uses: GravionLabs/ci/node/angular/test@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          working-directory: ${{ inputs.working-directory }}
+          test-command: ${{ inputs.test-command }}
+          coverage-format: ${{ inputs.coverage-format }}
+          upload-results: ${{ inputs.upload-results }}
+          publish-results: ${{ inputs.publish-results }}
