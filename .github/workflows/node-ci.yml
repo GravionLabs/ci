@@ -44,6 +44,7 @@ jobs:
     name: Build & Test (Node ${{ inputs.node-version }})
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       checks: write
       pull-requests: write
     defaults:
