@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.10] — 2026-03-26
+
+### Documentation
+- Update CHANGELOG.md for v1.0.9 [skip ci]
+
+
+### Refactoring
+- Update Node.js and Angular CI workflows for improved build commands and structure
+
+
 ## [1.0.9] — 2026-03-26
 
 ### Bug Fixes
