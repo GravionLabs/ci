@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.9] — 2026-03-26
+
+### Bug Fixes
+- Add missing permissions for contents in Node.js CI workflow
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.8 [skip ci]
+
+
 ## [1.0.8] — 2026-03-26
 
 ### Refactoring
