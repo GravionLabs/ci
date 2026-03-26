@@ -54,8 +54,6 @@ runs:
       with:
         config: ${{ inputs.cliff-config }}
         args: --unreleased --tag ${{ inputs.tag-prefix }}${{ inputs.version }}
-      env:
-        GITHUB_REPO: ${{ github.repository }}
 
     - name: Update CHANGELOG.md with git-cliff
       if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
@@ -65,7 +63,6 @@ runs:
         args: --tag ${{ inputs.tag-prefix }}${{ inputs.version }}
       env:
         OUTPUT: ${{ inputs.changelog-file }}
-        GITHUB_REPO: ${{ github.repository }}
 
     - name: Commit updated CHANGELOG.md
       if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
