@@ -1,0 +1,40 @@
+name: 'Deploy GitHub Pages (MkDocs)'
+description: 'Builds a MkDocs site with the Material theme and uploads it as a GitHub Pages artifact.'
+
+inputs:
+  docs-path:
+    description: 'Path to the docs directory (relative to workspace root)'
+    required: false
+    default: 'docs'
+  mkdocs-config-file:
+    description: 'Path to the mkdocs.yml configuration file'
+    required: false
+    default: 'mkdocs.yml'
+  python-version:
+    description: 'Python version to use for building the docs'
+    required: false
+    default: '3.12'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure GitHub Pages
+      uses: actions/configure-pages@v5
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install MkDocs Material
+      shell: bash
+      run: pip install mkdocs-material
+
+    - name: Build MkDocs site
+      shell: bash
+      run: mkdocs build --config-file ${{ inputs.mkdocs-config-file }} --site-dir _site
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: _site

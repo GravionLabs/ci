@@ -38,6 +38,7 @@ docker/
   docker-package.yml    — Full Docker CI/CD: determine-version ‖ lint → build-publish → release (main only)
   node-ci.yml           — Node.js CI: checkout → setup → install → build → test
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
+  deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
 
 ## Reusable Workflow: `nuget-package.yml`
@@ -196,6 +197,12 @@ Inputs: `image-name`, `dockerfile`, `context`, `platforms`, `build-args`.
 
 Builds and pushes a multi-arch image with version tags. **No checkout** — runs after `docker/build` in the same job.
 Inputs: `image-name`, `registry`, `registry-username`, `registry-token`, `dockerfile`, `context`, `platforms`, `build-args`, `docker-version`, `major`, `minor`, `patch`, `main-branch`.
+
+### `pages/deploy`
+
+Builds a MkDocs site (Material theme) and uploads it as a GitHub Pages artifact.
+Inputs: `docs-path` (default: `docs`), `mkdocs-config-file` (default: `mkdocs.yml`), `python-version` (default: `3.12`).
+Requires `pages: write`, `id-token: write` permissions on the calling job — use the `deploy-pages.yml` reusable workflow for a complete setup.
 
 ## Architecture and Conventions
 

@@ -1,0 +1,47 @@
+name: Deploy GitHub Pages
+
+on:
+  workflow_call:
+    inputs:
+      docs-path:
+        description: 'Path to the docs directory (relative to workspace root)'
+        type: string
+        required: false
+        default: 'docs'
+      mkdocs-config-file:
+        description: 'Path to the mkdocs.yml configuration file'
+        type: string
+        required: false
+        default: 'mkdocs.yml'
+      python-version:
+        description: 'Python version to use for building the docs'
+        type: string
+        required: false
+        default: '3.12'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy-pages:
+    name: Build & Deploy GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and upload pages artifact
+        uses: GravionLabs/ci/pages/deploy@main
+        with:
+          docs-path: ${{ inputs.docs-path }}
+          mkdocs-config-file: ${{ inputs.mkdocs-config-file }}
+          python-version: ${{ inputs.python-version }}
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
