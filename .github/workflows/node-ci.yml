@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: '.'
+      build-command:
+        description: 'Command to build the project'
+        required: false
+        type: string
+        default: 'npm run build --if-present'
       run-tests:
         description: 'Whether to run the test suite'
         required: false
@@ -47,24 +52,17 @@ jobs:
       contents: read
       checks: write
       pull-requests: write
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: GravionLabs/ci/node/setup@main
+      - name: Build
+        uses: GravionLabs/ci/node/build@main
         with:
           node-version: ${{ inputs.node-version }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build --if-present
+          working-directory: ${{ inputs.working-directory }}
+          build-command: ${{ inputs.build-command }}
 
       - name: Run tests
         if: ${{ inputs.run-tests }}

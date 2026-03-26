@@ -30,14 +30,14 @@ wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 node/
 ├── setup/                  # Set up Node.js and npm cache
-└── angular/
-    └── build/              # Install deps and build an Angular monorepo (library → application)
+├── build/                  # Install deps and build a Node.js project
+└── test/                   # Run Node.js unit tests with coverage collection and result publishing
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
 ├── docker-package.yml      # Reusable Docker CI/CD workflow (version → lint → build → publish → release)
 ├── node-ci.yml             # Reusable Node.js CI workflow
-├── angular-ci.yml          # Reusable Angular CI workflow (lib build → app build → optional tests)
+├── angular-ci.yml          # Reusable Angular CI workflow (build → optional tests)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -747,44 +747,74 @@ jobs:
 
 **Inputs**
 
-| Name                | Description                      | Required | Default |
-|---------------------|----------------------------------|----------|---------|
-| `node-version`      | Node.js version to use           | No       | `20`    |
-| `working-directory` | Path to the Node.js project root | No       | `.`     |
-| `run-tests`         | Whether to run `npm test`        | No       | `true`  |
+| Name                | Description                                                      | Required | Default                    |
+|---------------------|------------------------------------------------------------------|----------|----------------------------|
+| `node-version`      | Node.js version to use                                           | No       | `20`                       |
+| `working-directory` | Path to the Node.js project root                                 | No       | `.`                        |
+| `build-command`     | Command to build the project                                     | No       | `npm run build --if-present` |
+| `run-tests`         | Whether to run the test suite                                    | No       | `true`                     |
+| `test-command`      | Command to run the tests                                         | No       | `npm run test:ci`          |
+| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)     | No       | `cobertura`                |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts  | No       | `true`                     |
+| `publish-results`   | Whether to publish test results as a Check Run and job summary   | No       | `true`                     |
 
 ---
 
-### `node/angular/build`
+### `node/test`
 
-Composite action that installs dependencies and builds an Angular monorepo in two steps: library first, then application. Uses `GravionLabs/ci/node/setup@main` under the hood.
+Composite action that runs Node.js unit tests, uploads results and coverage as artifacts, and publishes a test summary. Supports any test runner that produces JUnit XML output and a coverage report.
 
-> Designed for Angular workspaces where a library must be compiled with `ng-packagr` before the application can reference it (e.g. `@gravion/sakai-ui` → `demo`).
+> Requires `test:ci` to be defined in `package.json`. This is a deliberate convention — `test:ci` should produce JUnit XML at `test-results/junit.xml` and a coverage report at `coverage/`.
 
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/angular/build@main
+- uses: GravionLabs/ci/node/test@main
   with:
     node-version: '22'
-    lib-build-command: 'npm run build:lib'
-    app-build-command: 'npm run build:demo'
+    working-directory: '.'
+    test-command: 'npm run test:ci'
 ```
 
 **Inputs**
 
-| Name                | Description                                                 | Required | Default              |
-|---------------------|-------------------------------------------------------------|----------|----------------------|
-| `node-version`      | Node.js version to use                                      | No       | `22`                 |
-| `working-directory` | Working directory containing the Angular workspace          | No       | `.`                  |
-| `lib-build-command` | Command to build the Angular library (runs first)           | No       | `npm run build:lib`  |
-| `app-build-command` | Command to build the Angular application (runs after lib)   | No       | `npm run build:demo` |
+| Name                | Description                                                                               | Required | Default           |
+|---------------------|-------------------------------------------------------------------------------------------|----------|-------------------|
+| `node-version`      | Node.js version to use                                                                    | No       | `22`              |
+| `working-directory` | Working directory containing the Node.js project                                          | No       | `.`               |
+| `test-command`      | Command to run the tests (must produce JUnit XML at `test-results/junit.xml` and `coverage/`) | No   | `npm run test:ci` |
+| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)                              | No       | `cobertura`       |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts                           | No       | `true`            |
+| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary       | No       | `true`            |
+
+---
+
+### `node/build`
+
+Composite action that installs dependencies and builds a Node.js project.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/build@main
+  with:
+    node-version: '22'
+    build-command: 'npm run build'
+```
+
+**Inputs**
+
+| Name                | Description                         | Required | Default                    |
+|---------------------|-------------------------------------|----------|----------------------------|
+| `node-version`      | Node.js version to use              | No       | `22`                       |
+| `working-directory` | Working directory of the project    | No       | `.`                        |
+| `build-command`     | Command to build the project        | No       | `npm run build --if-present` |
 
 ---
 
 ### `angular-ci.yml`
 
-A complete CI pipeline for Angular monorepos: checkout → build library → build application → optional tests.
+A complete CI pipeline for Angular projects: checkout → build → optional tests.
 
 **Usage:**
 
@@ -795,20 +825,21 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/angular-ci.yml@main
     with:
       node-version: '22'
-      lib-build-command: 'npm run build:lib'
-      app-build-command: 'npm run build:demo'
       run-tests: false
 ```
 
 **Inputs**
 
-| Name                | Description                                               | Required | Default              |
-|---------------------|-----------------------------------------------------------|----------|----------------------|
-| `node-version`      | Node.js version to use                                    | No       | `22`                 |
-| `working-directory` | Working directory containing the Angular workspace        | No       | `.`                  |
-| `lib-build-command` | Command to build the Angular library (runs first)         | No       | `npm run build:lib`  |
-| `app-build-command` | Command to build the Angular application                  | No       | `npm run build:demo` |
-| `run-tests`         | Whether to run `npm test` after the build                 | No       | `true`               |
+| Name                | Description                                                      | Required | Default           |
+|---------------------|------------------------------------------------------------------|----------|-------------------|
+| `node-version`      | Node.js version to use                                           | No       | `22`              |
+| `working-directory` | Working directory containing the Angular workspace               | No       | `.`               |
+| `build-command`     | Command to build the project                                     | No       | `npm run build`   |
+| `run-tests`         | Whether to run the test suite after the build                    | No       | `true`            |
+| `test-command`      | Command to run the tests                                         | No       | `npm run test:ci` |
+| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)     | No       | `cobertura`       |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts  | No       | `true`            |
+| `publish-results`   | Whether to publish test results as a Check Run and job summary   | No       | `true`            |
 
 ---
 
