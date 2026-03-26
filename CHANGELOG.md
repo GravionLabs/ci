@@ -1,53 +1,91 @@
 # Changelog
 
 All notable changes to GravionLabs/ci are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versioning follows [Semantic Versioning](https://semver.org/).
-
+Versioning follows [Semantic Versioning](https://semver.org/).
 Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
-See [README.md](README.md#pinning-to-a-specific-version) for details.
 
 ---
 
-## [1.0.0] — First stable release
+## [1.0.8] — 2026-03-26
 
-### Added
+### Refactoring
+- Remove unnecessary environment variables from git-cliff steps
 
-#### Docker Actions
-- **`docker/lint`** — Lints Dockerfiles using hadolint. Inputs: `dockerfile`, `hadolint-config`.
-- **`docker/build`** — Builds a multi-arch image (`linux/amd64`, `linux/arm64`) without pushing to validate the build. Inputs: `image-name`, `dockerfile`, `context`, `platforms`, `build-args`.
-- **`docker/publish`** — Builds and pushes a multi-arch image with semantic version tags. On `main`: publishes `latest`, `{major}`, `{major}.{minor}`, `{major}.{minor}.{patch}` and `{docker-version}`. On other branches: `{docker-version}` only.
 
-#### Reusable Workflows
-- **`docker-package.yml`** — Full Docker CI/CD pipeline: `determine-version` ‖ `lint` → `build-publish` → `release`. Supports `workflow_dispatch` with `verbosity` and `force-publish` inputs.
-- **`nuget-package.yml`** — Full NuGet CI/CD pipeline: `determine-version` → `build-test-pack` (+ verify) → `publish` → `release`. Supports `workflow_dispatch` with `verbosity` and `force-publish` inputs.
-- **`python-package.yml`** — Full Python CI/CD pipeline: `determine-version` → `build-test` → `publish` → `release`. Supports `workflow_dispatch` with `verbosity` and `force-publish` inputs.
-- **`node-ci.yml`** — CI pipeline for Node.js: checkout → setup → install → build → test.
-- **`sync-wiki.yml`** — Syncs `docs/**/*.md` and `README.md` to the GitHub Wiki.
+## [1.0.7] — 2026-03-26
 
-#### .NET Actions
-- **`dotnet/setup`** — Installs .NET SDK, configures NuGet cache, optional private feed.
-- **`dotnet/build`** — Checkout + setup + restore + build. Optional `publish: true` for apps. Default `dotnet-project`: `**/*.{sln,slnx}`.
-- **`dotnet/test`** — Runs `dotnet test` with Coverlet coverage and TRX logger. Uploads `.trx` test results and coverage XML as artifacts. Default `test-project`: `test/**/*.Test.csproj`.
-- **`dotnet/nuget/pack`** — `dotnet pack` → `./nupkgs/`. Uploads `nupkgs` artifact.
-- **`dotnet/nuget/publish`** — `dotnet nuget push` to any NuGet feed.
-- **`dotnet/nuget/verify-package`** — Verifies expected file paths exist inside a `.nupkg`.
+### Features
+- Add GitHub Pages deployment workflow for MkDocs site
 
-#### Python Actions
-- **`python/setup`** — Installs uv and Python with dependency cache keyed on `uv.lock`.
-- **`python/build`** — Sets version, syncs dependencies, builds wheel.
-- **`python/test`** — Runs pytest with coverage. Uploads results as artifacts.
-- **`python/pypi/publish`** — Publishes to PyPI (Trusted Publishing) or a private feed. Credential input: `api-key`.
 
-#### Versioning Actions
-- **`versioning/determine-version`** — GitVersion-based semantic versioning. Outputs: `semver`, `major`, `minor`, `patch`, `docker-version`, `nuget-version`, `python-version`, `npm-version`, and more.
-- **`versioning/create-version-tag`** — Creates and pushes a `v{version}` git tag. Idempotent.
-- **`versioning/gh-release`** — Creates a GitHub Release with optional CHANGELOG section extraction and auto-generated release notes fallback.
+## [1.0.6] — 2026-03-24
 
-#### Infrastructure
-- **`wiki/sync`** — Syncs docs to GitHub Wiki via HTTPS token (no SSH key required).
-- **`node/setup`** — Installs Node.js with npm cache.
+### Features
+- Add Node.js and Angular test actions with coverage publishing
 
-### Parameter Naming Conventions
-- Tool-specific identifiers get a tool prefix: `dotnet-version`, `dotnet-project`, `test-project`, `python-version`, `uv-version`, `gitversion-version-spec`, `gitversion-config-file`.
-- Credential secrets: `publish-api-key` (not `api-token`).
+
+## [1.0.5] — 2026-03-23
+
+### Features
+- **node**: Add Angular CI workflow and angular/build composite action
+
+
+## [1.0.4] — 2026-03-19
+
+### Features
+- Add git-cliff CHANGELOG auto-generation to gh-release action
+
+
+## [1.0.3] — 2026-03-18
+
+### Bug Fixes
+- Add contents:read permission to build-test-pack job
+
+
+## [1.0.2] — 2026-03-18
+
+### Features
+- Publish test results and coverage summary to GitHub UI
+
+
+## [1.0.1] — 2026-03-18
+
+### Bug Fixes
+- Remove --no-build and simplify coverage collection in test action
+
+
+## [1.0.0] — 2026-03-18
+
+### Bug Fixes
+- Replace relative uses: paths with absolute refs in composite actions
+- Simplify release job — remove create-release input, mirror publish condition
+
+
+### Documentation
+- Update README for verify-package; add marker-based doc generator
+
+
+### Features
+- Add determine-version and create-version-tag composite actions
+- Add verify-package action and integrate into nuget-package workflow
+- Add wiki/sync composite action and sync-wiki reusable workflow
+- Add gh-release action and release job to nuget-package workflow
+- Add support for test-projects input in .NET test action and update documentation
+- Add Docker CI/CD workflows and actions
+- Enhance CI/CD workflows with verbosity and force-publish inputs
+
+
+### Refactoring
+- Move actions to repo root for shorter references
+- Update action reference to GravionLabs/ci
+- Remove deprecated actions and add new .NET workflows for build, test, pack, and publish
+- Update config-file-path description and default value in determine-version action
+- Update output descriptions and add Docker version computation in determine-version action
+- Add GitHub token to checkout step in build .NET action
+- Remove check for full-semver output in test workflow
+- Update action references to use GravionLabs namespace in nuget-package workflow
+- Add output validation step to determine-version job
+- Improve package verification and error handling in verify-package action
+
+
+
