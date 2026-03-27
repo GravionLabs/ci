@@ -46,6 +46,7 @@ runs:
       with:
         token: ${{ github.token }}
         fetch-depth: 0
+        ref: ${{ github.ref_name }}
 
     - name: Generate release notes with git-cliff
       id: cliff
