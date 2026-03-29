@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.12] — 2026-03-29
+
+### Documentation
+- Update CHANGELOG.md for v1.0.11 [skip ci]
+
+
+### Features
+- **versioning**: Write version summary to job summary in Report versions step
+
+
 ## [1.0.11] — 2026-03-27
 
 ### Documentation
