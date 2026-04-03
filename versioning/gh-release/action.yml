@@ -37,6 +37,12 @@ inputs:
       and commit it (with [skip ci]) before creating the release tag.
     required: false
     default: 'false'
+  token:
+    description: >
+      GitHub token used for checkout and git push operations.
+      Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: 'composite'
@@ -44,7 +50,7 @@ runs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        token: ${{ github.token }}
+        token: ${{ inputs.token }}
         fetch-depth: 0
         ref: ${{ github.ref_name }}
 
@@ -126,7 +132,7 @@ runs:
     - name: Create GitHub Release
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.token }}
         TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
         VERSION: ${{ inputs.version }}
         NOTES: ${{ steps.changelog.outputs.notes }}
