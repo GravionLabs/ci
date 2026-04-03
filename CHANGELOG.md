@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.13] — 2026-04-03
+
+### Documentation
+- Update CHANGELOG.md for v1.0.12 [skip ci]
+
+
+### Features
+- **versioning**: Add token input to gh-release action
+
+
 ## [1.0.12] — 2026-03-29
 
 ### Documentation
