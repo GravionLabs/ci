@@ -130,13 +130,14 @@ Runs unit tests with Coverlet code coverage via the XPlat collector (`--collect:
 **Inputs**
 
 <!-- action-docs:inputs source="dotnet/test/action.yml" -->
-| Name              | Description                                                                 | Required | Default               |
-|-------------------|-----------------------------------------------------------------------------|----------|-----------------------|
-| `test-project`    | Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj) | No       | test/**/*.Test.csproj |
-| `configuration`   | Build configuration (e.g. Debug or Release)                                 | No       | Release               |
-| `coverage-format` | Coverage report format (cobertura, opencover, lcov, json)                   | No       | cobertura             |
-| `upload-results`  | Whether to upload test results and coverage report as artifacts             | No       | true                  |
-| `verbosity`       | Verbosity level (quiet, minimal, normal, detailed, diagnostic)              | No       | minimal               |
+| Name              | Description                                                                         | Required | Default               |
+|-------------------|-------------------------------------------------------------------------------------|----------|-----------------------|
+| `test-project`    | Path or glob for the .NET test projects to run (e.g. test/**/*.Test.csproj)         | No       | test/**/*.Test.csproj |
+| `configuration`   | Build configuration (e.g. Debug or Release)                                         | No       | Release               |
+| `coverage-format` | Coverage report format (cobertura, opencover, lcov, json)                           | No       | cobertura             |
+| `upload-results`  | Whether to upload test results and coverage report as artifacts                     | No       | true                  |
+| `publish-results` | Whether to publish test results as a GitHub Check Run and coverage as a job summary | No       | true                  |
+| `verbosity`       | Verbosity level (quiet, minimal, normal, detailed, diagnostic)                      | No       | minimal               |
 <!-- /action-docs:inputs -->
 
 > The test project must have `coverlet.collector` as a NuGet dependency.
@@ -476,10 +477,10 @@ Lints a Dockerfile using [hadolint](https://github.com/hadolint/hadolint). Inclu
 ```
 
 <!-- action-docs:inputs source="docker/lint/action.yml" -->
-| Name               | Description                                                          | Required | Default      |
-|--------------------|----------------------------------------------------------------------|----------|--------------|
-| `dockerfile`       | Path to the Dockerfile to lint                                       | No       | `Dockerfile` |
-| `hadolint-config`  | Path to a hadolint configuration file (e.g. .hadolint.yaml)         | No       | ``           |
+| Name              | Description                                                 | Required | Default    |
+|-------------------|-------------------------------------------------------------|----------|------------|
+| `dockerfile`      | Path to the Dockerfile to lint                              | No       | Dockerfile |
+| `hadolint-config` | Path to a hadolint configuration file (e.g. .hadolint.yaml) | No       |            |
 <!-- /action-docs:inputs -->
 
 ---
@@ -497,13 +498,13 @@ Builds a multi-architecture Docker image (ARM64 + AMD64) without pushing. Valida
 ```
 
 <!-- action-docs:inputs source="docker/build/action.yml" -->
-| Name          | Description                                                              | Required | Default                    |
-|---------------|--------------------------------------------------------------------------|----------|----------------------------|
-| `image-name`  | Image name used for labelling (e.g. ghcr.io/org/myapp or org/myapp)     | **Yes**  | —                          |
-| `dockerfile`  | Path to the Dockerfile                                                   | No       | `Dockerfile`               |
-| `context`     | Docker build context path                                                | No       | `.`                        |
-| `platforms`   | Comma-separated target platforms                                         | No       | `linux/amd64,linux/arm64`  |
-| `build-args`  | Newline-separated list of build arguments (KEY=VALUE)                   | No       | ``                         |
+| Name         | Description                                                         | Required | Default                 |
+|--------------|---------------------------------------------------------------------|----------|-------------------------|
+| `image-name` | Image name used for labelling (e.g. ghcr.io/org/myapp or org/myapp) | **Yes**  | —                       |
+| `dockerfile` | Path to the Dockerfile                                              | No       | Dockerfile              |
+| `context`    | Docker build context path                                           | No       | .                       |
+| `platforms`  | Comma-separated target platforms (e.g. linux/amd64,linux/arm64)     | No       | linux/amd64,linux/arm64 |
+| `build-args` | Newline-separated list of build arguments (KEY=VALUE)               | No       |                         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -532,21 +533,21 @@ Builds and pushes a multi-arch Docker image to a container registry with version
 ```
 
 <!-- action-docs:inputs source="docker/publish/action.yml" -->
-| Name                 | Description                                                                                                    | Required | Default                   |
-|----------------------|----------------------------------------------------------------------------------------------------------------|----------|---------------------------|
-| `image-name`         | Image name without registry prefix (e.g. org/myapp or myapp)                                                  | **Yes**  | —                         |
-| `registry`           | Container registry hostname (e.g. ghcr.io, docker.io)                                                         | No       | `ghcr.io`                 |
-| `registry-username`  | Username for authenticating to the registry                                                                    | **Yes**  | —                         |
-| `registry-token`     | Token or password for authenticating to the registry                                                           | **Yes**  | —                         |
-| `dockerfile`         | Path to the Dockerfile                                                                                         | No       | `Dockerfile`              |
-| `context`            | Docker build context path                                                                                      | No       | `.`                        |
-| `platforms`          | Comma-separated target platforms                                                                               | No       | `linux/amd64,linux/arm64` |
-| `build-args`         | Newline-separated list of build arguments (KEY=VALUE)                                                          | No       | ``                        |
-| `docker-version`     | Full Docker version tag including commit hash (e.g. 1.2.3-alpha.4-abc1234) — from determine-version output    | **Yes**  | —                         |
-| `major`              | Major version number (e.g. 1) — from determine-version output                                                 | **Yes**  | —                         |
-| `minor`              | Minor version number (e.g. 2) — from determine-version output                                                 | **Yes**  | —                         |
-| `patch`              | Patch version number (e.g. 3) — from determine-version output                                                 | **Yes**  | —                         |
-| `main-branch`        | Name of the main branch; semantic version tags are only published from this branch                             | No       | `main`                    |
+| Name                | Description                                                                                                               | Required | Default                 |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------|----------|-------------------------|
+| `image-name`        | Image name without registry prefix (e.g. org/myapp or myapp)                                                              | **Yes**  | —                       |
+| `registry`          | Container registry hostname (e.g. ghcr.io, docker.io)                                                                     | No       | ghcr.io                 |
+| `registry-username` | Username for authenticating to the registry                                                                               | **Yes**  | —                       |
+| `registry-token`    | Token or password for authenticating to the registry                                                                      | **Yes**  | —                       |
+| `dockerfile`        | Path to the Dockerfile                                                                                                    | No       | Dockerfile              |
+| `context`           | Docker build context path                                                                                                 | No       | .                       |
+| `platforms`         | Comma-separated target platforms (e.g. linux/amd64,linux/arm64)                                                           | No       | linux/amd64,linux/arm64 |
+| `build-args`        | Newline-separated list of build arguments (KEY=VALUE)                                                                     | No       |                         |
+| `docker-version`    | Full Docker version tag including commit hash (e.g. 1.2.3-alpha.4-abc1234) — from determine-version docker-version output | **Yes**  | —                       |
+| `major`             | Major version number (e.g. 1) — from determine-version major output                                                       | **Yes**  | —                       |
+| `minor`             | Minor version number (e.g. 2) — from determine-version minor output                                                       | **Yes**  | —                       |
+| `patch`             | Patch version number (e.g. 3) — from determine-version patch output                                                       | **Yes**  | —                       |
+| `main-branch`       | Name of the main branch; semantic version tags are only published from this branch                                        | No       | main                    |
 <!-- /action-docs:inputs -->
 
 ---
@@ -840,6 +841,79 @@ jobs:
 | `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)     | No       | `cobertura`       |
 | `upload-results`    | Whether to upload test results and coverage report as artifacts  | No       | `true`            |
 | `publish-results`   | Whether to publish test results as a Check Run and job summary   | No       | `true`            |
+
+---
+
+
+## Pages Actions
+
+### `pages/deploy`
+
+Builds a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) site and uploads it as a GitHub Pages artifact.
+**Does not perform a checkout** — the caller is responsible for checking out the repository first.
+
+**Usage:**
+
+```yaml
+- uses: actions/checkout@v4
+- uses: GravionLabs/ci/pages/deploy@main
+  with:
+    mkdocs-config-file: mkdocs.yml
+```
+
+<!-- action-docs:inputs source="pages/deploy/action.yml" -->
+| Name                 | Description                                             | Required | Default    |
+|----------------------|---------------------------------------------------------|----------|------------|
+| `docs-path`          | Path to the docs directory (relative to workspace root) | No       | docs       |
+| `mkdocs-config-file` | Path to the mkdocs.yml configuration file               | No       | mkdocs.yml |
+| `python-version`     | Python version to use for building the docs             | No       | 3.12       |
+<!-- /action-docs:inputs -->
+
+---
+
+### `pages/docfx`
+
+Builds a [DocFX](https://dotnet.github.io/docfx/) site from a .NET solution (including XML doc generation) and uploads it as a GitHub Pages artifact.
+**Does not perform a checkout** — the caller is responsible for checking out the repository first.
+
+**Usage:**
+
+```yaml
+- uses: actions/checkout@v4
+- uses: GravionLabs/ci/pages/docfx@main
+  with:
+    solution: MyLib.slnx
+```
+
+**Full example (Pages job):**
+
+```yaml
+pages:
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+    pages: write
+    id-token: write
+  environment:
+    name: github-pages
+    url: ${{ steps.deploy.outputs.page_url }}
+  steps:
+    - uses: actions/checkout@v4
+    - uses: GravionLabs/ci/pages/docfx@main
+      with:
+        solution: MyLib.slnx
+    - uses: actions/deploy-pages@v4
+      id: deploy
+```
+
+<!-- action-docs:inputs source="pages/docfx/action.yml" -->
+| Name             | Description                                                                          | Required | Default         |
+|------------------|--------------------------------------------------------------------------------------|----------|-----------------|
+| `dotnet-version` | .NET SDK version to install (e.g. 10.x)                                              | No       | 10.x            |
+| `solution`       | Path or glob for the .NET solution or project file to build (for XML doc generation) | No       | **/*.{sln,slnx} |
+| `docfx-json`     | Path to the docfx.json configuration file                                            | No       | docfx.json      |
+| `site-output`    | Directory where DocFX writes the generated site (must match dest in docfx.json)      | No       | _site           |
+<!-- /action-docs:inputs -->
 
 ---
 
