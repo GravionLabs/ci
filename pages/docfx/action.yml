@@ -1,0 +1,65 @@
+name: 'Build DocFX Documentation'
+description: |
+  Builds a .NET solution (to generate XML docs), runs DocFX, and uploads
+  the output as a GitHub Pages artifact ready for actions/deploy-pages.
+  The caller is responsible for checking out the repository before invoking this action.
+
+inputs:
+  dotnet-version:
+    description: '.NET SDK version to install (e.g. 10.x)'
+    required: false
+    default: '10.x'
+  solution:
+    description: 'Path or glob for the .NET solution or project file to build (for XML doc generation)'
+    required: false
+    default: '**/*.{sln,slnx}'
+  docfx-json:
+    description: 'Path to the docfx.json configuration file'
+    required: false
+    default: 'docfx.json'
+  site-output:
+    description: 'Directory where DocFX writes the generated site (must match dest in docfx.json)'
+    required: false
+    default: '_site'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Build solution (for XML doc generation)
+      shell: bash
+      run: |
+        shopt -s globstar nullglob
+        dotnet restore ${{ inputs.solution }}
+        dotnet build ${{ inputs.solution }} --configuration Release --no-restore
+
+    - name: Install DocFX
+      shell: bash
+      run: dotnet tool install -g docfx
+
+    - name: Build docs with DocFX
+      shell: bash
+      run: docfx ${{ inputs.docfx-json }}
+
+    - name: Upload pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.site-output }}
+
+    - name: Report DocFX build
+      shell: bash
+      run: |
+        PAGES_COUNT=$(find "${{ inputs.site-output }}" -name "*.html" | wc -l)
+        {
+          echo "## Documentation Build"
+          echo "| Metric | Value |"
+          echo "| --- | --- |"
+          echo "| DocFX Build | ✅ Success |"
+          echo "| Pages Generated | $PAGES_COUNT |"
+          echo "| Output | ${{ inputs.site-output }}/ |"
+          echo "| Deployment | 📦 Artifact uploaded |"
+        } >> "$GITHUB_STEP_SUMMARY"
