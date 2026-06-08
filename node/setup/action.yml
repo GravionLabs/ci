@@ -20,9 +20,10 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: ${{ inputs.package-manager }}
 
-    - name: Enable package manager via Corepack
+    - name: Enable package manager
       shell: bash
       run: |
+        echo "Enabling package manager: ${{ inputs.package-manager }}"
         case "${{ inputs.package-manager }}" in
-          pnpm) corepack enable pnpm ;;
+          pnpm) npm install -g pnpm ;;
         esac
