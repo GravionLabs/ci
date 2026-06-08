@@ -6,6 +6,22 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.17] — 2026-06-08
+
+### Features
+- Add package-manager input to all composite actions
+
+
+## [1.0.16] — 2026-06-08
+
+### Documentation
+- Update CHANGELOG.md for v1.0.15 [skip ci]
+
+
+### Features
+- Add package-manager input to support pnpm and yarn
+
+
 ## [1.0.15] — 2026-05-10
 
 ### Documentation
