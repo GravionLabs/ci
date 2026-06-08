@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.20] — 2026-06-08
+
+### Bug Fixes
+- Remove --if-present flag from build commands (not supported by pnpm)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.19 [skip ci]
+
+
 ## [1.0.19] — 2026-06-08
 
 ### Bug Fixes
