@@ -17,7 +17,7 @@ inputs:
   build-command:
     description: 'Command to build the project'
     required: false
-    default: 'npm run build --if-present'
+    default: 'npm run build'
 
 runs:
   using: 'composite'
