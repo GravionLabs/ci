@@ -1,11 +1,15 @@
 name: 'Build Node.js'
-description: 'Install dependencies and build a Node.js project'
+description: 'Install dependencies and build a Node.js project (supports npm, pnpm, yarn)'
 
 inputs:
   node-version:
     description: 'Version of Node.js to use (e.g. 20, 22)'
     required: false
     default: '24'
+  package-manager:
+    description: 'Package manager to use (npm, pnpm, yarn)'
+    required: false
+    default: 'npm'
   working-directory:
     description: 'Working directory containing the Node.js project'
     required: false
@@ -22,11 +26,17 @@ runs:
       uses: GravionLabs/ci/node/setup@main
       with:
         node-version: ${{ inputs.node-version }}
+        package-manager: ${{ inputs.package-manager }}
 
     - name: Install dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: npm ci
+      run: |
+        case "${{ inputs.package-manager }}" in
+          pnpm) pnpm install ;;
+          yarn) yarn install --frozen-lockfile ;;
+          *)    npm ci ;;
+        esac
 
     - name: Build
       shell: bash

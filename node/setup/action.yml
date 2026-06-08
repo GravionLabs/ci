@@ -1,11 +1,15 @@
 name: 'Setup Node.js'
-description: 'Sets up Node.js and npm cache'
+description: 'Sets up Node.js, Node package manager, and package manager cache'
 
 inputs:
   node-version:
     description: 'Version of Node.js to use (e.g. 20, 22)'
     required: false
     default: '24'
+  package-manager:
+    description: 'Package manager to use (npm, pnpm, yarn)'
+    required: false
+    default: 'npm'
 
 runs:
   using: 'composite'
@@ -14,4 +18,9 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: 'npm'
+        cache: ${{ inputs.package-manager }}
+
+    - name: Setup pnpm
+      if: ${{ inputs.package-manager == 'pnpm' }}
+      shell: bash
+      run: corepack enable pnpm && pnpm --version
