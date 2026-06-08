@@ -20,7 +20,9 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: ${{ inputs.package-manager }}
 
-    - name: Enable pnpm via Corepack
-      if: ${{ inputs.package-manager == 'pnpm' }}
+    - name: Enable package manager via Corepack
       shell: bash
-      run: corepack enable pnpm
+      run: |
+        case "${{ inputs.package-manager }}" in
+          pnpm) corepack enable pnpm ;;
+        esac
