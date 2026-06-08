@@ -1,5 +1,5 @@
 name: 'Test Node.js'
-description: 'Run Node.js unit tests with code coverage collection and result publishing (supports npm, pnpm, yarn)'
+description: 'Run Node.js unit tests with code coverage collection and result publishing'
 
 inputs:
   node-version:
@@ -48,9 +48,9 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         case "${{ inputs.package-manager }}" in
-          pnpm) pnpm install ;;
+          pnpm) pnpm install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
-          *)    npm ci ;;
+          *) npm ci ;;
         esac
 
     - name: Run tests

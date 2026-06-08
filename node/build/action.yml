@@ -1,5 +1,5 @@
 name: 'Build Node.js'
-description: 'Install dependencies and build a Node.js project (supports npm, pnpm, yarn)'
+description: 'Install dependencies and build a Node.js project'
 
 inputs:
   node-version:
@@ -33,9 +33,9 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         case "${{ inputs.package-manager }}" in
-          pnpm) pnpm install ;;
+          pnpm) pnpm install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
-          *)    npm ci ;;
+          *) npm ci ;;
         esac
 
     - name: Build

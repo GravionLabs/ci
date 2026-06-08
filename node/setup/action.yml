@@ -1,5 +1,5 @@
 name: 'Setup Node.js'
-description: 'Sets up Node.js, Node package manager, and package manager cache'
+description: 'Sets up Node.js with cache and package manager'
 
 inputs:
   node-version:
@@ -20,7 +20,7 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: ${{ inputs.package-manager }}
 
-    - name: Setup pnpm
+    - name: Enable pnpm via Corepack
       if: ${{ inputs.package-manager == 'pnpm' }}
       shell: bash
-      run: corepack enable pnpm && pnpm --version
+      run: corepack enable pnpm
