@@ -498,20 +498,18 @@ Installs dependencies and builds a Node.js project. Calls `node/setup` internall
 ```yaml
 - uses: GravionLabs/ci/node/build@main
   with:
-    node-version: '24'
     package-manager: 'pnpm'
-    build-command: 'pnpm run build'
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="node/build/action.yml" -->
-| Name                | Description                                      | Required | Default       |
-|---------------------|--------------------------------------------------|----------|---------------|
-| `node-version`      | Version of Node.js to use (e.g. 20, 22)          | No       | 24            |
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)         | No       | npm           |
-| `working-directory` | Working directory containing the Node.js project | No       | .             |
-| `build-command`     | Command to build the project                     | No       | npm run build |
+| Name                | Description                                                                                                                                        | Required | Default |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                            | No       | 24      |
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                           | No       | npm     |
+| `working-directory` | Working directory containing the Node.js project                                                                                                   | No       | .       |
+| `build-command`     | Override the build command. If empty, automatically determined from the package-manager input (e.g. npm run build, pnpm run build, yarn run build) | No       |         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -525,21 +523,21 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 ```yaml
 - uses: GravionLabs/ci/node/test@main
   with:
-    test-command: 'pnpm run test:ci'
+    package-manager: 'pnpm'
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="node/test/action.yml" -->
-| Name                | Description                                                                                           | Required | Default         |
-|---------------------|-------------------------------------------------------------------------------------------------------|----------|-----------------|
-| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                               | No       | 24              |
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                              | No       | npm             |
-| `working-directory` | Working directory containing the Node.js project                                                      | No       | .               |
-| `test-command`      | Command to run the tests (must produce JUnit XML at test-results/junit.xml and coverage at coverage/) | No       | npm run test:ci |
-| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                              | No       | cobertura       |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts                                       | No       | true            |
-| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                   | No       | true            |
+| Name                | Description                                                                                                                                                                                                                         | Required | Default   |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
+| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                                                                                                             | No       | 24        |
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                                                                                                            | No       | npm       |
+| `working-directory` | Working directory containing the Node.js project                                                                                                                                                                                    | No       | .         |
+| `test-command`      | Override the test command. If empty, automatically determined from the package-manager input (e.g. npm run test:ci, pnpm run test:ci, yarn run test:ci). Must produce JUnit XML at test-results/junit.xml and coverage at coverage/ | No       |           |
+| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                                                                                                                                                            | No       | cobertura |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts                                                                                                                                                                     | No       | true      |
+| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                                                                                                                 | No       | true      |
 <!-- /action-docs:inputs -->
 
 ---
@@ -560,21 +558,20 @@ Supports both same-job and cross-job publish patterns:
     package-manager: 'pnpm'
     registry-url: 'https://npm.pkg.github.com/'
     npm-token: ${{ secrets.GH_PAT }}
-    publish-command: 'pnpm publish -r --no-git-checks'
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="node/publish/action.yml" -->
-| Name                | Description                                                                                             | Required | Default                     |
-|---------------------|---------------------------------------------------------------------------------------------------------|----------|-----------------------------|
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                | No       | npm                         |
-| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                              | No       | https://npm.pkg.github.com/ |
-| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                     | **Yes**  | —                           |
-| `publish-command`   | Command to publish the package (e.g. npm publish, pnpm publish -r --no-git-checks)                      | No       | npm publish                 |
-| `working-directory` | Working directory containing the Node.js project                                                        | No       | .                           |
-| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job) | No       | false                       |
-| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                             | No       | npm-package                 |
+| Name                | Description                                                                                                                                                           | Required | Default                     |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                                              | No       | npm                         |
+| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                                                            | No       | https://npm.pkg.github.com/ |
+| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                                                                                   | **Yes**  | —                           |
+| `publish-command`   | Override the publish command. If empty, automatically determined from the package-manager input (e.g. npm publish, pnpm publish -r --no-git-checks, yarn npm publish) | No       |                             |
+| `working-directory` | Working directory containing the Node.js project                                                                                                                      | No       | .                           |
+| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job)                                                               | No       | false                       |
+| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                                                           | No       | npm-package                 |
 <!-- /action-docs:inputs -->
 
 ---

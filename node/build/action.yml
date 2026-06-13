@@ -15,9 +15,9 @@ inputs:
     required: false
     default: '.'
   build-command:
-    description: 'Command to build the project'
+    description: 'Override the build command. If empty, automatically determined from the package-manager input (e.g. npm run build, pnpm run build, yarn run build)'
     required: false
-    default: 'npm run build'
+    default: ''
 
 runs:
   using: 'composite'
@@ -41,4 +41,14 @@ runs:
     - name: Build
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.build-command }}
+      run: |
+        cmd="${{ inputs.build-command }}"
+        if [ -z "${cmd}" ]; then
+          case "${{ inputs.package-manager }}" in
+            pnpm) cmd="pnpm run build" ;;
+            yarn) cmd="yarn run build" ;;
+            *) cmd="npm run build" ;;
+          esac
+        fi
+        echo "Running: ${cmd}"
+        eval "${cmd}"
