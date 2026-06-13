@@ -36,13 +36,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Set up Node.js
+      uses: GravionLabs/ci/node/setup@main
+      with:
+        package-manager: ${{ inputs.package-manager }}
+
     - name: Download package artifact
       if: ${{ inputs.download-artifact == 'true' }}
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.working-directory }}
-
     - name: Configure npm registry authentication
       shell: bash
       working-directory: ${{ inputs.working-directory }}
