@@ -70,7 +70,8 @@ runs:
             yarn config set npmRegistryServer "${REGISTRY_URL}"
             ;;
           *)
-            npm config set "//${HOST}/:_authToken" "${NPM_TOKEN}"
+            npm config set registry "${REGISTRY_URL}" --location=user
+            npm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=user
             ;;
         esac
 
