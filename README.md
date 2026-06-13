@@ -31,7 +31,8 @@ wiki/
 node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
-└── test/                   # Run Node.js unit tests with coverage collection and result publishing
+├── test/                   # Run Node.js unit tests with coverage collection and result publishing
+└── publish/                # Configure npm registry auth and publish a package
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
@@ -458,6 +459,122 @@ steps:
 |--------------|----------------------------------------------------------------------------------|----------|---------|
 | `version`    | Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4) | **Yes**  | —       |
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
+<!-- /action-docs:inputs -->
+
+---
+
+## Node.js Actions
+
+### `node/setup`
+
+Sets up Node.js with `actions/setup-node`, enables the package manager globally (pnpm via `npm install -g`), and configures caching for the package manager.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/setup@main
+  with:
+    node-version: '24'
+    package-manager: 'pnpm'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="node/setup/action.yml" -->
+| Name              | Description                              | Required | Default |
+|-------------------|------------------------------------------|----------|---------|
+| `node-version`    | Version of Node.js to use (e.g. 20, 22)  | No       | 24      |
+| `package-manager` | Package manager to use (npm, pnpm, yarn) | No       | npm     |
+<!-- /action-docs:inputs -->
+
+---
+
+### `node/build`
+
+Installs dependencies and builds a Node.js project. Calls `node/setup` internally, then runs the package manager's install command and the configured build command.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/build@main
+  with:
+    node-version: '24'
+    package-manager: 'pnpm'
+    build-command: 'pnpm run build'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="node/build/action.yml" -->
+| Name                | Description                                      | Required | Default       |
+|---------------------|--------------------------------------------------|----------|---------------|
+| `node-version`      | Version of Node.js to use (e.g. 20, 22)          | No       | 24            |
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)         | No       | npm           |
+| `working-directory` | Working directory containing the Node.js project | No       | .             |
+| `build-command`     | Command to build the project                     | No       | npm run build |
+<!-- /action-docs:inputs -->
+
+---
+
+### `node/test`
+
+Runs Node.js unit tests with code coverage collection and result publishing. Calls `node/setup` internally, installs dependencies, runs tests, then uploads results and publishes a coverage summary.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/test@main
+  with:
+    test-command: 'pnpm run test:ci'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="node/test/action.yml" -->
+| Name                | Description                                                                                           | Required | Default         |
+|---------------------|-------------------------------------------------------------------------------------------------------|----------|-----------------|
+| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                               | No       | 24              |
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                              | No       | npm             |
+| `working-directory` | Working directory containing the Node.js project                                                      | No       | .               |
+| `test-command`      | Command to run the tests (must produce JUnit XML at test-results/junit.xml and coverage at coverage/) | No       | npm run test:ci |
+| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                              | No       | cobertura       |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts                                       | No       | true            |
+| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                   | No       | true            |
+<!-- /action-docs:inputs -->
+
+---
+
+### `node/publish`
+
+Configures npm registry authentication and publishes a Node.js package to the target registry. Supports npm, pnpm, and yarn. For pnpm 11+, sets `npm-auth-type=basic` to skip unsupported OIDC token exchange.
+
+Supports both same-job and cross-job publish patterns:
+- **Same job** (after `setup/build/test`): leave `download-artifact: false`
+- **Separate job**: set `download-artifact: true` and specify the `artifact-name`
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/publish@main
+  with:
+    package-manager: 'pnpm'
+    registry-url: 'https://npm.pkg.github.com/'
+    npm-token: ${{ secrets.GH_PAT }}
+    publish-command: 'pnpm publish -r --no-git-checks'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="node/publish/action.yml" -->
+| Name                | Description                                                                                             | Required | Default                     |
+|---------------------|---------------------------------------------------------------------------------------------------------|----------|-----------------------------|
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                | No       | npm                         |
+| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                              | No       | https://npm.pkg.github.com/ |
+| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                     | **Yes**  | —                           |
+| `publish-command`   | Command to publish the package (e.g. npm publish, pnpm publish -r --no-git-checks)                      | No       | npm publish                 |
+| `working-directory` | Working directory containing the Node.js project                                                        | No       | .                           |
+| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job) | No       | false                       |
+| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                             | No       | npm-package                 |
 <!-- /action-docs:inputs -->
 
 ---

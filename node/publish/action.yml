@@ -1,0 +1,77 @@
+name: 'Publish Node.js Package'
+description: >
+  Configures npm registry authentication and publishes a Node.js package to the target registry
+  (e.g. GitHub Packages, npmjs). Supports npm, pnpm, and yarn as package managers.
+  For pnpm 11+, sets npm-auth-type=basic to skip unsupported OIDC token exchange.
+
+inputs:
+  package-manager:
+    description: 'Package manager to use (npm, pnpm, yarn)'
+    required: false
+    default: 'npm'
+  registry-url:
+    description: 'URL of the npm registry (e.g. https://npm.pkg.github.com/)'
+    required: false
+    default: 'https://npm.pkg.github.com/'
+  npm-token:
+    description: 'NPM token or GitHub PAT for registry authentication'
+    required: true
+  publish-command:
+    description: 'Command to publish the package (e.g. npm publish, pnpm publish -r --no-git-checks)'
+    required: false
+    default: 'npm publish'
+  working-directory:
+    description: 'Working directory containing the Node.js project'
+    required: false
+    default: '.'
+  download-artifact:
+    description: 'Whether to download the package artifact before publishing (set to true when running in a separate job)'
+    required: false
+    default: 'false'
+  artifact-name:
+    description: 'Name of the artifact to download (only used when download-artifact is true)'
+    required: false
+    default: 'npm-package'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download package artifact
+      if: ${{ inputs.download-artifact == 'true' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.working-directory }}
+
+    - name: Configure npm registry authentication
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        REGISTRY_URL="${{ inputs.registry-url }}"
+        NPM_TOKEN="${{ inputs.npm-token }}"
+
+        # Strip protocol and trailing slash to get the host part for .npmrc auth key
+        HOST="${REGISTRY_URL#https://}"
+        HOST="${HOST#http://}"
+        HOST="${HOST%/}"
+
+        case "${{ inputs.package-manager }}" in
+          pnpm)
+            pnpm config set npm-auth-type basic --location=project
+            pnpm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=project
+            ;;
+          yarn)
+            yarn config set npmAuthToken "${NPM_TOKEN}"
+            yarn config set npmRegistryServer "${REGISTRY_URL}"
+            ;;
+          *)
+            npm config set "//${HOST}/:_authToken" "${NPM_TOKEN}"
+            ;;
+        esac
+
+    - name: Publish package
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.publish-command }}
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
