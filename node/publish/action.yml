@@ -61,8 +61,9 @@ runs:
 
         case "${{ inputs.package-manager }}" in
           pnpm)
-            pnpm config set npm-auth-type basic --location=project
-            pnpm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=project
+            pnpm config set npm-auth-type basic --location=user
+            pnpm config set npm-registry-server "${REGISTRY_URL}" --location=user
+            pnpm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=user
             ;;
           yarn)
             yarn config set npmAuthToken "${NPM_TOKEN}"
