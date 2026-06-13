@@ -17,9 +17,9 @@ inputs:
     description: 'NPM token or GitHub PAT for registry authentication'
     required: true
   publish-command:
-    description: 'Command to publish the package (e.g. npm publish, pnpm publish -r --no-git-checks)'
+    description: 'Override the publish command. If empty, automatically determined from the package-manager input (e.g. npm publish, pnpm publish -r --no-git-checks, yarn npm publish)'
     required: false
-    default: 'npm publish'
+    default: ''
   working-directory:
     description: 'Working directory containing the Node.js project'
     required: false
@@ -78,6 +78,16 @@ runs:
     - name: Publish package
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.publish-command }}
+      run: |
+        cmd="${{ inputs.publish-command }}"
+        if [ -z "${cmd}" ]; then
+          case "${{ inputs.package-manager }}" in
+            pnpm) cmd="pnpm publish -r --no-git-checks" ;;
+            yarn) cmd="yarn npm publish" ;;
+            *) cmd="npm publish" ;;
+          esac
+        fi
+        echo "Running: ${cmd}"
+        eval "${cmd}"
       env:
         NODE_AUTH_TOKEN: ${{ inputs.npm-token }}

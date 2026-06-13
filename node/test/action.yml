@@ -15,9 +15,9 @@ inputs:
     required: false
     default: '.'
   test-command:
-    description: 'Command to run the tests (must produce JUnit XML at test-results/junit.xml and coverage at coverage/)'
+    description: 'Override the test command. If empty, automatically determined from the package-manager input (e.g. npm run test:ci, pnpm run test:ci, yarn run test:ci). Must produce JUnit XML at test-results/junit.xml and coverage at coverage/'
     required: false
-    default: 'npm run test:ci'
+    default: ''
   coverage-format:
     description: 'Coverage report format for the summary (cobertura, lcov)'
     required: false
@@ -56,7 +56,17 @@ runs:
     - name: Run tests
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.test-command }}
+      run: |
+        cmd="${{ inputs.test-command }}"
+        if [ -z "${cmd}" ]; then
+          case "${{ inputs.package-manager }}" in
+            pnpm) cmd="pnpm run test:ci" ;;
+            yarn) cmd="yarn run test:ci" ;;
+            *) cmd="npm run test:ci" ;;
+          esac
+        fi
+        echo "Running: ${cmd}"
+        eval "${cmd}"
 
     - name: Upload test results artifact
       if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
