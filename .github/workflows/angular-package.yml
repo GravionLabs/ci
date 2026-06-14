@@ -30,20 +30,20 @@ on:
         required: false
         default: '.'
       build-command:
-        description: 'Override the build command. If empty, auto-detected from package-manager.'
+        description: 'Override the build command. If empty, defaults to ng build.'
         type: string
         required: false
-        default: ''
+        default: 'ng build'
       run-tests:
         description: 'Whether to run the test suite after build'
         type: boolean
         required: false
         default: true
       test-command:
-        description: 'Override the test command. If empty, auto-detected from package-manager.'
+        description: 'Override the test command. If empty, defaults to ng test with ChromeHeadless and coverage.'
         type: string
         required: false
-        default: ''
+        default: 'ng test --no-watch --code-coverage --browsers=ChromeHeadless'
       coverage-format:
         description: 'Coverage report format (cobertura, lcov)'
         type: string
@@ -70,10 +70,10 @@ on:
         required: false
         default: true
       lint-command:
-        description: 'Override the lint command. If empty, auto-detected from package-manager.'
+        description: 'Override the lint command. If empty, defaults to ng lint.'
         type: string
         required: false
-        default: ''
+        default: 'ng lint'
       upload-build-artifact:
         description: 'Whether to upload the build output as an artifact for the publish job'
         type: boolean

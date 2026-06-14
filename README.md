@@ -32,13 +32,14 @@ node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
 ├── test/                   # Run Node.js unit tests with coverage collection and result publishing
+├── ci/                     # Lint → build → test with a single setup and dependency installation
 └── publish/                # Configure npm registry auth and publish a package
 .github/workflows/
 ├── nuget-package.yml       # Reusable NuGet CI/CD workflow (version → build → test → pack → verify → publish)
 ├── python-package.yml      # Reusable Python CI/CD workflow (version → build → test → publish)
 ├── docker-package.yml      # Reusable Docker CI/CD workflow (version → lint → build → publish → release)
-├── node-ci.yml             # Reusable Node.js CI workflow
-├── angular-ci.yml          # Reusable Angular CI workflow (build → optional tests)
+├── node-package.yml        # Reusable Node.js Package CI/CD workflow
+├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -509,8 +510,43 @@ Installs dependencies and builds a Node.js project. Calls `node/setup` internall
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
 | `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                            | No       | 24      |
 | `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                           | No       | npm     |
+| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.     | No       |         |
 | `working-directory` | Working directory containing the Node.js project                                                                                                   | No       | .       |
 | `build-command`     | Override the build command. If empty, automatically determined from the package-manager input (e.g. npm run build, pnpm run build, yarn run build) | No       |         |
+<!-- /action-docs:inputs -->
+
+---
+
+### `node/ci`
+
+Runs lint, build, and test with a single setup and dependency installation. Wraps `node/setup`, lint, `node/build`, and `node/test` in a single action to avoid redundant installs. Lint runs before build for fast failure.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/node/ci@main
+  with:
+    package-manager: 'pnpm'
+    run-lint: true
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="node/ci/action.yml" -->
+| Name                | Description                                                                                                                                    | Required | Default   |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
+| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                        | No       | 24        |
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                       | No       | npm       |
+| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json. | No       |           |
+| `working-directory` | Working directory containing the Node.js project                                                                                               | No       | .         |
+| `run-lint`          | Whether to run the lint step                                                                                                                   | No       | true      |
+| `lint-command`      | Override the lint command. If empty, auto-detected from package-manager.                                                                       | No       |           |
+| `build-command`     | Override the build command. If empty, auto-detected from package-manager.                                                                      | No       |           |
+| `run-tests`         | Whether to run the test suite                                                                                                                  | No       | true      |
+| `test-command`      | Override the test command. If empty, auto-detected from package-manager.                                                                       | No       |           |
+| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                                                                       | No       | cobertura |
+| `upload-results`    | Whether to upload test results and coverage report as artifacts                                                                                | No       | true      |
+| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                            | No       | true      |
 <!-- /action-docs:inputs -->
 
 ---
@@ -534,6 +570,7 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 |---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
 | `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                                                                                                             | No       | 24        |
 | `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                                                                                                            | No       | npm       |
+| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.                                                                                      | No       |           |
 | `working-directory` | Working directory containing the Node.js project                                                                                                                                                                                    | No       | .         |
 | `test-command`      | Override the test command. If empty, automatically determined from the package-manager input (e.g. npm run test:ci, pnpm run test:ci, yarn run test:ci). Must produce JUnit XML at test-results/junit.xml and coverage at coverage/ | No       |           |
 | `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                                                                                                                                                            | No       | cobertura |
@@ -845,121 +882,39 @@ jobs:
 
 ---
 
-### `node-ci.yml`
+### `node/ci`
 
-A complete CI pipeline for Node.js projects: checkout → setup Node.js → install → build → test.
-
-**Usage:**
-
-```yaml
-# .github/workflows/ci.yml
-jobs:
-  ci:
-    uses: GravionLabs/ci/.github/workflows/node-ci.yml@main
-    with:
-      node-version: '20'
-      working-directory: '.'
-      run-tests: true
-```
-
-**Inputs**
-
-| Name                | Description                                                      | Required | Default                    |
-|---------------------|------------------------------------------------------------------|----------|----------------------------|
-| `node-version`      | Node.js version to use                                           | No       | `20`                       |
-| `working-directory` | Path to the Node.js project root                                 | No       | `.`                        |
-| `build-command`     | Command to build the project                                     | No       | `npm run build --if-present` |
-| `run-tests`         | Whether to run the test suite                                    | No       | `true`                     |
-| `test-command`      | Command to run the tests                                         | No       | `npm run test:ci`          |
-| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)     | No       | `cobertura`                |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts  | No       | `true`                     |
-| `publish-results`   | Whether to publish test results as a Check Run and job summary   | No       | `true`                     |
-
----
-
-### `node/test`
-
-Composite action that runs Node.js unit tests, uploads results and coverage as artifacts, and publishes a test summary. Supports any test runner that produces JUnit XML output and a coverage report.
-
-> Requires `test:ci` to be defined in `package.json`. This is a deliberate convention — `test:ci` should produce JUnit XML at `test-results/junit.xml` and a coverage report at `coverage/`.
+Composite action that lints, builds, and tests a Node.js project with a single setup and dependency installation. Runs lint before build for fast failure.
 
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/test@main
+- uses: GravionLabs/ci/node/ci@main
   with:
     node-version: '22'
     working-directory: '.'
-    test-command: 'npm run test:ci'
+    package-manager: 'pnpm'
+    run-lint: true
 ```
 
 **Inputs**
 
-| Name                | Description                                                                               | Required | Default           |
-|---------------------|-------------------------------------------------------------------------------------------|----------|-------------------|
-| `node-version`      | Node.js version to use                                                                    | No       | `22`              |
-| `working-directory` | Working directory containing the Node.js project                                          | No       | `.`               |
-| `test-command`      | Command to run the tests (must produce JUnit XML at `test-results/junit.xml` and `coverage/`) | No   | `npm run test:ci` |
-| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)                              | No       | `cobertura`       |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts                           | No       | `true`            |
-| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary       | No       | `true`            |
+| Name                | Description                                                    | Required | Default                        |
+|---------------------|----------------------------------------------------------------|----------|--------------------------------|
+| `node-version`      | Node.js version to use                                         | No       | `24`                           |
+| `working-directory` | Working directory of the project                               | No       | `.`                            |
+| `package-manager`   | Package manager to use (`npm`, `pnpm`, `yarn`)                 | No       | `npm`                          |
+| `pnpm-version`      | pnpm version (empty = auto-detect from `packageManager` field) | No       | `""`                           |
+| `run-lint`          | Whether to run the lint step before build                      | No       | `true`                         |
+| `lint-command`      | Override the lint command (empty = auto-detected)              | No       | `""`                           |
+| `build-command`     | Override the build command (empty = auto-detected)             | No       | `""`                           |
+| `run-tests`         | Whether to run the test suite                                  | No       | `true`                         |
+| `test-command`      | Override the test command (empty = auto-detected)              | No       | `""`                           |
+| `coverage-format`   | Coverage report format (`cobertura`, `lcov`)                   | No       | `cobertura`                    |
+| `upload-results`    | Upload test results and coverage artifacts                     | No       | `true`                         |
+| `publish-results`   | Publish test results as a Check Run and coverage summary       | No       | `true`                         |
 
 ---
-
-### `node/build`
-
-Composite action that installs dependencies and builds a Node.js project.
-
-**Usage:**
-
-```yaml
-- uses: GravionLabs/ci/node/build@main
-  with:
-    node-version: '22'
-    build-command: 'npm run build'
-```
-
-**Inputs**
-
-| Name                | Description                         | Required | Default                    |
-|---------------------|-------------------------------------|----------|----------------------------|
-| `node-version`      | Node.js version to use              | No       | `22`                       |
-| `working-directory` | Working directory of the project    | No       | `.`                        |
-| `build-command`     | Command to build the project        | No       | `npm run build --if-present` |
-
----
-
-### `angular-ci.yml`
-
-A complete CI pipeline for Angular projects: checkout → build → optional tests.
-
-**Usage:**
-
-```yaml
-# .github/workflows/ci.yml
-jobs:
-  ci:
-    uses: GravionLabs/ci/.github/workflows/angular-ci.yml@main
-    with:
-      node-version: '22'
-      run-tests: false
-```
-
-**Inputs**
-
-| Name                | Description                                                      | Required | Default           |
-|---------------------|------------------------------------------------------------------|----------|-------------------|
-| `node-version`      | Node.js version to use                                           | No       | `22`              |
-| `working-directory` | Working directory containing the Angular workspace               | No       | `.`               |
-| `build-command`     | Command to build the project                                     | No       | `npm run build`   |
-| `run-tests`         | Whether to run the test suite after the build                    | No       | `true`            |
-| `test-command`      | Command to run the tests                                         | No       | `npm run test:ci` |
-| `coverage-format`   | Coverage report format for the summary (`cobertura`, `lcov`)     | No       | `cobertura`       |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts  | No       | `true`            |
-| `publish-results`   | Whether to publish test results as a Check Run and job summary   | No       | `true`            |
-
----
-
 
 ## Pages Actions
 

@@ -36,7 +36,8 @@ docker/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)
   python-package.yml    — Full Python CI/CD: determine-version → build-test → publish (main only)
   docker-package.yml    — Full Docker CI/CD: determine-version ‖ lint → build-publish → release (main only)
-  node-ci.yml           — Node.js CI: checkout → setup → install → build → test
+  node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
+  angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
@@ -198,6 +199,10 @@ Inputs: `image-name`, `dockerfile`, `context`, `platforms`, `build-args`.
 Builds and pushes a multi-arch image with version tags. **No checkout** — runs after `docker/build` in the same job.
 Inputs: `image-name`, `registry`, `registry-username`, `registry-token`, `dockerfile`, `context`, `platforms`, `build-args`, `docker-version`, `major`, `minor`, `patch`, `main-branch`.
 
+### `node/ci`
+
+Lint → build → test with a single setup and dependency installation. Wraps `node/setup`, lint, build, and test. Used internally by `node-package.yml` and `angular-package.yml`.
+
 ### `pages/deploy`
 
 Builds a MkDocs site (Material theme) and uploads it as a GitHub Pages artifact.
@@ -227,125 +232,3 @@ Requires `pages: write`, `id-token: write` permissions on the calling job — us
 - Run `python3 scripts/generate_docs.py` after changing action inputs/outputs to regenerate README tables.
 - Add `<!-- action-docs:inputs source="..." -->` markers if adding a new action section to README.md.
 - For glob inputs in bash `run:` steps, always add `shopt -s globstar nullglob` before the command.
-
-
-## Reusable Workflow: `nuget-package.yml`
-
-Call with `uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main`.
-
-### Inputs
-
-| Input | Required | Default | Description |
-|---|---|---|---|
-| `dotnet-project` | No | `**/*.csproj` | Path to .csproj or .slnx |
-| `dotnet-version` | No | `10.x` | .NET SDK version |
-| `configuration` | No | `Release` | Build configuration |
-| `gitversion-config-file` | No | `""` | Path to `GitVersion.yml` |
-| `publish-feed-url` | **Yes** | — | Target NuGet feed URL |
-| `feed-url` | No | `""` | Private restore feed URL |
-| `feed-name` | No | `private-feed` | Private restore feed name |
-| `feed-username` | No | `""` | Private feed username |
-| `nuget-config` | No | `nuget.config` | NuGet config file path |
-| `verbosity` | No | `minimal` | dotnet verbosity |
-| `coverage-format` | No | `cobertura` | Coverage format |
-| `force-publish` | No | `false` | Publish regardless of branch |
-| `verify-package-files` | No | `""` | Newline-separated list of paths that must exist inside the .nupkg |
-
-### Secrets
-
-| Secret | Required | Description |
-|---|---|---|
-| `publish-api-key` | **Yes** | NuGet API key or PAT |
-| `feed-token` | No | Token for private restore feed |
-
-### Behavior
-
-- **Versioning is internal**: the workflow runs `determine-version` itself. Do NOT pass a `version:` input.
-- **Publish only on `main`** unless `force-publish: true`.
-- **verify-package** runs immediately after `pack` in the same job — no artifact download needed. It acts as a pre-publish gate on PRs and a post-pack sanity check on `main`.
-- The `environment: nuget-publish` is required on the publish job — configure this in the repository settings.
-
-### Common Feed URLs
-
-```
-nuget.org:           https://api.nuget.org/v3/index.json
-GitHub Packages:     https://nuget.pkg.github.com/{owner}/index.json
-Azure Artifacts:     https://pkgs.dev.azure.com/{org}/_packaging/{feed}/nuget/v3/index.json
-JFrog Artifactory:   https://{domain}/artifactory/api/nuget/v3/{repo}
-```
-
-### Minimal Example
-
-```yaml
-jobs:
-  package:
-    name: Package
-    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
-    with:
-      dotnet-project: src/MyLib/MyLib.csproj
-      gitversion-config-file: GitVersion.yml
-      publish-feed-url: https://api.nuget.org/v3/index.json
-    secrets:
-      publish-api-key: ${{ secrets.NUGET_API_KEY }}
-```
-
-### With Package Verification
-
-```yaml
-with:
-  dotnet-project: src/MyLib/MyLib.csproj
-  gitversion-config-file: GitVersion.yml
-  publish-feed-url: https://api.nuget.org/v3/index.json
-  verify-package-files: |
-    lib/net8.0/MyLib.dll
-    lib/net10.0/MyLib.dll
-    lib/net8.0/MyLib.xml
-    README.md
-    CHANGELOG.md
-```
-
-## Composite Actions
-
-### `versioning/determine-version`
-
-Runs GitVersion on the full git history (`fetch-depth: 0` required in caller).
-
-**Key outputs:** `semver`, `nuget-version`, `npm-version`, `python-version`, `docker-version`, `major-minor-patch`.
-
-### `versioning/create-version-tag`
-
-Creates and pushes a `v{version}` tag. Idempotent — skips if tag already exists.
-Requires `contents: write` permission.
-
-### `dotnet/build`
-
-Full checkout + SDK setup + restore + build. Optionally `publish: true` for apps.
-
-### `dotnet/test`
-
-Runs `dotnet test` with Coverlet. Uploads test results and coverage as artifacts.
-
-### `dotnet/nuget/pack`
-
-`dotnet pack` → `./nupkgs/`. Uploads `nupkgs` artifact. Requires `version` input.
-
-### `dotnet/nuget/publish`
-
-`dotnet nuget push` to any feed. Set `download-artifact: true` when running in a separate job.
-
-### `dotnet/nuget/verify-package`
-
-Inspects `./nupkgs/*.nupkg` for required paths. Must run in the same job as `pack`.
-
-## Architecture and Conventions
-
-- Versioning uses [GitVersion](https://gitversion.net/) — the repo needs a `GitVersion.yml`.
-- All dotnet actions use `--no-build` where possible to avoid redundant builds.
-- The `nupkgs` artifact is the handoff between `build-test-pack` and `publish` jobs.
-- Python actions mirror the dotnet structure but use `uv` for package management.
-
-## Safe Change Checklist
-
-- When adding a new input to an action, add a corresponding entry to `nuget-package.yml` if it should be surfaced there.
-- Run `python3 scripts/generate_docs.py` after changing action inputs/outputs to regenerate README tables.
-- Add `<!-- action-docs:inputs source="..." -->` markers if adding a new action section to README.md.
