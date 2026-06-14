@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: 'npm'
+      pnpm-version:
+        description: 'Version of pnpm to install. Leave empty to auto-detect from the packageManager field in package.json.'
+        required: false
+        type: string
+        default: ''
       working-directory:
         description: 'Working directory containing the Node.js project'
         required: false
@@ -67,6 +72,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
+          pnpm-version: ${{ inputs.pnpm-version }}
           working-directory: ${{ inputs.working-directory }}
           build-command: ${{ inputs.build-command }}
 
@@ -76,6 +82,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
+          pnpm-version: ${{ inputs.pnpm-version }}
           working-directory: ${{ inputs.working-directory }}
           test-command: ${{ inputs.test-command }}
           coverage-format: ${{ inputs.coverage-format }}
