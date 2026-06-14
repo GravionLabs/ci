@@ -73,8 +73,10 @@ runs:
           pnpm)
             # Write auth into the user-level .npmrc so that env vars are expanded
             # (pnpm >= 11.6 only expands env vars in trusted config: user, global, CLI).
+            # npm-auth-type in project .npmrc (no env vars to expand) since pnpm 11
+            # global config.yaml doesn't support this key.
             npm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=user
-            pnpm config set "npm-auth-type" "legacy"
+            echo "npm-auth-type=legacy" >> .npmrc
             ;;
           yarn)
             yarn config set npmAuthToken "${NPM_TOKEN}"
