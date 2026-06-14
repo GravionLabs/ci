@@ -1,0 +1,10 @@
+name: Minimal Reusable
+
+on:
+  workflow_call:
+
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "It works!"
