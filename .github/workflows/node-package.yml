@@ -64,6 +64,26 @@ on:
         type: string
         required: false
         default: ''
+      run-lint:
+        description: 'Whether to run the lint step before build'
+        type: boolean
+        required: false
+        default: true
+      lint-command:
+        description: 'Override the lint command. If empty, auto-detected from package-manager.'
+        type: string
+        required: false
+        default: ''
+      upload-build-artifact:
+        description: 'Whether to upload the build output as an artifact for the publish job'
+        type: boolean
+        required: false
+        default: true
+      build-artifact-name:
+        description: 'Name of the build artifact to upload'
+        type: string
+        required: false
+        default: 'node-build'
       force-publish:
         description: 'Publish regardless of the current branch'
         type: boolean
@@ -117,25 +137,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        uses: GravionLabs/ci/node/build@main
+      - name: CI
+        uses: GravionLabs/ci/node/ci@main
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
           pnpm-version: ${{ inputs.pnpm-version }}
           working-directory: ${{ inputs.working-directory }}
+          run-lint: ${{ inputs.run-lint }}
+          lint-command: ${{ inputs.lint-command }}
           build-command: ${{ inputs.build-command }}
-
-      - name: Test
-        if: ${{ inputs.run-tests }}
-        uses: GravionLabs/ci/node/test@main
-        with:
-          node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
-          pnpm-version: ${{ inputs.pnpm-version }}
-          working-directory: ${{ inputs.working-directory }}
+          run-tests: ${{ inputs.run-tests }}
           test-command: ${{ inputs.test-command }}
           coverage-format: ${{ inputs.coverage-format }}
+
+      - name: Upload build artifact
+        if: ${{ inputs.upload-build-artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.build-artifact-name }}
+          path: ${{ inputs.working-directory }}
+          if-no-files-found: warn
 
   publish:
     name: Publish
@@ -149,25 +171,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: GravionLabs/ci/node/setup@main
-        with:
-          node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
-          pnpm-version: ${{ inputs.pnpm-version }}
-
-      - name: Install dependencies
-        run: |
-          case "${{ inputs.package-manager }}" in
-            pnpm) pnpm install --frozen-lockfile ;;
-            yarn) yarn install --frozen-lockfile ;;
-            *) npm ci ;;
-          esac
-        working-directory: ${{ inputs.working-directory }}
-
       - name: Set package versions
-        if: inputs.set-version-command != ''
-        run: ${{ inputs.set-version-command }}
+        run: |
+          cmd="${{ inputs.set-version-command }}"
+          if [ -z "${cmd}" ]; then
+            case "${{ inputs.package-manager }}" in
+              pnpm) cmd="pnpm version \${VERSION} --no-git-tag-version" ;;
+              yarn) cmd="yarn version \${VERSION} --no-git-tag-version" ;;
+              *) cmd="npm version \${VERSION} --no-git-tag-version" ;;
+            esac
+          fi
+          eval "${cmd}"
         env:
           VERSION: ${{ needs.determine-version.outputs.npm-version }}
         working-directory: ${{ inputs.working-directory }}
@@ -179,6 +193,8 @@ jobs:
           npm-token: ${{ secrets.npm-token }}
           working-directory: ${{ inputs.working-directory }}
           publish-command: ${{ inputs.publish-command }}
+          download-artifact: ${{ inputs.upload-build-artifact }}
+          artifact-name: ${{ inputs.build-artifact-name }}
 
   release:
     name: Release

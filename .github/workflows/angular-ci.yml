@@ -23,6 +23,16 @@ on:
         required: false
         type: string
         default: '.'
+      run-lint:
+        description: 'Whether to run the lint step before build'
+        required: false
+        type: boolean
+        default: true
+      lint-command:
+        description: 'Override the lint command. If empty, auto-detected from package-manager.'
+        required: false
+        type: string
+        default: ''
       build-command:
         description: 'Override the build command. If empty, auto-detected from package-manager.'
         required: false
@@ -55,34 +65,25 @@ on:
         default: true
 
 jobs:
-  build:
-    name: Build (Node ${{ inputs.node-version }})
+  ci:
+    name: CI (Node ${{ inputs.node-version }})
     runs-on: ubuntu-latest
     permissions:
       checks: write
       pull-requests: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Angular workspace
-        uses: GravionLabs/ci/node/build@main
+      - name: CI
+        uses: GravionLabs/ci/node/ci@main
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
           pnpm-version: ${{ inputs.pnpm-version }}
           working-directory: ${{ inputs.working-directory }}
+          run-lint: ${{ inputs.run-lint }}
+          lint-command: ${{ inputs.lint-command }}
           build-command: ${{ inputs.build-command }}
-
-      - name: Test Angular workspace
-        if: ${{ inputs.run-tests }}
-        uses: GravionLabs/ci/node/test@main
-        with:
-          node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
-          pnpm-version: ${{ inputs.pnpm-version }}
-          working-directory: ${{ inputs.working-directory }}
+          run-tests: ${{ inputs.run-tests }}
           test-command: ${{ inputs.test-command }}
           coverage-format: ${{ inputs.coverage-format }}
           upload-results: ${{ inputs.upload-results }}
