@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.26] — 2026-06-14
+
+### Documentation
+- Update CHANGELOG.md for v1.0.25 [skip ci]
+
+
+### Features
+- Add package-manager input to workflows and update commands for better flexibility
+
+
 ## [1.0.25] — 2026-06-14
 
 ### Documentation
