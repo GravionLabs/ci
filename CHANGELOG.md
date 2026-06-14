@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.35] — 2026-06-14
+
+### Bug Fixes
+- Write npm-auth-type to project .npmrc instead of pnpm config set (#12)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.34 [skip ci]
+
+
 ## [1.0.34] — 2026-06-14
 
 ### Bug Fixes
