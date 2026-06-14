@@ -6,6 +6,20 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.23] — 2026-06-14
+
+### Bug Fixes
+- Use --location=project for pnpm config; remove invalid npm-registry-server
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.22 [skip ci]
+
+
+### Features
+- Auto-dispatch build/test/publish commands based on package-manager (#8)
+
+
 ## [1.0.22] — 2026-06-13
 
 ### Documentation
