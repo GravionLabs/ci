@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.34] — 2026-06-14
+
+### Bug Fixes
+- Use pnpm config set for npm-auth-type (not npm config set) (#11)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.33 [skip ci]
+
+
 ## [1.0.33] — 2026-06-14
 
 ### Documentation
