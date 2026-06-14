@@ -8,26 +8,31 @@ on:
         required: false
         type: string
         default: '24'
+      package-manager:
+        description: 'Package manager to use (npm, pnpm, yarn)'
+        required: false
+        type: string
+        default: 'npm'
       working-directory:
         description: 'Working directory containing the Angular workspace'
         required: false
         type: string
         default: '.'
       build-command:
-        description: 'Command to build the project (should produce all build artifacts)'
+        description: 'Override the build command. If empty, auto-detected from package-manager.'
         required: false
         type: string
-        default: 'npm run build'
+        default: ''
       run-tests:
         description: 'Whether to run the test suite after the build'
         required: false
         type: boolean
         default: true
       test-command:
-        description: 'Command to run the tests'
+        description: 'Override the test command. If empty, auto-detected from package-manager.'
         required: false
         type: string
-        default: 'npm run test:ci'
+        default: ''
       coverage-format:
         description: 'Coverage report format for the summary (cobertura, lcov)'
         required: false
@@ -60,6 +65,7 @@ jobs:
         uses: GravionLabs/ci/node/build@main
         with:
           node-version: ${{ inputs.node-version }}
+          package-manager: ${{ inputs.package-manager }}
           working-directory: ${{ inputs.working-directory }}
           build-command: ${{ inputs.build-command }}
 
@@ -68,6 +74,7 @@ jobs:
         uses: GravionLabs/ci/node/test@main
         with:
           node-version: ${{ inputs.node-version }}
+          package-manager: ${{ inputs.package-manager }}
           working-directory: ${{ inputs.working-directory }}
           test-command: ${{ inputs.test-command }}
           coverage-format: ${{ inputs.coverage-format }}

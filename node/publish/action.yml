@@ -2,7 +2,7 @@ name: 'Publish Node.js Package'
 description: >
   Configures npm registry authentication and publishes a Node.js package to the target registry
   (e.g. GitHub Packages, npmjs). Supports npm, pnpm, and yarn as package managers.
-  For pnpm 11+, sets npm-auth-type=basic to skip unsupported OIDC token exchange.
+  For pnpm 11+, sets npm-auth-type=legacy to skip unsupported OIDC token exchange.
 
 inputs:
   package-manager:
@@ -17,7 +17,11 @@ inputs:
     description: 'NPM token or GitHub PAT for registry authentication'
     required: true
   publish-command:
-    description: 'Override the publish command. If empty, automatically determined from the package-manager input (e.g. npm publish, pnpm publish -r --no-git-checks, yarn npm publish)'
+    description: 'Override the publish command. If empty, automatically determined from package-manager and publish-directory.'
+    required: false
+    default: ''
+  publish-directory:
+    description: 'Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given.'
     required: false
     default: ''
   working-directory:
@@ -47,6 +51,7 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.working-directory }}
+
     - name: Configure npm registry authentication
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -61,8 +66,10 @@ runs:
 
         case "${{ inputs.package-manager }}" in
           pnpm)
-            NPMRC_PATH="${{ inputs.working-directory }}/.npmrc"
-            echo "npm-auth-type=basic" >> "${NPMRC_PATH}"
+            # Write auth into the project .npmrc; use npm-auth-type=legacy so pnpm 9+
+            # does not attempt an OIDC token exchange that GitHub Packages doesn't support.
+            NPMRC_PATH=".npmrc"
+            echo "npm-auth-type=legacy" >> "${NPMRC_PATH}"
             echo "//${HOST}/:_authToken=${NPM_TOKEN}" >> "${NPMRC_PATH}"
             ;;
           yarn)
@@ -80,11 +87,26 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         cmd="${{ inputs.publish-command }}"
+        dir="${{ inputs.publish-directory }}"
         if [ -z "${cmd}" ]; then
           case "${{ inputs.package-manager }}" in
-            pnpm) cmd="pnpm publish -r --no-git-checks" ;;
-            yarn) cmd="yarn npm publish" ;;
-            *) cmd="npm publish" ;;
+            pnpm)
+              if [ -n "${dir}" ]; then
+                cmd="pnpm publish ${dir} --no-git-checks"
+              else
+                cmd="pnpm publish --no-git-checks"
+              fi
+              ;;
+            yarn)
+              cmd="yarn npm publish"
+              ;;
+            *)
+              if [ -n "${dir}" ]; then
+                cmd="npm publish ${dir}"
+              else
+                cmd="npm publish"
+              fi
+              ;;
           esac
         fi
         echo "Running: ${cmd}"

@@ -14,26 +14,31 @@ on:
         type: string
         required: false
         default: '24'
+      package-manager:
+        description: 'Package manager to use (npm, pnpm, yarn)'
+        type: string
+        required: false
+        default: 'npm'
       working-directory:
         description: 'Working directory containing the Angular workspace'
         type: string
         required: false
         default: '.'
       build-command:
-        description: 'Command to build the Angular project'
+        description: 'Override the build command. If empty, auto-detected from package-manager.'
         type: string
         required: false
-        default: 'npx ng build'
+        default: ''
       run-tests:
         description: 'Whether to run the test suite after build'
         type: boolean
         required: false
         default: true
       test-command:
-        description: 'Override the test command'
+        description: 'Override the test command. If empty, auto-detected from package-manager.'
         type: string
         required: false
-        default: 'npx ng test --watch=false --browsers=ChromeHeadless --code-coverage'
+        default: ''
       coverage-format:
         description: 'Coverage report format (cobertura, lcov)'
         type: string
@@ -45,12 +50,12 @@ on:
         required: false
         default: ''
       publish-directory:
-        description: 'Directory containing the built Angular package to publish (e.g. ./dist/helix)'
+        description: 'Directory containing the built Angular package to publish (e.g. dist/my-lib). Passed to the publish action to construct the correct publish command.'
         type: string
         required: false
         default: ''
       publish-command:
-        description: 'Override the publish command. If empty, auto-generated from publish-directory.'
+        description: 'Override the publish command. If empty, auto-generated from package-manager and publish-directory.'
         type: string
         required: false
         default: ''
@@ -111,7 +116,7 @@ jobs:
         uses: GravionLabs/ci/node/build@main
         with:
           node-version: ${{ inputs.node-version }}
-          package-manager: npm
+          package-manager: ${{ inputs.package-manager }}
           working-directory: ${{ inputs.working-directory }}
           build-command: ${{ inputs.build-command }}
 
@@ -120,7 +125,7 @@ jobs:
         uses: GravionLabs/ci/node/test@main
         with:
           node-version: ${{ inputs.node-version }}
-          package-manager: npm
+          package-manager: ${{ inputs.package-manager }}
           working-directory: ${{ inputs.working-directory }}
           test-command: ${{ inputs.test-command }}
           coverage-format: ${{ inputs.coverage-format }}
@@ -137,21 +142,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node-version }}
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: ${{ inputs.working-directory }}
-
       - name: Publish
         uses: GravionLabs/ci/node/publish@main
         with:
-          package-manager: npm
+          package-manager: ${{ inputs.package-manager }}
           npm-token: ${{ secrets.npm-token }}
           working-directory: ${{ inputs.working-directory }}
-          publish-command: ${{ inputs.publish-command != '' && inputs.publish-command || inputs.publish-directory != '' && format('npm publish {0}', inputs.publish-directory) || 'npm publish' }}
+          publish-directory: ${{ inputs.publish-directory }}
+          publish-command: ${{ inputs.publish-command }}
 
   release:
     name: Release

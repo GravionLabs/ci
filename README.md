@@ -481,10 +481,11 @@ Sets up Node.js with `actions/setup-node`, enables the package manager globally 
 **Inputs**
 
 <!-- action-docs:inputs source="node/setup/action.yml" -->
-| Name              | Description                              | Required | Default |
-|-------------------|------------------------------------------|----------|---------|
-| `node-version`    | Version of Node.js to use (e.g. 20, 22)  | No       | 24      |
-| `package-manager` | Package manager to use (npm, pnpm, yarn) | No       | npm     |
+| Name              | Description                                                                                                                                    | Required | Default |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `node-version`    | Version of Node.js to use (e.g. 20, 22)                                                                                                        | No       | 24      |
+| `package-manager` | Package manager to use (npm, pnpm, yarn)                                                                                                       | No       | npm     |
+| `pnpm-version`    | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json. | No       |         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -563,15 +564,16 @@ Supports both same-job and cross-job publish patterns:
 **Inputs**
 
 <!-- action-docs:inputs source="node/publish/action.yml" -->
-| Name                | Description                                                                                                                                                           | Required | Default                     |
-|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                                              | No       | npm                         |
-| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                                                            | No       | https://npm.pkg.github.com/ |
-| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                                                                                   | **Yes**  | —                           |
-| `publish-command`   | Override the publish command. If empty, automatically determined from the package-manager input (e.g. npm publish, pnpm publish -r --no-git-checks, yarn npm publish) | No       |                             |
-| `working-directory` | Working directory containing the Node.js project                                                                                                                      | No       | .                           |
-| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job)                                                               | No       | false                       |
-| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                                                           | No       | npm-package                 |
+| Name                | Description                                                                                                                      | Required | Default                     |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
+| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                         | No       | npm                         |
+| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                       | No       | https://npm.pkg.github.com/ |
+| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                                              | **Yes**  | —                           |
+| `publish-command`   | Override the publish command. If empty, automatically determined from package-manager and publish-directory.                     | No       |                             |
+| `publish-directory` | Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given. | No       |                             |
+| `working-directory` | Working directory containing the Node.js project                                                                                 | No       | .                           |
+| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job)                          | No       | false                       |
+| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                      | No       | npm-package                 |
 <!-- /action-docs:inputs -->
 
 ---

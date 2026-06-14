@@ -142,11 +142,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - name: Setup pnpm
         if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
 
       - name: Install dependencies
         run: |

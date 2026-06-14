@@ -10,20 +10,22 @@ inputs:
     description: 'Package manager to use (npm, pnpm, yarn)'
     required: false
     default: 'npm'
+  pnpm-version:
+    description: 'Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
   steps:
+    - name: Setup pnpm
+      if: ${{ inputs.package-manager == 'pnpm' }}
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ inputs.pnpm-version != '' && inputs.pnpm-version || 'latest' }}
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
         cache: ${{ inputs.package-manager }}
-
-    - name: Enable package manager
-      shell: bash
-      run: |
-        echo "Enabling package manager: ${{ inputs.package-manager }}"
-        case "${{ inputs.package-manager }}" in
-          pnpm) npm install -g pnpm ;;
-        esac
