@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.24] — 2026-06-14
+
+### Bug Fixes
+- Write pnpm auth directly to .npmrc instead of pnpm config set
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.23 [skip ci]
+
+
 ## [1.0.23] — 2026-06-14
 
 ### Bug Fixes
