@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.33] — 2026-06-14
+
+### Documentation
+- Update CHANGELOG.md for v1.0.32 [skip ci]
+
+
+### Features
+- Add artifact-path input to workflows, fix pnpm auth to use user-level .npmrc (#10)
+
+
 ## [1.0.32] — 2026-06-14
 
 ### Documentation
