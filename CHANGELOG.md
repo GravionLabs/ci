@@ -6,6 +6,12 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.28] — 2026-06-14
+
+### Documentation
+- Update CHANGELOG.md for v1.0.27 [skip ci]
+
+
 ## [1.0.27] — 2026-06-14
 
 ### Documentation
