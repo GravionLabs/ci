@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.30] — 2026-06-14
+
+### Documentation
+- Update CHANGELOG.md for v1.0.29 [skip ci]
+
+
+### Features
+- Add node/ci composite action with lint, build, test and artifact handoff
+
+
 ## [1.0.29] — 2026-06-14
 
 ### Bug Fixes
