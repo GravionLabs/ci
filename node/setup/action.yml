@@ -10,8 +10,8 @@ inputs:
     description: 'Package manager to use (npm, pnpm, yarn)'
     required: false
     default: 'npm'
-  pnpm-version:
-    description: 'Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.'
+  package-manager-version:
+    description: 'Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.'
     required: false
     default: ''
 
@@ -19,13 +19,13 @@ runs:
   using: 'composite'
   steps:
     - name: Setup pnpm
-      if: ${{ inputs.package-manager == 'pnpm' && inputs.pnpm-version != '' }}
+      if: ${{ inputs.package-manager == 'pnpm' && inputs.package-manager-version != '' }}
       uses: pnpm/action-setup@v4
       with:
-        version: ${{ inputs.pnpm-version }}
+        version: ${{ inputs.package-manager-version }}
 
     - name: Setup pnpm (auto-detect)
-      if: ${{ inputs.package-manager == 'pnpm' && inputs.pnpm-version == '' }}
+      if: ${{ inputs.package-manager == 'pnpm' && inputs.package-manager-version == '' }}
       uses: pnpm/action-setup@v4
 
     - name: Setup Node.js

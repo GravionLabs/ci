@@ -19,8 +19,8 @@ on:
         type: string
         required: false
         default: 'npm'
-      pnpm-version:
-        description: 'Version of pnpm to install. Leave empty to auto-detect from the packageManager field in package.json.'
+      package-manager-version:
+        description: 'Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.'
         type: string
         required: false
         default: ''
@@ -142,7 +142,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
-          pnpm-version: ${{ inputs.pnpm-version }}
+          package-manager-version: ${{ inputs.package-manager-version }}
           working-directory: ${{ inputs.working-directory }}
           run-lint: ${{ inputs.run-lint }}
           lint-command: ${{ inputs.lint-command }}

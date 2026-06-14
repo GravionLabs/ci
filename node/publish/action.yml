@@ -9,6 +9,10 @@ inputs:
     description: 'Package manager to use (npm, pnpm, yarn)'
     required: false
     default: 'npm'
+  package-manager-version:
+    description: 'Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.'
+    required: false
+    default: ''
   registry-url:
     description: 'URL of the npm registry (e.g. https://npm.pkg.github.com/)'
     required: false
@@ -44,6 +48,7 @@ runs:
       uses: GravionLabs/ci/node/setup@main
       with:
         package-manager: ${{ inputs.package-manager }}
+        package-manager-version: ${{ inputs.package-manager-version }}
 
     - name: Download package artifact
       if: ${{ inputs.download-artifact == 'true' }}

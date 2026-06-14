@@ -482,11 +482,11 @@ Sets up Node.js with `actions/setup-node`, enables the package manager globally 
 **Inputs**
 
 <!-- action-docs:inputs source="node/setup/action.yml" -->
-| Name              | Description                                                                                                                                    | Required | Default |
-|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `node-version`    | Version of Node.js to use (e.g. 20, 22)                                                                                                        | No       | 24      |
-| `package-manager` | Package manager to use (npm, pnpm, yarn)                                                                                                       | No       | npm     |
-| `pnpm-version`    | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json. | No       |         |
+| Name                      | Description                                                                                                                             | Required | Default |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                 | No       | 24      |
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm     |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -506,13 +506,13 @@ Installs dependencies and builds a Node.js project. Calls `node/setup` internall
 **Inputs**
 
 <!-- action-docs:inputs source="node/build/action.yml" -->
-| Name                | Description                                                                                                                                        | Required | Default |
-|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                            | No       | 24      |
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                           | No       | npm     |
-| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.     | No       |         |
-| `working-directory` | Working directory containing the Node.js project                                                                                                   | No       | .       |
-| `build-command`     | Override the build command. If empty, automatically determined from the package-manager input (e.g. npm run build, pnpm run build, yarn run build) | No       |         |
+| Name                      | Description                                                                                                                                        | Required | Default |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                            | No       | 24      |
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                           | No       | npm     |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.            | No       |         |
+| `working-directory`       | Working directory containing the Node.js project                                                                                                   | No       | .       |
+| `build-command`           | Override the build command. If empty, automatically determined from the package-manager input (e.g. npm run build, pnpm run build, yarn run build) | No       |         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -533,20 +533,20 @@ Runs lint, build, and test with a single setup and dependency installation. Wrap
 **Inputs**
 
 <!-- action-docs:inputs source="node/ci/action.yml" -->
-| Name                | Description                                                                                                                                    | Required | Default   |
-|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
-| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                        | No       | 24        |
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                       | No       | npm       |
-| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json. | No       |           |
-| `working-directory` | Working directory containing the Node.js project                                                                                               | No       | .         |
-| `run-lint`          | Whether to run the lint step                                                                                                                   | No       | true      |
-| `lint-command`      | Override the lint command. If empty, auto-detected from package-manager.                                                                       | No       |           |
-| `build-command`     | Override the build command. If empty, auto-detected from package-manager.                                                                      | No       |           |
-| `run-tests`         | Whether to run the test suite                                                                                                                  | No       | true      |
-| `test-command`      | Override the test command. If empty, auto-detected from package-manager.                                                                       | No       |           |
-| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                                                                       | No       | cobertura |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts                                                                                | No       | true      |
-| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                            | No       | true      |
+| Name                      | Description                                                                                                                             | Required | Default   |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
+| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                 | No       | 24        |
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm       |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |           |
+| `working-directory`       | Working directory containing the Node.js project                                                                                        | No       | .         |
+| `run-lint`                | Whether to run the lint step                                                                                                            | No       | true      |
+| `lint-command`            | Override the lint command. If empty, auto-detected from package-manager.                                                                | No       |           |
+| `build-command`           | Override the build command. If empty, auto-detected from package-manager.                                                               | No       |           |
+| `run-tests`               | Whether to run the test suite                                                                                                           | No       | true      |
+| `test-command`            | Override the test command. If empty, auto-detected from package-manager.                                                                | No       |           |
+| `coverage-format`         | Coverage report format for the summary (cobertura, lcov)                                                                                | No       | cobertura |
+| `upload-results`          | Whether to upload test results and coverage report as artifacts                                                                         | No       | true      |
+| `publish-results`         | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                     | No       | true      |
 <!-- /action-docs:inputs -->
 
 ---
@@ -566,16 +566,16 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 **Inputs**
 
 <!-- action-docs:inputs source="node/test/action.yml" -->
-| Name                | Description                                                                                                                                                                                                                         | Required | Default   |
-|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
-| `node-version`      | Version of Node.js to use (e.g. 20, 22)                                                                                                                                                                                             | No       | 24        |
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                                                                                                                            | No       | npm       |
-| `pnpm-version`      | Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.                                                                                      | No       |           |
-| `working-directory` | Working directory containing the Node.js project                                                                                                                                                                                    | No       | .         |
-| `test-command`      | Override the test command. If empty, automatically determined from the package-manager input (e.g. npm run test:ci, pnpm run test:ci, yarn run test:ci). Must produce JUnit XML at test-results/junit.xml and coverage at coverage/ | No       |           |
-| `coverage-format`   | Coverage report format for the summary (cobertura, lcov)                                                                                                                                                                            | No       | cobertura |
-| `upload-results`    | Whether to upload test results and coverage report as artifacts                                                                                                                                                                     | No       | true      |
-| `publish-results`   | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                                                                                                                 | No       | true      |
+| Name                      | Description                                                                                                                                                                                                                         | Required | Default   |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
+| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                                                                                                             | No       | 24        |
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                                                                                                            | No       | npm       |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.                                                                                             | No       |           |
+| `working-directory`       | Working directory containing the Node.js project                                                                                                                                                                                    | No       | .         |
+| `test-command`            | Override the test command. If empty, automatically determined from the package-manager input (e.g. npm run test:ci, pnpm run test:ci, yarn run test:ci). Must produce JUnit XML at test-results/junit.xml and coverage at coverage/ | No       |           |
+| `coverage-format`         | Coverage report format for the summary (cobertura, lcov)                                                                                                                                                                            | No       | cobertura |
+| `upload-results`          | Whether to upload test results and coverage report as artifacts                                                                                                                                                                     | No       | true      |
+| `publish-results`         | Whether to publish test results as a GitHub Check Run and coverage as a job summary                                                                                                                                                 | No       | true      |
 <!-- /action-docs:inputs -->
 
 ---
@@ -601,16 +601,17 @@ Supports both same-job and cross-job publish patterns:
 **Inputs**
 
 <!-- action-docs:inputs source="node/publish/action.yml" -->
-| Name                | Description                                                                                                                      | Required | Default                     |
-|---------------------|----------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
-| `package-manager`   | Package manager to use (npm, pnpm, yarn)                                                                                         | No       | npm                         |
-| `registry-url`      | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                       | No       | https://npm.pkg.github.com/ |
-| `npm-token`         | NPM token or GitHub PAT for registry authentication                                                                              | **Yes**  | —                           |
-| `publish-command`   | Override the publish command. If empty, automatically determined from package-manager and publish-directory.                     | No       |                             |
-| `publish-directory` | Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given. | No       |                             |
-| `working-directory` | Working directory containing the Node.js project                                                                                 | No       | .                           |
-| `download-artifact` | Whether to download the package artifact before publishing (set to true when running in a separate job)                          | No       | false                       |
-| `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                      | No       | npm-package                 |
+| Name                      | Description                                                                                                                             | Required | Default                     |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm                         |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |                             |
+| `registry-url`            | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                              | No       | https://npm.pkg.github.com/ |
+| `npm-token`               | NPM token or GitHub PAT for registry authentication                                                                                     | **Yes**  | —                           |
+| `publish-command`         | Override the publish command. If empty, automatically determined from package-manager and publish-directory.                            | No       |                             |
+| `publish-directory`       | Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given.        | No       |                             |
+| `working-directory`       | Working directory containing the Node.js project                                                                                        | No       | .                           |
+| `download-artifact`       | Whether to download the package artifact before publishing (set to true when running in a separate job)                                 | No       | false                       |
+| `artifact-name`           | Name of the artifact to download (only used when download-artifact is true)                                                             | No       | npm-package                 |
 <!-- /action-docs:inputs -->
 
 ---
@@ -904,7 +905,7 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 | `node-version`      | Node.js version to use                                         | No       | `24`                           |
 | `working-directory` | Working directory of the project                               | No       | `.`                            |
 | `package-manager`   | Package manager to use (`npm`, `pnpm`, `yarn`)                 | No       | `npm`                          |
-| `pnpm-version`      | pnpm version (empty = auto-detect from `packageManager` field) | No       | `""`                           |
+| `package-manager-version` | Package manager version (e.g. `11.6.0`). Empty = auto-detect from `packageManager` field | No       | `""`                           |
 | `run-lint`          | Whether to run the lint step before build                      | No       | `true`                         |
 | `lint-command`      | Override the lint command (empty = auto-detected)              | No       | `""`                           |
 | `build-command`     | Override the build command (empty = auto-detected)             | No       | `""`                           |

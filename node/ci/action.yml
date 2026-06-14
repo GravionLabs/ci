@@ -10,8 +10,8 @@ inputs:
     description: 'Package manager to use (npm, pnpm, yarn)'
     required: false
     default: 'npm'
-  pnpm-version:
-    description: 'Version of pnpm to install (only used when package-manager is pnpm). Leave empty to auto-detect from the packageManager field in package.json.'
+  package-manager-version:
+    description: 'Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.'
     required: false
     default: ''
   working-directory:
@@ -62,7 +62,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         package-manager: ${{ inputs.package-manager }}
-        pnpm-version: ${{ inputs.pnpm-version }}
+        package-manager-version: ${{ inputs.package-manager-version }}
 
     - name: Install dependencies
       shell: bash
@@ -75,7 +75,7 @@ runs:
         esac
 
     - name: Lint
-      if: ${{ inputs.run-lint == 'true' }}
+      if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || inputs.run-lint == 'true' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
@@ -106,7 +106,7 @@ runs:
         eval "${cmd}"
 
     - name: Run tests
-      if: ${{ inputs.run-tests == 'true' }}
+      if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || inputs.run-tests == 'true' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
