@@ -71,11 +71,10 @@ runs:
 
         case "${{ inputs.package-manager }}" in
           pnpm)
-            # Write auth into the project .npmrc; use npm-auth-type=legacy so pnpm 9+
-            # does not attempt an OIDC token exchange that GitHub Packages doesn't support.
-            NPMRC_PATH=".npmrc"
-            echo "npm-auth-type=legacy" >> "${NPMRC_PATH}"
-            echo "//${HOST}/:_authToken=${NPM_TOKEN}" >> "${NPMRC_PATH}"
+            # Write auth into the user-level .npmrc so that env vars are expanded
+            # (pnpm >= 11.6 only expands env vars in trusted config: user, global, CLI).
+            npm config set "//${HOST}/:_authToken" "${NPM_TOKEN}" --location=user
+            npm config set "npm-auth-type" "legacy" --location=user
             ;;
           yarn)
             yarn config set npmAuthToken "${NPM_TOKEN}"
