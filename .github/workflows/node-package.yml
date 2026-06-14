@@ -1,0 +1,189 @@
+name: Node.js Package CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      force-publish:
+        description: 'Publish regardless of the current branch'
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use (e.g. 20, 22, 24)'
+        type: string
+        required: false
+        default: '24'
+      package-manager:
+        description: 'Package manager to use (npm, pnpm, yarn)'
+        type: string
+        required: false
+        default: 'npm'
+      working-directory:
+        description: 'Working directory containing the Node.js project'
+        type: string
+        required: false
+        default: '.'
+      build-command:
+        description: 'Override the build command. If empty, auto-detected from package-manager.'
+        type: string
+        required: false
+        default: ''
+      run-tests:
+        description: 'Whether to run the test suite after build'
+        type: boolean
+        required: false
+        default: true
+      test-command:
+        description: 'Override the test command. If empty, auto-detected from package-manager.'
+        type: string
+        required: false
+        default: ''
+      coverage-format:
+        description: 'Coverage report format (cobertura, lcov)'
+        type: string
+        required: false
+        default: 'cobertura'
+      gitversion-config-file:
+        description: 'Path to a GitVersion.yml configuration file (optional)'
+        type: string
+        required: false
+        default: ''
+      set-version-command:
+        description: 'Shell script to set package versions before publish. Receives VERSION env var from determine-version.'
+        type: string
+        required: false
+        default: ''
+      publish-command:
+        description: 'Override the publish command. If empty, auto-detected from package-manager.'
+        type: string
+        required: false
+        default: ''
+      force-publish:
+        description: 'Publish regardless of the current branch'
+        type: boolean
+        required: false
+        default: false
+      changelog-file:
+        description: 'Path to a CHANGELOG.md file to use for release notes'
+        type: string
+        required: false
+        default: 'CHANGELOG.md'
+      cliff-config:
+        description: 'Path to a cliff.toml file for git-cliff changelog generation (optional)'
+        type: string
+        required: false
+        default: ''
+      release-tag-prefix:
+        description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
+        type: string
+        required: false
+        default: 'v'
+    secrets:
+      npm-token:
+        description: 'NPM token or GitHub PAT for registry authentication'
+        required: true
+
+jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      npm-version: ${{ steps.version.outputs.npm-version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        uses: GravionLabs/ci/versioning/determine-version@main
+        with:
+          gitversion-config-file: ${{ inputs.gitversion-config-file }}
+
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: GravionLabs/ci/node/build@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager: ${{ inputs.package-manager }}
+          working-directory: ${{ inputs.working-directory }}
+          build-command: ${{ inputs.build-command }}
+
+      - name: Test
+        if: ${{ inputs.run-tests }}
+        uses: GravionLabs/ci/node/test@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager: ${{ inputs.package-manager }}
+          working-directory: ${{ inputs.working-directory }}
+          test-command: ${{ inputs.test-command }}
+          coverage-format: ${{ inputs.coverage-format }}
+
+  publish:
+    name: Publish
+    needs: [determine-version, build-test]
+    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: |
+          case "${{ inputs.package-manager }}" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --frozen-lockfile ;;
+            *) npm ci ;;
+          esac
+        working-directory: ${{ inputs.working-directory }}
+
+      - name: Set package versions
+        if: inputs.set-version-command != ''
+        run: ${{ inputs.set-version-command }}
+        env:
+          VERSION: ${{ needs.determine-version.outputs.npm-version }}
+        working-directory: ${{ inputs.working-directory }}
+
+      - name: Publish packages
+        uses: GravionLabs/ci/node/publish@main
+        with:
+          package-manager: ${{ inputs.package-manager }}
+          npm-token: ${{ secrets.npm-token }}
+          working-directory: ${{ inputs.working-directory }}
+          publish-command: ${{ inputs.publish-command }}
+
+  release:
+    name: Release
+    needs: [determine-version, publish]
+    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: GravionLabs/ci/versioning/gh-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+          tag-prefix: ${{ inputs.release-tag-prefix }}
+          changelog-file: ${{ inputs.changelog-file }}
+          cliff-config: ${{ inputs.cliff-config }}
