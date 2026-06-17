@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.36] — 2026-06-17
+
+### Documentation
+- Update CHANGELOG.md for v1.0.35 [skip ci]
+
+
+### Features
+- Add artifact-path input to angular and node workflows for dist subdirectory upload; fix README npm-auth-type
+
+
 ## [1.0.35] — 2026-06-14
 
 ### Bug Fixes
