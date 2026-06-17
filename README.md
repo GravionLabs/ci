@@ -582,7 +582,7 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 
 ### `node/publish`
 
-Configures npm registry authentication and publishes a Node.js package to the target registry. Supports npm, pnpm, and yarn. For pnpm 11+, sets `npm-auth-type=basic` to skip unsupported OIDC token exchange.
+Configures npm registry authentication and publishes a Node.js package to the target registry. Supports npm, pnpm, and yarn. For pnpm 11+, sets `npm-auth-type=legacy` to skip unsupported OIDC token exchange.
 
 Supports both same-job and cross-job publish patterns:
 - **Same job** (after `setup/build/test`): leave `download-artifact: false`

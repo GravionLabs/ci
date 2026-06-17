@@ -104,6 +104,11 @@ on:
         type: string
         required: false
         default: ''
+      artifact-path:
+        description: 'Subdirectory within the workspace to upload as a build artifact (e.g. dist). If empty, the whole working-directory is uploaded.'
+        type: string
+        required: false
+        default: ''
       release-tag-prefix:
         description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
         type: string
