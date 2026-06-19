@@ -84,11 +84,6 @@ on:
         type: string
         required: false
         default: 'node-build'
-      artifact-path:
-        description: 'Path within the working directory to upload as the build artifact (e.g. dist). Defaults to the entire working directory.'
-        type: string
-        required: false
-        default: ''
       force-publish:
         description: 'Publish regardless of the current branch'
         type: boolean
