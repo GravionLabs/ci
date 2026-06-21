@@ -59,6 +59,11 @@ on:
         type: string
         required: false
         default: ''
+      set-version-command:
+        description: 'Shell script to set package versions before publish. Receives VERSION env var from determine-version. Default: npm version in publish-directory.'
+        type: string
+        required: false
+        default: ''
       publish-command:
         description: 'Override the publish command. If empty, auto-generated from package-manager and publish-directory.'
         type: string
@@ -175,6 +180,22 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set package version
+        run: |
+          cmd="${{ inputs.set-version-command }}"
+          dir="${{ inputs.publish-directory }}"
+          if [ -z "${cmd}" ]; then
+            if [ -n "${dir}" ]; then
+              cmd="npm --prefix \"${dir}\" version \${VERSION} --no-git-tag-version"
+            else
+              cmd="npm version \${VERSION} --no-git-tag-version"
+            fi
+          fi
+          eval "${cmd}"
+        env:
+          VERSION: ${{ needs.determine-version.outputs.npm-version }}
+        working-directory: ${{ inputs.working-directory }}
 
       - name: Publish
         uses: GravionLabs/ci/node/publish@main
