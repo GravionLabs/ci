@@ -1,17 +1,10 @@
 name: Python Package CI/CD
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  workflow_dispatch:
-    inputs:
-      verbosity:
-        description: 'Verbosity level for build/test output'
-        type: choice
-        options: [minimal, quiet, normal, detailed, diagnostic]
-        default: minimal
-      force-publish:
-        description: 'Publish regardless of the current branch'
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       python-version:
@@ -58,6 +51,31 @@ on:
         type: boolean
         required: false
         default: false
+      changelog-file:
+        description: 'Path to a CHANGELOG.md file to use for release notes'
+        type: string
+        required: false
+        default: 'CHANGELOG.md'
+      cliff-config:
+        description: 'Path to a cliff.toml file for git-cliff changelog generation (optional)'
+        type: string
+        required: false
+        default: ''
+      update-changelog:
+        description: 'When cliff-config is set, regenerate CHANGELOG.md from git history and commit it before the release tag'
+        type: boolean
+        required: false
+        default: false
+      release-tag-prefix:
+        description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
+        type: string
+        required: false
+        default: 'v'
+      main-branch:
+        description: 'Name of the main branch; packages are only published from this branch'
+        type: string
+        required: false
+        default: 'main'
     secrets:
       publish-api-key:
         description: 'API token for the target feed. Not required when using PyPI Trusted Publishing.'
@@ -105,7 +123,7 @@ jobs:
   publish:
     name: Publish
     needs: [determine-version, build-test]
-    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     runs-on: ubuntu-latest
     environment: pypi-publish
     permissions:
@@ -117,3 +135,20 @@ jobs:
           feed-url: ${{ inputs.publish-feed-url }}
           api-key: ${{ secrets.publish-api-key }}
           download-artifact: 'true'
+
+  release:
+    name: Release
+    needs: [determine-version, publish]
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: GravionLabs/ci/versioning/gh-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+          tag-prefix: ${{ inputs.release-tag-prefix }}
+          changelog-file: ${{ inputs.changelog-file }}
+          cliff-config: ${{ inputs.cliff-config }}
+          update-changelog: ${{ inputs.update-changelog }}

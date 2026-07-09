@@ -1,17 +1,10 @@
 name: Docker Image CI/CD
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  workflow_dispatch:
-    inputs:
-      verbosity:
-        description: 'Verbosity level for build output'
-        type: choice
-        options: [minimal, quiet, normal, detailed, diagnostic]
-        default: minimal
-      force-publish:
-        description: 'Publish regardless of the current branch'
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       image-name:

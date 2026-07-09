@@ -1,5 +1,9 @@
 name: CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main]
@@ -10,6 +14,8 @@ jobs:
   test-determine-version:
     name: 'Test: determine-version'
     runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,21 +61,15 @@ jobs:
         with:
           fetch-depth: 0       # required by GitVersion
 
-      - name: Determine version
-        id: version
-        uses: ./versioning/determine-version
-        with:
-          gitversion-config-file: GitVersion.yml
-
       - name: Create version tag
         uses: ./versioning/create-version-tag
         with:
-          version: ${{ steps.version.outputs.semver }}
+          version: ${{ needs.test-determine-version.outputs.semver }}
 
       - name: Create GitHub Release
         uses: ./versioning/gh-release
         with:
-          version: ${{ steps.version.outputs.semver }}
+          version: ${{ needs.test-determine-version.outputs.semver }}
           changelog-file: CHANGELOG.md
           cliff-config: cliff.toml
           update-changelog: 'true'
