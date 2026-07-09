@@ -54,11 +54,6 @@ on:
         type: string
         required: false
         default: ''
-      set-version-command:
-        description: 'Shell script to set package versions before publish. Receives VERSION env var from determine-version.'
-        type: string
-        required: false
-        default: ''
       publish-command:
         description: 'Override the publish command. If empty, auto-detected from package-manager.'
         type: string
@@ -176,21 +171,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set package versions
-        run: |
-          cmd="${{ inputs.set-version-command }}"
-          if [ -z "${cmd}" ]; then
-            case "${{ inputs.package-manager }}" in
-              pnpm) cmd="pnpm version \${VERSION} --no-git-tag-version" ;;
-              yarn) cmd="yarn version \${VERSION} --no-git-tag-version" ;;
-              *) cmd="npm version \${VERSION} --no-git-tag-version" ;;
-            esac
-          fi
-          eval "${cmd}"
-        env:
-          VERSION: ${{ needs.determine-version.outputs.npm-version }}
-        working-directory: ${{ inputs.working-directory }}
-
       - name: Publish packages
         uses: GravionLabs/ci/node/publish@main
         with:
@@ -199,6 +179,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           publish-command: ${{ inputs.publish-command }}
           publish-directory: ${{ inputs.artifact-path }}
+          version: ${{ needs.determine-version.outputs.npm-version }}
           download-artifact: ${{ inputs.upload-build-artifact }}
           artifact-name: ${{ inputs.build-artifact-name }}
 
