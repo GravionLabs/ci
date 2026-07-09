@@ -40,6 +40,13 @@ inputs:
     description: 'Name of the artifact to download (only used when download-artifact is true)'
     required: false
     default: 'npm-package'
+  artifact-path:
+    description: >
+      Subdirectory (relative to working-directory) the artifact was uploaded from.
+      upload-artifact stores files relative to that directory, so the download restores
+      them under the same prefix. Leave empty when the whole working directory was uploaded.
+    required: false
+    default: ''
   version:
     description: 'Version to set in package.json before publishing (e.g. from GitVersion). Applied after artifact download so it works with both local and artifact-based publishing.'
     required: false
@@ -59,7 +66,7 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ inputs.working-directory }}
+        path: ${{ inputs.artifact-path != '' && format('{0}/{1}', inputs.working-directory, inputs.artifact-path) || inputs.working-directory }}
 
     - name: Set package version
       if: ${{ inputs.version != '' }}

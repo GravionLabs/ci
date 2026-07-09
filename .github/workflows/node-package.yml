@@ -1,12 +1,10 @@
 name: Node.js Package CI/CD
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  workflow_dispatch:
-    inputs:
-      force-publish:
-        description: 'Publish regardless of the current branch'
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       node-version:
@@ -104,6 +102,11 @@ on:
         type: string
         required: false
         default: 'v'
+      main-branch:
+        description: 'Name of the main branch; packages are only published from this branch'
+        type: string
+        required: false
+        default: 'main'
     secrets:
       npm-token:
         description: 'NPM token or GitHub PAT for registry authentication'
@@ -135,8 +138,6 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-
       - name: CI
         uses: GravionLabs/ci/node/ci@main
         with:
@@ -162,7 +163,7 @@ jobs:
   publish:
     name: Publish
     needs: [determine-version, build-test]
-    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -182,11 +183,12 @@ jobs:
           version: ${{ needs.determine-version.outputs.npm-version }}
           download-artifact: ${{ inputs.upload-build-artifact }}
           artifact-name: ${{ inputs.build-artifact-name }}
+          artifact-path: ${{ inputs.artifact-path }}
 
   release:
     name: Release
     needs: [determine-version, publish]
-    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
