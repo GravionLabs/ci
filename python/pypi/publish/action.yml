@@ -23,7 +23,7 @@ inputs:
     required: false
     default: 'dist'
   skip-existing:
-    description: 'Skip publishing packages that already exist in the feed instead of failing'
+    description: 'Skip publishing packages that already exist in the feed instead of failing (checks feed-url via --check-url; no-op for PyPI Trusted Publishing)'
     required: false
     default: 'true'
 
@@ -49,7 +49,7 @@ runs:
         UV_PUBLISH_TOKEN: ${{ inputs.api-key }}
       run: |
         ARGS=""
-        if [ "${{ inputs.skip-existing }}" = "true" ]; then
-          ARGS="$ARGS --skip-existing"
+        if [ "${{ inputs.skip-existing }}" = "true" ] && [ -n "${{ inputs.feed-url }}" ]; then
+          ARGS="$ARGS --check-url ${{ inputs.feed-url }}"
         fi
         uv publish dist/* $ARGS
