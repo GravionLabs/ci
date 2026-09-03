@@ -37,6 +37,11 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: ./dist
 
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: 'latest'
+
     - name: Publish package
       shell: bash
       env:
