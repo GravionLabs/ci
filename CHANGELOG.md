@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.42] — 2026-09-03
+
+### Bug Fixes
+- Replace unsupported --skip-existing with --check-url in uv publish
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.41 [skip ci]
+
+
 ## [1.0.41] — 2026-09-03
 
 ### Bug Fixes
