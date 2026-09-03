@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.41] — 2026-09-03
+
+### Bug Fixes
+- Install uv before running uv publish in python/pypi/publish
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.40 [skip ci]
+
+
 ## [1.0.40] — 2026-06-21
 
 ### Bug Fixes
