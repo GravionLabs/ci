@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.43] — 2026-09-05
+
+### Bug Fixes
+- Only set UV_PUBLISH_URL/TOKEN when feed-url/api-key are non-empty
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.42 [skip ci]
+
+
 ## [1.0.42] — 2026-09-03
 
 ### Bug Fixes
