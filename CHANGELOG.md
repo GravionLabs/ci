@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.51] — 2026-10-11
+
+### Documentation
+- Update CHANGELOG.md for v1.0.50 [skip ci]
+
+
+### Features
+- Extra Linux packages for the Tauri setup and installers
+
+
 ## [1.0.50] — 2026-10-11
 
 ### Documentation
