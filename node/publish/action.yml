@@ -61,6 +61,19 @@ runs:
         package-manager: ${{ inputs.package-manager }}
         package-manager-version: ${{ inputs.package-manager-version }}
 
+    - name: Validate artifact path
+      if: ${{ inputs.download-artifact == 'true' && inputs.artifact-path != '' }}
+      shell: bash
+      env:
+        ARTIFACT_PATH: ${{ inputs.artifact-path }}
+      run: |
+        case "$ARTIFACT_PATH" in
+          /* | ../* | */../* | */.. | ..)
+            echo "::error::artifact-path must be a relative subdirectory without '..' segments (got '$ARTIFACT_PATH')"
+            exit 1
+            ;;
+        esac
+
     - name: Download package artifact
       if: ${{ inputs.download-artifact == 'true' }}
       uses: actions/download-artifact@v4
