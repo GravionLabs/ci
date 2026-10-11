@@ -28,6 +28,8 @@ versioning/
 └── create-version-tag/     # Create and push a git tag
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
+rust/
+├── setup/                  # Set up the Rust toolchain and cargo cache (optionally Tauri system libraries)
 node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
@@ -460,6 +462,36 @@ steps:
 |--------------|----------------------------------------------------------------------------------|----------|---------|
 | `version`    | Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4) | **Yes**  | —       |
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
+<!-- /action-docs:inputs -->
+
+---
+
+## Rust Actions
+
+### `rust/setup`
+
+Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1).
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/rust/setup@main
+  with:
+    tauri-linux-deps: 'true'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="rust/setup/action.yml" -->
+| Name               | Description                                                                                                                             | Required | Default       |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|---------------|
+| `toolchain`        | Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.    | No       |               |
+| `components`       | Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.                                         | No       | rustfmt,clippy |
+| `targets`          | Comma-separated extra targets (for example aarch64-unknown-linux-gnu)                                                                   | No       |               |
+| `cache`            | Cache cargo builds with Swatinem/rust-cache                                                                                             | No       | true          |
+| `cache-key`        | Extra cache key, for example the matrix target when several jobs share a runner OS                                                      | No       |               |
+| `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                 | No       |               |
+| `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                      | No       | false         |
 <!-- /action-docs:inputs -->
 
 ---
