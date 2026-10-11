@@ -1,0 +1,92 @@
+name: 'CI Rust'
+description: 'cargo fmt --check, clippy -D warnings and tests of a Rust workspace with a single toolchain setup'
+
+inputs:
+  toolchain:
+    description: 'Toolchain (empty: rust-toolchain.toml, else stable)'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Directory of the Cargo workspace'
+    required: false
+    default: '.'
+  exclude:
+    description: 'Space-separated crates to leave out of clippy and test (for example a Tauri crate that needs system libraries)'
+    required: false
+    default: ''
+  packages:
+    description: 'Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.'
+    required: false
+    default: ''
+  run-fmt:
+    description: 'Run cargo fmt --check'
+    required: false
+    default: 'true'
+  run-clippy:
+    description: 'Run cargo clippy with -D warnings'
+    required: false
+    default: 'true'
+  run-tests:
+    description: 'Run cargo test'
+    required: false
+    default: 'true'
+  all-features:
+    description: 'Pass --all-features to clippy and test'
+    required: false
+    default: 'false'
+  locked:
+    description: 'Pass --locked to clippy and test (fail when Cargo.lock needs an update)'
+    required: false
+    default: 'true'
+  tauri-linux-deps:
+    description: 'Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Rust
+      uses: GravionLabs/ci/rust/setup@main
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        tauri-linux-deps: ${{ inputs.tauri-linux-deps }}
+        workspaces: ${{ inputs.working-directory }}
+
+    - name: Select crates
+      id: scope
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        EXCLUDE: ${{ inputs.exclude }}
+        ALL_FEATURES: ${{ inputs.all-features }}
+        LOCKED: ${{ inputs.locked }}
+      run: |
+        scope=""
+        if [ -n "$PACKAGES" ]; then
+          for p in $PACKAGES; do scope="$scope -p $p"; done
+        else
+          scope="--workspace"
+          for p in $EXCLUDE; do scope="$scope --exclude $p"; done
+        fi
+        [ "$ALL_FEATURES" = "true" ] && scope="$scope --all-features"
+        [ "$LOCKED" = "true" ] && scope="$scope --locked"
+        echo "args=$scope" >> "$GITHUB_OUTPUT"
+
+    - name: Format
+      if: ${{ inputs.run-fmt == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: cargo fmt --all --check
+
+    - name: Clippy
+      if: ${{ inputs.run-clippy == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: cargo clippy ${{ steps.scope.outputs.args }} --all-targets -- -D warnings
+
+    - name: Test
+      if: ${{ inputs.run-tests == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: cargo test ${{ steps.scope.outputs.args }}
