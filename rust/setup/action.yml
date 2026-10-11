@@ -1,0 +1,75 @@
+name: 'Setup Rust'
+description: 'Installs the Rust toolchain (rust-toolchain.toml or an explicit one) and caches cargo builds; optionally installs the Linux libraries Tauri needs'
+
+inputs:
+  toolchain:
+    description: 'Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.'
+    required: false
+    default: ''
+  components:
+    description: 'Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.'
+    required: false
+    default: 'rustfmt,clippy'
+  targets:
+    description: 'Comma-separated extra targets (for example aarch64-unknown-linux-gnu)'
+    required: false
+    default: ''
+  cache:
+    description: 'Cache cargo builds with Swatinem/rust-cache'
+    required: false
+    default: 'true'
+  cache-key:
+    description: 'Extra cache key, for example the matrix target when several jobs share a runner OS'
+    required: false
+    default: ''
+  workspaces:
+    description: 'Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.'
+    required: false
+    default: ''
+  tauri-linux-deps:
+    description: 'Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Tauri system libraries
+      if: ${{ inputs.tauri-linux-deps == 'true' && runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev \
+          libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+    - name: Install the toolchain from rust-toolchain.toml
+      if: ${{ inputs.toolchain == '' && hashFiles('rust-toolchain.toml', 'rust-toolchain') != '' }}
+      shell: bash
+      run: rustup show active-toolchain || rustup toolchain install
+
+    - name: Install the toolchain
+      if: ${{ inputs.toolchain != '' || hashFiles('rust-toolchain.toml', 'rust-toolchain') == '' }}
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain != '' && inputs.toolchain || 'stable' }}
+      run: |
+        rustup toolchain install "$TOOLCHAIN" --profile minimal
+        rustup default "$TOOLCHAIN"
+
+    - name: Install components and targets
+      shell: bash
+      env:
+        COMPONENTS: ${{ inputs.components }}
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        if [ -n "$COMPONENTS" ]; then rustup component add ${COMPONENTS//,/ }; fi
+        if [ -n "$TARGETS" ]; then rustup target add ${TARGETS//,/ }; fi
+        rustc --version
+        cargo --version
+
+    - name: Cache cargo builds
+      if: ${{ inputs.cache == 'true' }}
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}
+        workspaces: ${{ inputs.workspaces }}
