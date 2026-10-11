@@ -47,6 +47,7 @@ node/
 ├── docker-package.yml      # Reusable Docker CI/CD workflow (version → lint → build → publish → release)
 ├── node-package.yml        # Reusable Node.js Package CI/CD workflow
 ├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
+├── tauri-app.yml           # Reusable Rust CLI and Tauri 2 app workflow (version → checks → binaries ‖ installers → publish → changelog)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -634,6 +635,48 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 | `signing-private-key-password` | Password of the signing key                                                                     | No       |                                           |
 | `checkout`                     | Check out the repository first                                                                  | No       | true                                      |
 <!-- /action-docs:inputs -->
+
+---
+
+## Reusable Workflow: `tauri-app.yml`
+
+For a Rust CLI, a Tauri 2 application, or both. `determine-version` runs first and every other job reads the version from its outputs. A push to the default branch is a release; every other run builds with `0.0.<run number>` and publishes nothing.
+
+```
+determine-version → ci → draft ─→ installers ─┐
+                        └──────→ build (CLI) ─┴→ publish → update-changelog
+```
+
+**Usage:**
+
+```yaml
+name: release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    uses: GravionLabs/ci/.github/workflows/tauri-app.yml@main
+    permissions:
+      contents: write
+    with:
+      ci-exclude: myapp-tauri
+      cli-package: myapp-cli
+      cli-binary: myapp
+      tauri: true
+      installer-args: --config src-tauri/tauri.bundle.conf.json
+    secrets: inherit
+```
+
+The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
+
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package`, `cli-binary`, `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+
+**GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
 ---
 

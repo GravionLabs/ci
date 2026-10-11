@@ -1,0 +1,242 @@
+name: Tauri app CI/CD
+
+# Reusable workflow for a Rust CLI and/or Tauri 2 application:
+#   determine-version → ci ‖ draft → build (CLI binaries) ‖ installers → publish → update-changelog
+# `determine-version` runs first and every later job reads the version from its outputs. Only a push to the
+# default branch publishes; every other run builds with the throw-away version 0.0.<run number>.
+# Call with `uses: GravionLabs/ci/.github/workflows/tauri-app.yml@main`.
+
+on:
+  workflow_call:
+    inputs:
+      gitversion-config-file:
+        description: 'Path to GitVersion.yml'
+        type: string
+        default: 'GitVersion.yml'
+      ci-exclude:
+        description: 'Space-separated crates left out of clippy and test (the Tauri crate needs system libraries)'
+        type: string
+        default: ''
+      cli-package:
+        description: 'Crate of the CLI. Empty: no CLI binaries.'
+        type: string
+        default: ''
+      cli-binary:
+        description: 'Name of the CLI binary (without .exe)'
+        type: string
+        default: ''
+      cli-matrix:
+        description: 'JSON list of {os, target} for the CLI binaries'
+        type: string
+        default: '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu"},{"os":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-gnu"},{"os":"macos-latest","target":"aarch64-apple-darwin"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc"}]'
+      tauri:
+        description: 'Build the Tauri installers'
+        type: boolean
+        default: false
+      installer-matrix:
+        description: 'JSON list of {os, target} for the installers'
+        type: string
+        default: '[{"os":"ubuntu-24.04","target":"x86_64-unknown-linux-gnu"},{"os":"macos-latest","target":"aarch64-apple-darwin"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc"}]'
+      installer-args:
+        description: 'Extra arguments for tauri build'
+        type: string
+        default: ''
+      cliff-config:
+        description: 'git-cliff configuration for the release notes and the changelog'
+        type: string
+        default: 'cliff.toml'
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  determine-version:
+    name: determine version
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      # The version to build with: the real one on a release, a numeric throw-away one otherwise.
+      build-version: ${{ steps.build.outputs.version }}
+      release: ${{ steps.build.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine version
+        id: version
+        uses: GravionLabs/ci/versioning/determine-version@main
+        with:
+          gitversion-config-file: ${{ inputs.gitversion-config-file }}
+      - name: Choose the build version
+        id: build
+        shell: bash
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/${{ github.event.repository.default_branch }}" ] && [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${{ steps.version.outputs.semver }}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  ci:
+    name: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: GravionLabs/ci/rust/ci@main
+        with:
+          exclude: ${{ inputs.ci-exclude }}
+
+  draft:
+    name: draft release
+    needs: [determine-version, ci]
+    if: ${{ inputs.tauri && needs.determine-version.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.draft.outputs.release-id }}
+    steps:
+      - id: draft
+        uses: GravionLabs/ci/tauri/draft-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.build-version }}
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: [determine-version, ci]
+    if: ${{ inputs.cli-package != '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.cli-matrix) }}
+    steps:
+      - uses: GravionLabs/ci/rust/release-binary@main
+        with:
+          version: ${{ needs.determine-version.outputs.build-version }}
+          package: ${{ inputs.cli-package }}
+          binary: ${{ inputs.cli-binary }}
+          target: ${{ matrix.target }}
+
+  installers:
+    name: installers ${{ matrix.target }}
+    needs: [determine-version, ci, draft]
+    # `draft` is skipped on builds that are not releases; those only build.
+    if: ${{ always() && inputs.tauri && needs.ci.result == 'success' && needs.draft.result != 'failure' }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.installer-matrix) }}
+    steps:
+      - uses: GravionLabs/ci/tauri/installers@main
+        with:
+          version: ${{ needs.determine-version.outputs.build-version }}
+          target: ${{ matrix.target }}
+          release-id: ${{ needs.draft.outputs.release-id }}
+          args: ${{ inputs.installer-args }}
+          signing-private-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          signing-private-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  publish:
+    name: publish release
+    needs: [determine-version, build, installers]
+    if: ${{ always() && needs.determine-version.outputs.release == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.cli-package != '' }}
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Combine checksums
+        if: ${{ inputs.cli-package != '' }}
+        run: cd dist && cat *.sha256 > SHA256SUMS && rm *.sha256
+      - name: Generate the release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: ${{ inputs.cliff-config }}
+          args: --unreleased --tag v${{ needs.determine-version.outputs.semver }} --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+      # A squash-merged release leaves no conventional commits for git-cliff; the notes are then the
+      # change lines of the squash commit message.
+      - name: Fall back to the squash commit message
+        run: |
+          if ! grep -q '^### ' RELEASE_NOTES.md; then
+            {
+              echo "## Changes"
+              echo
+              git log -1 --format=%b | grep -E '^\* (feat|fix|docs|perf|refactor)' | awk '!seen[$0]++'
+            } > RELEASE_NOTES.md
+          fi
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            [ -d dist ] && gh release upload "$tag" dist/* --clobber --repo "${{ github.repository }}"
+          else
+            if [ -d dist ]; then files="dist/*"; else files=""; fi
+            gh release create "$tag" $files --draft --target "${{ github.sha }}" \
+              --title "$tag" --repo "${{ github.repository }}"
+          fi
+          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false \
+            --title "$tag" --repo "${{ github.repository }}"
+
+  update-changelog:
+    name: update changelog
+    # After the release is published, so the new tag is part of the history. A commit pushed with the
+    # workflow token does not start another run.
+    needs: [determine-version, publish]
+    if: ${{ needs.determine-version.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Generate the changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: ${{ inputs.cliff-config }}
+        env:
+          OUTPUT: CHANGELOG.generated.md
+      - name: Commit the changelog
+        run: |
+          # An empty result must never replace the existing changelog.
+          if ! grep -q '^### ' CHANGELOG.generated.md; then
+            echo "git-cliff found no conventional commits; the changelog stays as it is."
+            exit 0
+          fi
+          mv CHANGELOG.generated.md CHANGELOG.md
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "The changelog is up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: update the changelog for v${{ needs.determine-version.outputs.semver }}"
+          git pull --rebase origin "${{ github.event.repository.default_branch }}"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
