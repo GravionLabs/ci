@@ -31,6 +31,7 @@ wiki/
 rust/
 ├── setup/                  # Set up the Rust toolchain and cargo cache (optionally Tauri system libraries)
 ├── ci/                     # cargo fmt --check, clippy -D warnings and tests with a single setup
+├── release-binary/         # Build, pack (tar.gz/zip + SHA-256), smoke test and upload a versioned binary for one target
 node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
@@ -525,6 +526,41 @@ Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and 
 | `locked`            | Pass --locked to clippy and test                                                                     | No       | true    |
 | `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                   | No       | false   |
 <!-- /action-docs:inputs -->
+
+---
+
+### `rust/release-binary`
+
+Builds one binary for one target with a given version: writes the version into the workspace `Cargo.toml` for this build only, runs `cargo build --release`, packs the binary with the extra files (`tar.gz`, or `zip` on Windows) and a SHA-256 file, runs a smoke test and uploads the artifact named after the target. Use it in a matrix of targets after `determine-version`; builds that are not releases should pass `0.0.<run number>`.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/rust/release-binary@main
+  with:
+    version: ${{ needs.determine-version.outputs.semver }}
+    package: myapp-cli
+    binary: myapp
+    target: ${{ matrix.target }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="rust/release-binary/action.yml" -->
+| Name              | Description                                                                                   | Required | Default   |
+|-------------------|-----------------------------------------------------------------------------------------------|----------|-----------|
+| `version`         | Version to build (SemVer). Written into the workspace Cargo.toml for this build only.         | Yes      |           |
+| `package`         | Crate to build (cargo -p)                                                                     | Yes      |           |
+| `binary`          | Name of the binary the crate produces (without .exe)                                          | Yes      |           |
+| `target`          | Rust target triple (for example x86_64-unknown-linux-gnu)                                     | Yes      |           |
+| `archive-name`    | Base name of the archive. Default: <binary>-<target>                                          | No       |           |
+| `extra-files`     | Space-separated files to pack next to the binary                                              | No       | README.md |
+| `smoke-test-args` | Arguments to run the packed binary with as a smoke test (empty to skip)                       | No       | --version |
+| `checkout`        | Check out the repository first                                                                | No       | true      |
+| `upload`          | Upload the archive and its checksum as the artifact <target>                                  | No       | true      |
+<!-- /action-docs:inputs -->
+
+**Outputs:** `archive` (file name of the archive).
 
 ---
 

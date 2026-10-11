@@ -1,0 +1,116 @@
+name: 'Rust release binary'
+description: 'Builds a Rust binary for one target with a given version, packs it with a SHA-256 file, smoke tests it and uploads it as an artifact'
+
+inputs:
+  version:
+    description: 'Version to build (SemVer). Written into the workspace Cargo.toml for this build only. Non-release builds should pass 0.0.<run number>.'
+    required: true
+  package:
+    description: 'Crate to build (cargo -p)'
+    required: true
+  binary:
+    description: 'Name of the binary the crate produces (without .exe)'
+    required: true
+  target:
+    description: 'Rust target triple (for example x86_64-unknown-linux-gnu)'
+    required: true
+  archive-name:
+    description: 'Base name of the archive. Default: <binary>-<target>'
+    required: false
+    default: ''
+  extra-files:
+    description: 'Space-separated files to pack next to the binary (for example README.md)'
+    required: false
+    default: 'README.md'
+  smoke-test-args:
+    description: 'Arguments to run the packed binary with as a smoke test (empty to skip)'
+    required: false
+    default: '--version'
+  checkout:
+    description: 'Check out the repository first'
+    required: false
+    default: 'true'
+  upload:
+    description: 'Upload the archive and its checksum as the artifact <target>'
+    required: false
+    default: 'true'
+
+outputs:
+  archive:
+    description: 'File name of the archive'
+    value: ${{ steps.package.outputs.archive }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout
+      if: ${{ inputs.checkout == 'true' }}
+      uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: GravionLabs/ci/rust/setup@main
+      with:
+        targets: ${{ inputs.target }}
+        cache-key: ${{ inputs.target }}
+
+    - name: Set the version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      # The workspace version is the only `version =` at the start of a line.
+      run: sed -i.bak -E "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
+
+    - name: Build
+      shell: bash
+      # No --locked: the workspace version changed, so Cargo.lock is refreshed.
+      run: cargo build --release -p "${{ inputs.package }}" --target "${{ inputs.target }}"
+
+    - name: Package
+      id: package
+      shell: bash
+      env:
+        BINARY: ${{ inputs.binary }}
+        TARGET: ${{ inputs.target }}
+        NAME: ${{ inputs.archive-name }}
+        FILES: ${{ inputs.extra-files }}
+      run: |
+        name="${NAME:-$BINARY-$TARGET}"
+        mkdir "$name"
+        for f in $FILES; do cp "$f" "$name/"; done
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cp "target/$TARGET/release/$BINARY.exe" "$name/"
+          7z a "$name.zip" "$name" > /dev/null
+          archive="$name.zip"
+        else
+          cp "target/$TARGET/release/$BINARY" "$name/"
+          tar czf "$name.tar.gz" "$name"
+          archive="$name.tar.gz"
+        fi
+        if command -v sha256sum > /dev/null; then
+          sha256sum "$archive" > "$archive.sha256"
+        else
+          shasum -a 256 "$archive" > "$archive.sha256"
+        fi
+        echo "archive=$archive" >> "$GITHUB_OUTPUT"
+        echo "dir=$name" >> "$GITHUB_OUTPUT"
+
+    - name: Smoke test the binary
+      if: ${{ inputs.smoke-test-args != '' }}
+      shell: bash
+      env:
+        BINARY: ${{ inputs.binary }}
+        DIR: ${{ steps.package.outputs.dir }}
+        ARGS: ${{ inputs.smoke-test-args }}
+      run: |
+        bin="$DIR/$BINARY"
+        [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
+        "$bin" $ARGS
+
+    - name: Upload the artifact
+      if: ${{ inputs.upload == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.target }}
+        path: |
+          ${{ steps.package.outputs.archive }}
+          ${{ steps.package.outputs.archive }}.sha256
