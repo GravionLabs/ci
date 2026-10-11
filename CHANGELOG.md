@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.53] — 2026-10-11
+
+### Bug Fixes
+- A version with a pre-release label is published as a pre-release
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.52 [skip ci]
+
+
 ## [1.0.52] — 2026-10-11
 
 ### Bug Fixes
