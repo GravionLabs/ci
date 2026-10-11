@@ -30,6 +30,10 @@ inputs:
     description: 'Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.'
     required: false
     default: 'false'
+  linux-packages:
+    description: 'Space-separated extra apt packages to install on Linux runners (for example libgtk-layer-shell-dev), besides the Tauri libraries. Ignored on other runners.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -41,6 +45,16 @@ runs:
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev \
           libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+    - name: Install extra Linux packages
+      if: ${{ inputs.linux-packages != '' && runner.os == 'Linux' }}
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.linux-packages }}
+      run: |
+        sudo apt-get update
+        # shellcheck disable=SC2086  # the input is a list of package names
+        sudo apt-get install -y $PACKAGES
 
     - name: Install the toolchain from rust-toolchain.toml
       if: ${{ inputs.toolchain == '' && hashFiles('rust-toolchain.toml', 'rust-toolchain') != '' }}

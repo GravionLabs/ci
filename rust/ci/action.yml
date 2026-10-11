@@ -42,6 +42,10 @@ inputs:
     description: 'Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)'
     required: false
     default: 'false'
+  linux-packages:
+    description: 'Space-separated extra apt packages to install on Linux runners, besides the Tauri libraries'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -51,6 +55,7 @@ runs:
       with:
         toolchain: ${{ inputs.toolchain }}
         tauri-linux-deps: ${{ inputs.tauri-linux-deps }}
+        linux-packages: ${{ inputs.linux-packages }}
         workspaces: ${{ inputs.working-directory }}
 
     - name: Select crates

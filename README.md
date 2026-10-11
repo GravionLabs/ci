@@ -371,7 +371,7 @@ Supports [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (n
 | `api-key`           | API token or PAT for the target feed (not required when using PyPI Trusted Publishing)                                                                                                                                                                                                                    | No       |         |
 | `download-artifact` | Whether to download the dist artifact before publishing (set to true when running in a separate job)                                                                                                                                                                                                      | No       | false   |
 | `artifact-name`     | Name of the artifact to download (only used when download-artifact is true)                                                                                                                                                                                                                               | No       | dist    |
-| `skip-existing`     | Skip publishing packages that already exist in the feed instead of failing                                                                                                                                                                                                                                | No       | true    |
+| `skip-existing`     | Skip publishing packages that already exist in the feed instead of failing (checks feed-url via --check-url; no-op for PyPI Trusted Publishing)                                                                                                                                                           | No       | true    |
 <!-- /action-docs:inputs -->
 
 ---
@@ -489,15 +489,16 @@ Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an expli
 **Inputs**
 
 <!-- action-docs:inputs source="rust/setup/action.yml" -->
-| Name               | Description                                                                                                                             | Required | Default       |
-|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|---------------|
-| `toolchain`        | Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.    | No       |               |
-| `components`       | Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.                                         | No       | rustfmt,clippy |
-| `targets`          | Comma-separated extra targets (for example aarch64-unknown-linux-gnu)                                                                   | No       |               |
-| `cache`            | Cache cargo builds with Swatinem/rust-cache                                                                                             | No       | true          |
-| `cache-key`        | Extra cache key, for example the matrix target when several jobs share a runner OS                                                      | No       |               |
-| `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                 | No       |               |
-| `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                      | No       | false         |
+| Name               | Description                                                                                                                                                 | Required | Default        |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------|
+| `toolchain`        | Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.                         | No       |                |
+| `components`       | Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.                                                             | No       | rustfmt,clippy |
+| `targets`          | Comma-separated extra targets (for example aarch64-unknown-linux-gnu)                                                                                       | No       |                |
+| `cache`            | Cache cargo builds with Swatinem/rust-cache                                                                                                                 | No       | true           |
+| `cache-key`        | Extra cache key, for example the matrix target when several jobs share a runner OS                                                                          | No       |                |
+| `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                                     | No       |                |
+| `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                                         | No       | false          |
+| `linux-packages`   | Space-separated extra apt packages to install on Linux runners (for example libgtk-layer-shell-dev), besides the Tauri libraries. Ignored on other runners. | No       |                |
 <!-- /action-docs:inputs -->
 
 ---
@@ -517,18 +518,19 @@ Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and 
 **Inputs**
 
 <!-- action-docs:inputs source="rust/ci/action.yml" -->
-| Name                | Description                                                                                          | Required | Default |
-|---------------------|------------------------------------------------------------------------------------------------------|----------|---------|
-| `toolchain`         | Toolchain (empty: rust-toolchain.toml, else stable)                                                  | No       |         |
-| `working-directory` | Directory of the Cargo workspace                                                                     | No       | .       |
-| `exclude`           | Space-separated crates to leave out of clippy and test                                               | No       |         |
-| `packages`          | Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.       | No       |         |
-| `run-fmt`           | Run cargo fmt --check                                                                                | No       | true    |
-| `run-clippy`        | Run cargo clippy with -D warnings                                                                    | No       | true    |
-| `run-tests`         | Run cargo test                                                                                       | No       | true    |
-| `all-features`      | Pass --all-features to clippy and test                                                               | No       | false   |
-| `locked`            | Pass --locked to clippy and test                                                                     | No       | true    |
-| `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                   | No       | false   |
+| Name                | Description                                                                                                    | Required | Default |
+|---------------------|----------------------------------------------------------------------------------------------------------------|----------|---------|
+| `toolchain`         | Toolchain (empty: rust-toolchain.toml, else stable)                                                            | No       |         |
+| `working-directory` | Directory of the Cargo workspace                                                                               | No       | .       |
+| `exclude`           | Space-separated crates to leave out of clippy and test (for example a Tauri crate that needs system libraries) | No       |         |
+| `packages`          | Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.                 | No       |         |
+| `run-fmt`           | Run cargo fmt --check                                                                                          | No       | true    |
+| `run-clippy`        | Run cargo clippy with -D warnings                                                                              | No       | true    |
+| `run-tests`         | Run cargo test                                                                                                 | No       | true    |
+| `all-features`      | Pass --all-features to clippy and test                                                                         | No       | false   |
+| `locked`            | Pass --locked to clippy and test (fail when Cargo.lock needs an update)                                        | No       | true    |
+| `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                             | No       | false   |
+| `linux-packages`    | Space-separated extra apt packages to install on Linux runners, besides the Tauri libraries                    | No       |         |
 <!-- /action-docs:inputs -->
 
 ---
@@ -551,17 +553,17 @@ Builds one binary for one target with a given version: writes the version into t
 **Inputs**
 
 <!-- action-docs:inputs source="rust/release-binary/action.yml" -->
-| Name              | Description                                                                                   | Required | Default   |
-|-------------------|-----------------------------------------------------------------------------------------------|----------|-----------|
-| `version`         | Version to build (SemVer). Written into the workspace Cargo.toml for this build only.         | Yes      |           |
-| `package`         | Crate to build (cargo -p); several crates separated by spaces                                 | Yes      |           |
-| `binary`          | Name of the binary (without .exe); with several crates all names, separated by spaces; the first names the archive | Yes      |           |
-| `target`          | Rust target triple (for example x86_64-unknown-linux-gnu)                                     | Yes      |           |
-| `archive-name`    | Base name of the archive. Default: <binary>-<target>                                          | No       |           |
-| `extra-files`     | Space-separated files to pack next to the binary                                              | No       | README.md |
-| `smoke-test-args` | Arguments to run the packed binary with as a smoke test (empty to skip)                       | No       | --version |
-| `checkout`        | Check out the repository first                                                                | No       | true      |
-| `upload`          | Upload the archive and its checksum as the artifact <target>                                  | No       | true      |
+| Name              | Description                                                                                                                                            | Required | Default   |
+|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
+| `version`         | Version to build (SemVer). Written into the workspace Cargo.toml for this build only. Non-release builds should pass 0.0.<run number>.                 | **Yes**  | —         |
+| `package`         | Crate to build (cargo -p). Several crates are separated by spaces.                                                                                     | **Yes**  | —         |
+| `binary`          | Name of the binary the crate produces (without .exe). With several crates, the names of all binaries separated by spaces; the first names the archive. | **Yes**  | —         |
+| `target`          | Rust target triple (for example x86_64-unknown-linux-gnu)                                                                                              | **Yes**  | —         |
+| `archive-name`    | Base name of the archive. Default: <first binary>-<target>                                                                                             | No       |           |
+| `extra-files`     | Space-separated files to pack next to the binary (for example README.md)                                                                               | No       | README.md |
+| `smoke-test-args` | Arguments to run the packed binary with as a smoke test (empty to skip)                                                                                | No       | --version |
+| `checkout`        | Check out the repository first                                                                                                                         | No       | true      |
+| `upload`          | Upload the archive and its checksum as the artifact <target>                                                                                           | No       | true      |
 <!-- /action-docs:inputs -->
 
 **Outputs:** `archive` (file name of the archive).
@@ -620,20 +622,21 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 **Inputs**
 
 <!-- action-docs:inputs source="tauri/installers/action.yml" -->
-| Name                           | Description                                                                                     | Required | Default                                   |
-|--------------------------------|-------------------------------------------------------------------------------------------------|----------|-------------------------------------------|
-| `version`                      | Version to build (MSI needs a numeric one, so non-release builds pass 0.0.<run number>)         | Yes      |                                           |
-| `target`                       | Rust target triple of this matrix entry                                                         | Yes      |                                           |
-| `release-id`                   | Id of the draft release to attach the installers to. Empty: build only, upload nothing.         | No       |                                           |
-| `args`                         | Extra arguments for tauri build                                                                 | No       |                                           |
-| `version-files`                | Space-separated JSON files whose version field is set                                           | No       | package.json src-tauri/tauri.conf.json    |
-| `cargo-toml`                   | Cargo.toml whose first version line is set                                                      | No       | Cargo.toml                                |
-| `node-version-file`            | File with the Node.js version                                                                   | No       | .nvmrc                                    |
-| `package-manager`              | pnpm or npm                                                                                     | No       | pnpm                                      |
-| `token`                        | GITHUB_TOKEN with contents: write                                                               | No       | github.token                              |
-| `signing-private-key`          | Private key that signs the update packages                                                      | No       |                                           |
-| `signing-private-key-password` | Password of the signing key                                                                     | No       |                                           |
-| `checkout`                     | Check out the repository first                                                                  | No       | true                                      |
+| Name                           | Description                                                                                                                       | Required | Default                                |
+|--------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
+| `version`                      | Version to build (SemVer; MSI needs a numeric one, so non-release builds pass 0.0.<run number>)                                   | **Yes**  | —                                      |
+| `target`                       | Rust target triple of this matrix entry                                                                                           | **Yes**  | —                                      |
+| `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.           | No       |                                        |
+| `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                           | No       |                                        |
+| `version-files`                | Space-separated JSON files whose version field is set                                                                             | No       | package.json src-tauri/tauri.conf.json |
+| `cargo-toml`                   | Cargo.toml whose first package/workspace version line is set                                                                      | No       | Cargo.toml                             |
+| `node-version-file`            | File with the Node.js version (for example .nvmrc)                                                                                | No       | .nvmrc                                 |
+| `package-manager`              | pnpm or npm                                                                                                                       | No       | pnpm                                   |
+| `linux-packages`               | Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev) | No       |                                        |
+| `token`                        | GITHUB_TOKEN with contents: write                                                                                                 | No       | ${{ github.token }}                    |
+| `signing-private-key`          | Private key that signs the update packages (secret TAURI_SIGNING_PRIVATE_KEY). Empty: unsigned updater artifacts are not created. | No       |                                        |
+| `signing-private-key-password` | Password of the signing key                                                                                                       | No       |                                        |
+| `checkout`                     | Check out the repository first                                                                                                    | No       | true                                   |
 <!-- /action-docs:inputs -->
 
 ---
@@ -674,7 +677,7 @@ jobs:
 
 The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
 
-**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
 
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
@@ -817,17 +820,18 @@ Supports both same-job and cross-job publish patterns:
 **Inputs**
 
 <!-- action-docs:inputs source="node/publish/action.yml" -->
-| Name                      | Description                                                                                                                             | Required | Default                     |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
-| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm                         |
-| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |                             |
-| `registry-url`            | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                              | No       | https://npm.pkg.github.com/ |
-| `npm-token`               | NPM token or GitHub PAT for registry authentication                                                                                     | **Yes**  | —                           |
-| `publish-command`         | Override the publish command. If empty, automatically determined from package-manager and publish-directory.                            | No       |                             |
-| `publish-directory`       | Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given.        | No       |                             |
-| `working-directory`       | Working directory containing the Node.js project                                                                                        | No       | .                           |
-| `download-artifact`       | Whether to download the package artifact before publishing (set to true when running in a separate job)                                 | No       | false                       |
-| `artifact-name`           | Name of the artifact to download (only used when download-artifact is true)                                                             | No       | npm-package                 |
+| Name                      | Description                                                                                                                                                         | Required | Default                     |
+|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------------------------|
+| `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                                            | No       | npm                         |
+| `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.                             | No       |                             |
+| `registry-url`            | URL of the npm registry (e.g. https://npm.pkg.github.com/)                                                                                                          | No       | https://npm.pkg.github.com/ |
+| `npm-token`               | NPM token or GitHub PAT for registry authentication                                                                                                                 | **Yes**  | —                           |
+| `publish-command`         | Override the publish command. If empty, automatically determined from package-manager and publish-directory.                                                        | No       |                             |
+| `publish-directory`       | Directory to publish from (e.g. dist/my-lib). Appended to the default publish command when no publish-command override is given.                                    | No       |                             |
+| `working-directory`       | Working directory containing the Node.js project                                                                                                                    | No       | .                           |
+| `download-artifact`       | Whether to download the package artifact before publishing (set to true when running in a separate job)                                                             | No       | false                       |
+| `artifact-name`           | Name of the artifact to download (only used when download-artifact is true)                                                                                         | No       | npm-package                 |
+| `version`                 | Version to set in package.json before publishing (e.g. from GitVersion). Applied after artifact download so it works with both local and artifact-based publishing. | No       |                             |
 <!-- /action-docs:inputs -->
 
 ---
