@@ -30,6 +30,7 @@ wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 rust/
 ├── setup/                  # Set up the Rust toolchain and cargo cache (optionally Tauri system libraries)
+├── ci/                     # cargo fmt --check, clippy -D warnings and tests with a single setup
 node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
@@ -492,6 +493,37 @@ Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an expli
 | `cache-key`        | Extra cache key, for example the matrix target when several jobs share a runner OS                                                      | No       |               |
 | `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                 | No       |               |
 | `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                      | No       | false         |
+<!-- /action-docs:inputs -->
+
+---
+
+### `rust/ci`
+
+Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` after one `rust/setup`. `exclude` leaves crates out of clippy and test (a Tauri crate that needs system libraries), `packages` limits the run to some crates.
+
+**Usage:**
+
+```yaml
+- uses: GravionLabs/ci/rust/ci@main
+  with:
+    exclude: 'myapp-tauri'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="rust/ci/action.yml" -->
+| Name                | Description                                                                                          | Required | Default |
+|---------------------|------------------------------------------------------------------------------------------------------|----------|---------|
+| `toolchain`         | Toolchain (empty: rust-toolchain.toml, else stable)                                                  | No       |         |
+| `working-directory` | Directory of the Cargo workspace                                                                     | No       | .       |
+| `exclude`           | Space-separated crates to leave out of clippy and test                                               | No       |         |
+| `packages`          | Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.       | No       |         |
+| `run-fmt`           | Run cargo fmt --check                                                                                | No       | true    |
+| `run-clippy`        | Run cargo clippy with -D warnings                                                                    | No       | true    |
+| `run-tests`         | Run cargo test                                                                                       | No       | true    |
+| `all-features`      | Pass --all-features to clippy and test                                                               | No       | false   |
+| `locked`            | Pass --locked to clippy and test                                                                     | No       | true    |
+| `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                   | No       | false   |
 <!-- /action-docs:inputs -->
 
 ---
