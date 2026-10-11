@@ -554,8 +554,8 @@ Builds one binary for one target with a given version: writes the version into t
 | Name              | Description                                                                                   | Required | Default   |
 |-------------------|-----------------------------------------------------------------------------------------------|----------|-----------|
 | `version`         | Version to build (SemVer). Written into the workspace Cargo.toml for this build only.         | Yes      |           |
-| `package`         | Crate to build (cargo -p)                                                                     | Yes      |           |
-| `binary`          | Name of the binary the crate produces (without .exe)                                          | Yes      |           |
+| `package`         | Crate to build (cargo -p); several crates separated by spaces                                 | Yes      |           |
+| `binary`          | Name of the binary (without .exe); with several crates all names, separated by spaces; the first names the archive | Yes      |           |
 | `target`          | Rust target triple (for example x86_64-unknown-linux-gnu)                                     | Yes      |           |
 | `archive-name`    | Base name of the archive. Default: <binary>-<target>                                          | No       |           |
 | `extra-files`     | Space-separated files to pack next to the binary                                              | No       | README.md |
@@ -674,7 +674,7 @@ jobs:
 
 The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
 
-**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package`, `cli-binary`, `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
 
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
