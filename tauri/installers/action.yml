@@ -32,6 +32,10 @@ inputs:
     description: 'pnpm or npm'
     required: false
     default: 'pnpm'
+  linux-packages:
+    description: 'Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev)'
+    required: false
+    default: ''
   token:
     description: 'GITHUB_TOKEN with contents: write'
     required: false
@@ -72,6 +76,7 @@ runs:
         targets: ${{ inputs.target }}
         cache-key: installers-${{ inputs.target }}
         tauri-linux-deps: 'true'
+        linux-packages: ${{ inputs.linux-packages }}
 
     - name: Set the version
       shell: bash
