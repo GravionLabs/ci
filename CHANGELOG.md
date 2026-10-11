@@ -6,7 +6,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [1.0.48] — 2026-10-11
+## [1.0.49] — 2026-10-11
+
+### Documentation
+- Update CHANGELOG.md for v1.0.48 [skip ci]
+
+
+## [1.0.49] — 2026-10-11
 
 ### Features
 - Add the reusable tauri-app workflow (#34)
