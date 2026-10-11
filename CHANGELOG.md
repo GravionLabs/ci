@@ -6,6 +6,21 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.52] — 2026-10-11
+
+### Bug Fixes
+- Set node package version in publish action after artifact download
+- Validate artifact-path in node/publish
+
+
+### Documentation
+- Update CHANGELOG.md for v1.0.51 [skip ci]
+
+
+### Features
+- Implement workflow audit epic
+
+
 ## [1.0.51] — 2026-10-11
 
 ### Documentation
