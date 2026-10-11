@@ -1,17 +1,10 @@
 name: NuGet Package CI/CD
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  workflow_dispatch:
-    inputs:
-      verbosity:
-        description: 'Verbosity level for dotnet commands'
-        type: choice
-        options: [minimal, quiet, normal, detailed, diagnostic]
-        default: minimal
-      force-publish:
-        description: 'Publish regardless of the current branch'
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       dotnet-version:
@@ -113,6 +106,11 @@ on:
         type: string
         required: false
         default: 'v'
+      main-branch:
+        description: 'Name of the main branch; packages are only published from this branch'
+        type: string
+        required: false
+        default: 'main'
     secrets:
       feed-token:
         description: 'Access token for the private restore feed'
@@ -186,7 +184,7 @@ jobs:
   publish:
     name: Publish
     needs: [determine-version, build-test-pack]
-    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     runs-on: ubuntu-latest
     environment: nuget-publish
     steps:
@@ -200,7 +198,7 @@ jobs:
   release:
     name: Release
     needs: [determine-version, publish]
-    if: github.ref == 'refs/heads/main' || inputs.force-publish == true
+    if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
