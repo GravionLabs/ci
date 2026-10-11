@@ -1,0 +1,111 @@
+name: 'Tauri installers'
+description: 'Builds the installers of a Tauri 2 application for the runner it runs on, with a given version, and attaches them to an existing draft release'
+
+inputs:
+  version:
+    description: 'Version to build (SemVer; MSI needs a numeric one, so non-release builds pass 0.0.<run number>)'
+    required: true
+  target:
+    description: 'Rust target triple of this matrix entry'
+    required: true
+  release-id:
+    description: 'Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.'
+    required: false
+    default: ''
+  args:
+    description: 'Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)'
+    required: false
+    default: ''
+  version-files:
+    description: 'Space-separated JSON files whose version field is set'
+    required: false
+    default: 'package.json src-tauri/tauri.conf.json'
+  cargo-toml:
+    description: 'Cargo.toml whose first package/workspace version line is set'
+    required: false
+    default: 'Cargo.toml'
+  node-version-file:
+    description: 'File with the Node.js version (for example .nvmrc)'
+    required: false
+    default: '.nvmrc'
+  package-manager:
+    description: 'pnpm or npm'
+    required: false
+    default: 'pnpm'
+  token:
+    description: 'GITHUB_TOKEN with contents: write'
+    required: false
+    default: ${{ github.token }}
+  signing-private-key:
+    description: 'Private key that signs the update packages (secret TAURI_SIGNING_PRIVATE_KEY). Empty: unsigned updater artifacts are not created.'
+    required: false
+    default: ''
+  signing-private-key-password:
+    description: 'Password of the signing key'
+    required: false
+    default: ''
+  checkout:
+    description: 'Check out the repository first'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout
+      if: ${{ inputs.checkout == 'true' }}
+      uses: actions/checkout@v4
+
+    - name: Set up pnpm
+      if: ${{ inputs.package-manager == 'pnpm' }}
+      uses: pnpm/action-setup@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: ${{ inputs.package-manager }}
+
+    - name: Set up Rust
+      uses: GravionLabs/ci/rust/setup@main
+      with:
+        targets: ${{ inputs.target }}
+        cache-key: installers-${{ inputs.target }}
+        tauri-linux-deps: 'true'
+
+    - name: Set the version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        JSON_FILES: ${{ inputs.version-files }}
+        CARGO_TOML: ${{ inputs.cargo-toml }}
+      run: |
+        node -e "
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          for (const file of process.env.JSON_FILES.split(/\s+/).filter(Boolean)) {
+            const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+            json.version = version;
+            fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
+          }
+          const cargo = fs.readFileSync(process.env.CARGO_TOML, 'utf8');
+          fs.writeFileSync(process.env.CARGO_TOML, cargo.replace(/^version = \".*\"/m, 'version = \"' + version + '\"'));
+        "
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ "${{ inputs.package-manager }}" = "pnpm" ]; then pnpm install --frozen-lockfile; else npm ci; fi
+
+    - name: Build the installers
+      uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        CARGO_INCREMENTAL: 0
+        TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.signing-private-key }}
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.signing-private-key-password }}
+      with:
+        # All matrix jobs upload into the draft that tauri/draft-release created; none creates a release
+        # itself, which is what made parallel jobs end up with two drafts.
+        releaseId: ${{ inputs.release-id }}
+        args: --target ${{ inputs.target }} ${{ inputs.args }}

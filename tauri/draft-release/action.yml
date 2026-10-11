@@ -1,0 +1,47 @@
+name: 'Tauri draft release'
+description: 'Creates the draft GitHub release for a version once, or finds the draft that exists, so that parallel installer jobs all upload into the same release'
+
+inputs:
+  version:
+    description: 'Version of the release (SemVer, without the v)'
+    required: true
+  token:
+    description: 'Token with contents: write'
+    required: false
+    default: ${{ github.token }}
+  tag-prefix:
+    description: 'Prefix of the tag'
+    required: false
+    default: 'v'
+
+outputs:
+  release-id:
+    description: 'Numeric id of the draft release; pass it to tauri/installers'
+    value: ${{ steps.draft.outputs.id }}
+  tag:
+    description: 'Tag of the release'
+    value: ${{ steps.draft.outputs.tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create or find the draft
+      id: draft
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
+        REPO: ${{ github.repository }}
+      run: |
+        id=$(gh api "repos/$REPO/releases" --paginate \
+          --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id" | head -n1)
+        if [ -z "$id" ]; then
+          id=$(gh api -X POST "repos/$REPO/releases" \
+            -f tag_name="$TAG" -f name="$TAG" -f target_commitish="$GITHUB_SHA" \
+            -F draft=true --jq .id)
+          echo "Created the draft $TAG ($id)"
+        else
+          echo "Found the draft $TAG ($id)"
+        fi
+        echo "id=$id" >> "$GITHUB_OUTPUT"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"

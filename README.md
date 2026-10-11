@@ -32,6 +32,9 @@ rust/
 ├── setup/                  # Set up the Rust toolchain and cargo cache (optionally Tauri system libraries)
 ├── ci/                     # cargo fmt --check, clippy -D warnings and tests with a single setup
 ├── release-binary/         # Build, pack (tar.gz/zip + SHA-256), smoke test and upload a versioned binary for one target
+tauri/
+├── draft-release/          # Create or find the draft release of a version, so parallel installer jobs share it
+├── installers/             # Versioned Tauri 2 installers for one runner, attached to the draft release
 node/
 ├── setup/                  # Set up Node.js and npm cache
 ├── build/                  # Install deps and build a Node.js project
@@ -561,6 +564,76 @@ Builds one binary for one target with a given version: writes the version into t
 <!-- /action-docs:inputs -->
 
 **Outputs:** `archive` (file name of the archive).
+
+## Tauri Actions
+
+Release the installers of a Tauri 2 application in two steps. A matrix of installer jobs must not each create the release: parallel jobs then end up with two drafts and the assets split between them. `tauri/draft-release` creates the draft once (or finds it), and every `tauri/installers` job uploads into that draft by its id.
+
+```yaml
+jobs:
+  draft:
+    needs: determine-version
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      release-id: ${{ steps.draft.outputs.release-id }}
+    steps:
+      - id: draft
+        uses: GravionLabs/ci/tauri/draft-release@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+
+  installers:
+    needs: [determine-version, draft]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    permissions: { contents: write }
+    steps:
+      - uses: GravionLabs/ci/tauri/installers@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+          target: ${{ matrix.target }}
+          release-id: ${{ needs.draft.outputs.release-id }}
+          signing-private-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          signing-private-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+```
+
+The publish job then publishes the draft. Only builds from `main` should create the draft; other builds pass no `release-id` and only build.
+
+`latest.json` of the updater is written by every installer job. If concurrent writes still lose a platform (check the published `latest.json`), set `strategy.max-parallel: 1` on the installers job.
+
+### `tauri/draft-release`
+
+**Inputs:** `version` (required), `token` (default `github.token`), `tag-prefix` (default `v`). **Outputs:** `release-id`, `tag`.
+
+### `tauri/installers`
+
+Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`, installs Node, Rust (with the Tauri Linux libraries) and the dependencies, and runs `tauri-apps/tauri-action` for the matrix target.
+
+**Inputs**
+
+<!-- action-docs:inputs source="tauri/installers/action.yml" -->
+| Name                           | Description                                                                                     | Required | Default                                   |
+|--------------------------------|-------------------------------------------------------------------------------------------------|----------|-------------------------------------------|
+| `version`                      | Version to build (MSI needs a numeric one, so non-release builds pass 0.0.<run number>)         | Yes      |                                           |
+| `target`                       | Rust target triple of this matrix entry                                                         | Yes      |                                           |
+| `release-id`                   | Id of the draft release to attach the installers to. Empty: build only, upload nothing.         | No       |                                           |
+| `args`                         | Extra arguments for tauri build                                                                 | No       |                                           |
+| `version-files`                | Space-separated JSON files whose version field is set                                           | No       | package.json src-tauri/tauri.conf.json    |
+| `cargo-toml`                   | Cargo.toml whose first version line is set                                                      | No       | Cargo.toml                                |
+| `node-version-file`            | File with the Node.js version                                                                   | No       | .nvmrc                                    |
+| `package-manager`              | pnpm or npm                                                                                     | No       | pnpm                                      |
+| `token`                        | GITHUB_TOKEN with contents: write                                                               | No       | github.token                              |
+| `signing-private-key`          | Private key that signs the update packages                                                      | No       |                                           |
+| `signing-private-key-password` | Password of the signing key                                                                     | No       |                                           |
+| `checkout`                     | Check out the repository first                                                                  | No       | true                                      |
+<!-- /action-docs:inputs -->
 
 ---
 
