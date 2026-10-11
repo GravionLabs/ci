@@ -6,10 +6,15 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [1.0.46] — 2026-10-11
+## [1.0.47] — 2026-10-11
 
 ### Documentation
 - Update CHANGELOG.md for v1.0.45 [skip ci]
+- Update CHANGELOG.md for v1.0.46 [skip ci]
+
+
+### Features
+- Add the rust/release-binary action (#32)
 
 
 ## [1.0.46] — 2026-10-11
