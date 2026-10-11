@@ -6,10 +6,15 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [1.0.49] — 2026-10-11
+## [1.0.50] — 2026-10-11
 
 ### Documentation
 - Update CHANGELOG.md for v1.0.48 [skip ci]
+- Update CHANGELOG.md for v1.0.49 [skip ci]
+
+
+### Features
+- Rust/release-binary packs several binaries into one archive
 
 
 ## [1.0.49] — 2026-10-11
