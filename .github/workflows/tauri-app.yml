@@ -204,7 +204,9 @@ jobs:
             gh release create "$tag" $files --draft --target "${{ github.sha }}" \
               --title "$tag" --repo "${{ github.repository }}"
           fi
-          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false \
+          # A version with a pre-release label (0.1.0-beta.28) is a pre-release, not the "latest" release.
+          if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
+          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
             --title "$tag" --repo "${{ github.repository }}"
 
   update-changelog:
