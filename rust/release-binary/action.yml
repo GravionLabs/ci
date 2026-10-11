@@ -6,16 +6,16 @@ inputs:
     description: 'Version to build (SemVer). Written into the workspace Cargo.toml for this build only. Non-release builds should pass 0.0.<run number>.'
     required: true
   package:
-    description: 'Crate to build (cargo -p)'
+    description: 'Crate to build (cargo -p). Several crates are separated by spaces.'
     required: true
   binary:
-    description: 'Name of the binary the crate produces (without .exe)'
+    description: 'Name of the binary the crate produces (without .exe). With several crates, the names of all binaries separated by spaces; the first names the archive.'
     required: true
   target:
     description: 'Rust target triple (for example x86_64-unknown-linux-gnu)'
     required: true
   archive-name:
-    description: 'Base name of the archive. Default: <binary>-<target>'
+    description: 'Base name of the archive. Default: <first binary>-<target>'
     required: false
     default: ''
   extra-files:
@@ -63,7 +63,13 @@ runs:
     - name: Build
       shell: bash
       # No --locked: the workspace version changed, so Cargo.lock is refreshed.
-      run: cargo build --release -p "${{ inputs.package }}" --target "${{ inputs.target }}"
+      env:
+        PACKAGES: ${{ inputs.package }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        args=()
+        for p in $PACKAGES; do args+=(-p "$p"); done
+        cargo build --release "${args[@]}" --target "$TARGET"
 
     - name: Package
       id: package
@@ -74,15 +80,16 @@ runs:
         NAME: ${{ inputs.archive-name }}
         FILES: ${{ inputs.extra-files }}
       run: |
-        name="${NAME:-$BINARY-$TARGET}"
+        first="${BINARY%% *}"
+        name="${NAME:-$first-$TARGET}"
         mkdir "$name"
         for f in $FILES; do cp "$f" "$name/"; done
         if [ "$RUNNER_OS" = "Windows" ]; then
-          cp "target/$TARGET/release/$BINARY.exe" "$name/"
+          for b in $BINARY; do cp "target/$TARGET/release/$b.exe" "$name/"; done
           7z a "$name.zip" "$name" > /dev/null
           archive="$name.zip"
         else
-          cp "target/$TARGET/release/$BINARY" "$name/"
+          for b in $BINARY; do cp "target/$TARGET/release/$b" "$name/"; done
           tar czf "$name.tar.gz" "$name"
           archive="$name.tar.gz"
         fi
@@ -102,9 +109,11 @@ runs:
         DIR: ${{ steps.package.outputs.dir }}
         ARGS: ${{ inputs.smoke-test-args }}
       run: |
-        bin="$DIR/$BINARY"
-        [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
-        "$bin" $ARGS
+        for b in $BINARY; do
+          bin="$DIR/$b"
+          [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
+          "$bin" $ARGS
+        done
 
     - name: Upload the artifact
       if: ${{ inputs.upload == 'true' }}

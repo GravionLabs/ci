@@ -18,11 +18,11 @@ on:
         type: string
         default: ''
       cli-package:
-        description: 'Crate of the CLI. Empty: no CLI binaries.'
+        description: 'Crate of the CLI; several crates separated by spaces go into one archive. Empty: no CLI binaries.'
         type: string
         default: ''
       cli-binary:
-        description: 'Name of the CLI binary (without .exe)'
+        description: 'Name of the CLI binary (without .exe); with several crates all binaries separated by spaces, the first names the archive'
         type: string
         default: ''
       cli-matrix:
