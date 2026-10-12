@@ -57,6 +57,11 @@ on:
         type: string
         required: false
         default: ''
+      publish-directories:
+        description: 'Newline-separated directories to publish, one package each (multi-library workspaces). Added to publish-directory.'
+        type: string
+        required: false
+        default: ''
       publish-command:
         description: 'Override the publish command. If empty, auto-generated from package-manager and publish-directory.'
         type: string
@@ -184,6 +189,7 @@ jobs:
           npm-token: ${{ secrets.npm-token }}
           working-directory: ${{ inputs.working-directory }}
           publish-directory: ${{ inputs.publish-directory }}
+          publish-directories: ${{ inputs.publish-directories }}
           publish-command: ${{ inputs.publish-command }}
           version: ${{ needs.determine-version.outputs.npm-version }}
           download-artifact: ${{ inputs.upload-build-artifact }}
