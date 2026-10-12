@@ -169,6 +169,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -237,6 +239,11 @@ jobs:
             exit 1
           fi
           gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
+      # After a merged release/<x.y> PR: closes the issues it delivered ("Shipped in v...").
+      - uses: GravionLabs/ci/versioning/close-release-issues@main
+        continue-on-error: true
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
 
   update-changelog:
     name: update changelog

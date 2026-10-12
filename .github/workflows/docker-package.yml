@@ -151,6 +151,8 @@ jobs:
     if: github.ref == format('refs/heads/{0}', inputs.main-branch) || inputs.force-publish == true
     permissions:
       contents: write
+      issues: write
+      pull-requests: read
     steps:
       - name: Create GitHub Release
         uses: GravionLabs/ci/versioning/gh-release@main
