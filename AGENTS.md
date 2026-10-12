@@ -163,6 +163,8 @@ Runs GitVersion on the full git history (`fetch-depth: 0` required in caller).
 Run it in the release job of the push to `main`, after `gh-release`. When the pushed commit is the merge of a `release/*` PR it closes, as completed with a "Shipped in v…" comment, every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into that release branch and in the release PR, the open sub-issues of those issues, and parents labeled `pbi` or `feature` whose sub-issues are all closed (repeating upwards; `epic` is never closed, parents in other repositories are skipped). Any other commit: no-op. Idempotent.
 Inputs: `version` (for the comment), `token`, `dry-run`. Needs `issues: write`, `pull-requests: read`, `contents: read`.
 
+`versioning/gh-release` calls it by default (input `close-issues`, `continue-on-error`), so every release job gets it. The token needs `issues: write` and `pull-requests: read`; without them the step only warns. Do not add these permissions to the jobs of the reusable `*-package.yml` workflows before all callers grant them: a reusable workflow that requests more than its caller allows fails at startup.
+
 ```yaml
       - uses: GravionLabs/ci/versioning/close-release-issues@main
         with:

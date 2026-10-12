@@ -10,8 +10,11 @@ ASSUME_OPEN="${ASSUME_OPEN:-false}"
 VERSION="${VERSION:-}"
 declare -A DONE=()
 
-release_pr=$(gh api "repos/$REPO/commits/$SHA/pulls" \
-  --jq '[.[] | select(.head.ref | startswith("release/"))][0].number // empty')
+if ! release_pr=$(gh api "repos/$REPO/commits/$SHA/pulls" \
+  --jq '[.[] | select(.head.ref | startswith("release/"))][0].number // empty'); then
+  echo "::warning::Cannot read the pull requests of $SHA; grant pull-requests: read and issues: write to the job."
+  exit 0
+fi
 if [ -z "$release_pr" ]; then
   echo "Commit $SHA is not a merged release PR; nothing to do."
   exit 0
