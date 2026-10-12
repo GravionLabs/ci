@@ -37,6 +37,13 @@ inputs:
       and commit it (with [skip ci]) before creating the release tag.
     required: false
     default: 'false'
+  close-issues:
+    description: >
+      After the release, close the issues delivered by a merged release/<x.y> PR
+      (versioning/close-release-issues). Needs issues: write and pull-requests: read; without
+      them the step only prints a warning. A no-op for commits that are not a merged release PR.
+    required: false
+    default: 'true'
   token:
     description: >
       GitHub token used for checkout and git push operations.
@@ -163,3 +170,10 @@ runs:
           gh release create "$TAG" --title "$TAG" --notes "" $PRERELEASE_FLAG
         fi
 
+    - name: Close issues delivered by the release
+      if: ${{ inputs.close-issues == 'true' }}
+      continue-on-error: true
+      uses: GravionLabs/ci/versioning/close-release-issues@main
+      with:
+        version: ${{ inputs.version }}
+        token: ${{ inputs.token }}
