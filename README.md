@@ -622,22 +622,37 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 **Inputs**
 
 <!-- action-docs:inputs source="tauri/installers/action.yml" -->
-| Name                           | Description                                                                                                                       | Required | Default                                |
-|--------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
-| `version`                      | Version to build (SemVer; MSI needs a numeric one, so non-release builds pass 0.0.<run number>)                                   | **Yes**  | —                                      |
-| `target`                       | Rust target triple of this matrix entry                                                                                           | **Yes**  | —                                      |
-| `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.           | No       |                                        |
-| `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                           | No       |                                        |
-| `version-files`                | Space-separated JSON files whose version field is set                                                                             | No       | package.json src-tauri/tauri.conf.json |
-| `cargo-toml`                   | Cargo.toml whose first package/workspace version line is set                                                                      | No       | Cargo.toml                             |
-| `node-version-file`            | File with the Node.js version (for example .nvmrc)                                                                                | No       | .nvmrc                                 |
-| `package-manager`              | pnpm or npm                                                                                                                       | No       | pnpm                                   |
-| `linux-packages`               | Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev) | No       |                                        |
-| `token`                        | GITHUB_TOKEN with contents: write                                                                                                 | No       | ${{ github.token }}                    |
-| `signing-private-key`          | Private key that signs the update packages (secret TAURI_SIGNING_PRIVATE_KEY). Empty: unsigned updater artifacts are not created. | No       |                                        |
-| `signing-private-key-password` | Password of the signing key                                                                                                       | No       |                                        |
-| `checkout`                     | Check out the repository first                                                                                                    | No       | true                                   |
+| Name                           | Description                                                                                                                                                                                  | Required | Default                                |
+|--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
+| `version`                      | Version to build (SemVer; MSI needs a numeric one, so non-release builds pass 0.0.<run number>)                                                                                              | **Yes**  | —                                      |
+| `target`                       | Rust target triple of this matrix entry                                                                                                                                                      | **Yes**  | —                                      |
+| `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.                                                                      | No       |                                        |
+| `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                                                                                      | No       |                                        |
+| `version-files`                | Space-separated JSON files whose version field is set                                                                                                                                        | No       | package.json src-tauri/tauri.conf.json |
+| `cargo-toml`                   | Cargo.toml whose first package/workspace version line is set                                                                                                                                 | No       | Cargo.toml                             |
+| `node-version-file`            | File with the Node.js version (for example .nvmrc)                                                                                                                                           | No       | .nvmrc                                 |
+| `package-manager`              | pnpm or npm                                                                                                                                                                                  | No       | pnpm                                   |
+| `linux-packages`               | Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev)                                                            | No       |                                        |
+| `token`                        | GITHUB_TOKEN with contents: write                                                                                                                                                            | No       | ${{ github.token }}                    |
+| `signing-private-key`          | Private key that signs the update packages (secret TAURI_SIGNING_PRIVATE_KEY). Empty: unsigned updater artifacts are not created.                                                            | No       |                                        |
+| `signing-private-key-password` | Password of the signing key                                                                                                                                                                  | No       |                                        |
+| `sidecar-package`              | Crates to build as sidecar binaries (cargo build --release -p …), several separated by spaces. Empty: no sidecars. The binaries are listed in bundle.externalBin of tauri.conf.json.         | No       |                                        |
+| `sidecar-binary`               | Names of the binaries the sidecar crates produce (without .exe), several separated by spaces. Each is copied to <sidecar-dir>/<name>-<target>[.exe], the name Tauri expects for externalBin. | No       |                                        |
+| `sidecar-dir`                  | Directory for the sidecar files (must match the externalBin paths)                                                                                                                           | No       | src-tauri/binaries                     |
+| `checkout`                     | Check out the repository first                                                                                                                                                               | No       | true                                   |
 <!-- /action-docs:inputs -->
+
+**Sidecar binaries (`bundle.externalBin`).** Tauri ships extra binaries (a CLI, an MCP server) with the installers when they are listed in `bundle.externalBin` of `tauri.conf.json`. Every entry `<path>/<name>` needs a file `<path>/<name>-<target-triple>[.exe]` before `tauri build`, and ends up as `<name>[.exe]` next to the application executable (Windows install directory, `Contents/MacOS` on macOS) or in `/usr/bin` (`.deb`, `.rpm`). Set `sidecar-package` and `sidecar-binary` and the action builds the crates for `target` after the version was set, copies each binary to `<sidecar-dir>/<name>-<target>[.exe]` and runs `<binary> --version` as a smoke test. `sidecar-dir` must match the `externalBin` path (default `src-tauri/binaries`). Without the inputs nothing changes.
+
+```yaml
+- uses: GravionLabs/ci/tauri/installers@main
+  with:
+    version: ${{ needs.determine-version.outputs.build-version }}
+    target: x86_64-unknown-linux-gnu
+    sidecar-package: myapp-cli myapp-mcp
+    sidecar-binary: myapp myapp-mcp
+# tauri.conf.json: "bundle": { "externalBin": ["binaries/myapp", "binaries/myapp-mcp"] }
+```
 
 ---
 
@@ -677,7 +692,7 @@ jobs:
 
 The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
 
-**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
 
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
