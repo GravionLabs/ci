@@ -11,6 +11,7 @@ versioning/
   determine-version/    — GitVersion-based semantic versioning (outputs: semver, nuget-version, python-version, docker-version, major, minor, patch, …)
   create-version-tag/   — Creates and pushes a git tag from a version string
   gh-release/           — Creates a GitHub Release with optional changelog extraction
+  close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents)
 
 dotnet/
   setup/                — Installs .NET SDK, caches NuGet packages, optionally adds a private feed
@@ -156,6 +157,19 @@ jobs:
 Runs GitVersion on the full git history (`fetch-depth: 0` required in caller).
 
 **Key outputs:** `semver`, `nuget-version`, `npm-version`, `python-version`, `docker-version`, `major`, `minor`, `patch`, `major-minor-patch`.
+
+### `versioning/close-release-issues`
+
+Run it in the release job of the push to `main`, after `gh-release`. When the pushed commit is the merge of a `release/*` PR it closes, as completed with a "Shipped in v…" comment, every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into that release branch and in the release PR, the open sub-issues of those issues, and parents labeled `pbi` or `feature` whose sub-issues are all closed (repeating upwards; `epic` is never closed, parents in other repositories are skipped). Any other commit: no-op. Idempotent.
+Inputs: `version` (for the comment), `token`, `dry-run`. Needs `issues: write`, `pull-requests: read`, `contents: read`.
+
+```yaml
+      - uses: GravionLabs/ci/versioning/close-release-issues@main
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
+```
+
+Test against a finished release: `GITHUB_REPOSITORY=<owner/repo> GITHUB_SHA=<release merge commit> DRY_RUN=true ASSUME_OPEN=true bash versioning/close-release-issues/close.sh` (`GH_TOKEN` set).
 
 ### `versioning/create-version-tag`
 
