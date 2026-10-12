@@ -6,6 +6,23 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.0.54] — 2026-10-12
+
+### Bug Fixes
+- Pin the updater URLs of latest.json to the release (#47)
+
+
+## [1.0.54] — 2026-10-12
+
+### Documentation
+- Update CHANGELOG.md for v1.0.53 [skip ci]
+
+
+### Features
+- Add versioning/close-release-issues action (#44)
+- Call close-release-issues from gh-release by default (#44)
+
+
 ## [1.0.53] — 2026-10-11
 
 ### Bug Fixes
