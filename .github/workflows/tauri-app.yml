@@ -208,6 +208,28 @@ jobs:
           if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
           gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
             --title "$tag" --repo "${{ github.repository }}"
+      # tauri-action writes the asset URLs of latest.json as releases/latest/download/<file>. "latest" moves
+      # to the next release, so an update that was offered could no longer be downloaded (404) once a newer
+      # release existed. The URLs are pinned to the tag of their own release; the endpoint the application
+      # checks (releases/latest/download/latest.json) stays the same. The signatures cover the packages, not
+      # the URLs.
+      - name: Pin the updater URLs to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          repo="${{ github.repository }}"
+          if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' | grep -qx 'latest.json'; then
+            echo "$tag has no latest.json; nothing to pin"
+            exit 0
+          fi
+          mkdir updater && gh release download "$tag" --pattern latest.json --dir updater --repo "$repo"
+          sed -i "s#https://github.com/$repo/releases/latest/download/#https://github.com/$repo/releases/download/$tag/#g" updater/latest.json
+          if grep -q '/releases/latest/download/' updater/latest.json; then
+            echo "::error::latest.json of $tag still has releases/latest URLs"
+            exit 1
+          fi
+          gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
 
   update-changelog:
     name: update changelog
