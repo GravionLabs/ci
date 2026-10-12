@@ -33,15 +33,30 @@ docker/
   build/                — checkout + setup QEMU + buildx + build (no push); validates multi-arch build
   publish/              — setup QEMU + buildx + login + compute tags + build+push; NO checkout
 
+rust/
+  setup/                — Installs the Rust toolchain, caches cargo (optionally Tauri Linux libraries)
+  ci/                   — cargo fmt --check, clippy -D warnings, test
+  release-binary/       — Builds, packs (tar.gz/zip + SHA-256), smoke tests and uploads versioned binaries for one target
+
+tauri/
+  draft-release/        — Creates or finds the draft release of a version (shared by parallel installer jobs)
+  installers/           — Versioned Tauri 2 installers for one runner; optional sidecars (`sidecar-package`, `sidecar-binary`, `sidecar-dir`) for `bundle.externalBin`
+
+node/
+  setup/ build/ test/ ci/ publish/ — Node.js actions; `publish` takes `publish-directory` / `publish-directories`
+
 .github/workflows/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)
   python-package.yml    — Full Python CI/CD: determine-version → build-test → publish (main only)
   docker-package.yml    — Full Docker CI/CD: determine-version ‖ lint → build-publish → release (main only)
   node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
   angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
+  tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
+
+Migrating a repository with an inline workflow: see `docs/migration-guide.md`.
 
 ## Reusable Workflow: `nuget-package.yml`
 
