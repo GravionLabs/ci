@@ -94,6 +94,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main`.
 - **Versioning is internal**: the workflow runs `determine-version` itself. Do NOT pass a `version:` input.
 - **Publish only on `main`** unless `force-publish: true`.
 - **verify-package** runs immediately after `pack` in the same job — no artifact download needed. It acts as a pre-publish gate on PRs and a post-pack sanity check on `main`.
+- The release job needs `contents: write`, `issues: write` and `pull-requests: read`; the calling job must grant them.
 - The `environment: nuget-publish` is required on the publish job — configure this in the repository settings.
 
 ### Common Feed URLs
@@ -204,7 +205,7 @@ Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/<x.y> DRY_RUN=true 
 Run it in the release job of the push to `main`, after `gh-release`. When the pushed commit is the merge of a `release/*` PR it closes, as completed with a "Shipped in v…" comment, every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into that release branch and in the release PR, the open sub-issues of those issues, and parents labeled `pbi` or `feature` whose sub-issues are all closed (repeating upwards; `epic` is never closed, parents in other repositories are skipped). Any other commit: no-op. Idempotent.
 Inputs: `version` (for the comment), `token`, `dry-run`. Needs `issues: write`, `pull-requests: read`, `contents: read`.
 
-`versioning/gh-release` calls it by default (input `close-issues`, `continue-on-error`), so every release job gets it. The token needs `issues: write` and `pull-requests: read`; without them the step only warns. Do not add these permissions to the jobs of the reusable `*-package.yml` workflows before all callers grant them: a reusable workflow that requests more than its caller allows fails at startup.
+`versioning/gh-release` calls it by default (input `close-issues`, `continue-on-error`), so every release job gets it. The token needs `issues: write` and `pull-requests: read`; without them the step only warns. The release jobs of the reusable `*-package.yml` workflows and the `publish` job of `tauri-app.yml` request `issues: write` and `pull-requests: read` (besides `contents: write`), so the calling job must grant them: a reusable workflow that requests more than its caller allows fails at startup. `tauri-app.yml` calls this action itself in `publish`.
 
 ```yaml
       - uses: GravionLabs/ci/versioning/close-release-issues@main
