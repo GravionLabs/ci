@@ -48,6 +48,18 @@ inputs:
     description: 'Password of the signing key'
     required: false
     default: ''
+  sidecar-package:
+    description: 'Crates to build as sidecar binaries (cargo build --release -p …), several separated by spaces. Empty: no sidecars. The binaries are listed in bundle.externalBin of tauri.conf.json.'
+    required: false
+    default: ''
+  sidecar-binary:
+    description: 'Names of the binaries the sidecar crates produce (without .exe), several separated by spaces. Each is copied to <sidecar-dir>/<name>-<target>[.exe], the name Tauri expects for externalBin.'
+    required: false
+    default: ''
+  sidecar-dir:
+    description: 'Directory for the sidecar files (must match the externalBin paths)'
+    required: false
+    default: 'src-tauri/binaries'
   checkout:
     description: 'Check out the repository first'
     required: false
@@ -96,6 +108,31 @@ runs:
           const cargo = fs.readFileSync(process.env.CARGO_TOML, 'utf8');
           fs.writeFileSync(process.env.CARGO_TOML, cargo.replace(/^version = \".*\"/m, 'version = \"' + version + '\"'));
         "
+
+    - name: Build the sidecar binaries
+      if: ${{ inputs.sidecar-package != '' }}
+      shell: bash
+      # No --locked: the workspace version changed, so Cargo.lock is refreshed.
+      env:
+        PACKAGES: ${{ inputs.sidecar-package }}
+        BINARIES: ${{ inputs.sidecar-binary }}
+        TARGET: ${{ inputs.target }}
+        DIR: ${{ inputs.sidecar-dir }}
+      run: |
+        if [ -z "$BINARIES" ]; then
+          echo "::error::sidecar-binary is required with sidecar-package"
+          exit 1
+        fi
+        args=()
+        for p in $PACKAGES; do args+=(-p "$p"); done
+        cargo build --release "${args[@]}" --target "$TARGET"
+        ext=""
+        [ "$RUNNER_OS" = "Windows" ] && ext=".exe"
+        mkdir -p "$DIR"
+        for b in $BINARIES; do
+          cp "target/$TARGET/release/$b$ext" "$DIR/$b-$TARGET$ext"
+          "$DIR/$b-$TARGET$ext" --version
+        done
 
     - name: Install dependencies
       shell: bash

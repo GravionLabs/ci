@@ -45,6 +45,10 @@ on:
         description: 'Space-separated extra apt packages for the Linux installer job, besides the Tauri libraries'
         type: string
         default: ''
+      installer-sidecars:
+        description: 'JSON object {"package","binary","dir"} of binaries to build into the installers (bundle.externalBin); see tauri/installers. Empty: none.'
+        type: string
+        default: ''
       cliff-config:
         description: 'git-cliff configuration for the release notes and the changelog'
         type: string
@@ -152,6 +156,9 @@ jobs:
           release-id: ${{ needs.draft.outputs.release-id }}
           args: ${{ inputs.installer-args }}
           linux-packages: ${{ inputs.installer-linux-packages }}
+          sidecar-package: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).package || '' }}
+          sidecar-binary: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).binary || '' }}
+          sidecar-dir: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).dir || 'src-tauri/binaries' }}
           signing-private-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           signing-private-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
