@@ -1,0 +1,39 @@
+name: 'Release PR'
+description: >
+  Keeps one pull request from a release/<x.y> branch to the default branch open and current: creates
+  it when missing (title "release: <x.y>"), refreshes title and body on every run. The body lists the
+  PRs merged into the release branch and a "Closes #n" line per issue they reference. Never merges
+  and never closes. Does nothing for other branches or when the branch is not ahead of the base.
+  Pass a PAT as token: PRs created with the default GITHUB_TOKEN do not trigger pull_request
+  workflows, so required checks on the release PR would never run.
+  Requires contents: read and pull-requests: write in the calling workflow.
+
+inputs:
+  release-branch:
+    description: 'Release branch (release/<x.y>); defaults to the ref that triggered the workflow'
+    required: false
+    default: ''
+  base:
+    description: 'Base branch of the release PR; defaults to the repository default branch'
+    required: false
+    default: ''
+  token:
+    description: 'GitHub token used for the gh CLI (a PAT, see the description)'
+    required: false
+    default: ${{ github.token }}
+  dry-run:
+    description: 'Print the title, body and the action that would be taken without changing anything'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create or update the release PR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        RELEASE_BRANCH: ${{ inputs.release-branch || github.ref_name }}
+        BASE: ${{ inputs.base }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: bash "${{ github.action_path }}/release-pr.sh"
