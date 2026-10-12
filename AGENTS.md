@@ -11,6 +11,7 @@ versioning/
   determine-version/    — GitVersion-based semantic versioning (outputs: semver, nuget-version, python-version, docker-version, major, minor, patch, …)
   create-version-tag/   — Creates and pushes a git tag from a version string
   gh-release/           — Creates a GitHub Release with optional changelog extraction
+  release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents)
 
 dotnet/
@@ -172,6 +173,31 @@ jobs:
 Runs GitVersion on the full git history (`fetch-depth: 0` required in caller).
 
 **Key outputs:** `semver`, `nuget-version`, `npm-version`, `python-version`, `docker-version`, `major`, `minor`, `patch`, `major-minor-patch`.
+
+### `versioning/release-pr`
+
+Run it on every push to `release/**`. It creates the PR `release: <x.y>` from the release branch to the default branch when none is open, and refreshes title and body otherwise: the PRs merged into the release branch since it left the base (a reused branch name does not pull in the PRs of its earlier life) and one `Closes #n` line per issue they reference. Does nothing for branches that are not `release/<x.y>` or are not ahead of the base. Never merges, never closes; idempotent (an unchanged PR is left alone).
+Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `token`, `dry-run`. Needs `contents: read`, `pull-requests: write`.
+
+Pass a PAT as `token`: a PR created with the default `GITHUB_TOKEN` does not trigger `pull_request` workflows, so required checks on the release PR would never run and the PR stays blocked.
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: GravionLabs/ci/versioning/release-pr@main
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+```
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/<x.y> DRY_RUN=true bash versioning/release-pr/release-pr.sh` (`GH_TOKEN` set).
 
 ### `versioning/close-release-issues`
 
