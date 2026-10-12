@@ -6,10 +6,17 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [1.0.55] — 2026-10-12
+## [1.0.56] — 2026-10-12
 
 ### Documentation
 - Update CHANGELOG.md for v1.0.54 [skip ci]
+- Update CHANGELOG.md for v1.0.55 [skip ci]
+- README, AGENTS.md repo map and migration guide (#35)
+
+
+### Features
+- Publish several packages from one workspace (#16)
+- Sidecar binaries in the Tauri installers (#49)
 
 
 ## [1.0.55] — 2026-10-12
