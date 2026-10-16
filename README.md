@@ -25,7 +25,8 @@ docker/
 └── publish/                # Build and push a multi-arch Docker image with version tags
 versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
-└── create-version-tag/     # Create and push a git tag
+├── create-version-tag/     # Create and push a git tag
+└── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 rust/
