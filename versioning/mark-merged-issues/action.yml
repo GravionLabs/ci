@@ -1,0 +1,44 @@
+name: 'Mark Merged Issues'
+description: >
+  On a push to a release/* branch (incl. release/next), labels the open issues delivered to that
+  branch: Closes/Fixes/Resolves #n in the PRs merged into it since it left the base, plus Closes…
+  and "Refs #n" footer lines in the commit messages of base...branch. Each newly labelled issue
+  gets one comment. Parents labeled pbi or feature whose open sub-issues all carry the label get
+  it too (repeating upwards; epics never). Pull requests and closed issues are skipped. Idempotent.
+  close-release-issues removes the label when the release lands on the default branch.
+  Missing permissions only warn. Requires contents: read, issues: write and pull-requests: read.
+
+inputs:
+  release-branch:
+    description: 'Release branch (release/*); defaults to the ref that triggered the workflow'
+    required: false
+    default: ''
+  base:
+    description: 'Base branch the release lands on; defaults to the repository default branch'
+    required: false
+    default: ''
+  label:
+    description: 'Label for issues merged into the release branch'
+    required: false
+    default: 'merged'
+  token:
+    description: 'GitHub token used for the gh CLI'
+    required: false
+    default: ${{ github.token }}
+  dry-run:
+    description: 'Print the issues that would be labelled without changing anything'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Label issues merged into the release branch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        RELEASE_BRANCH: ${{ inputs.release-branch || github.ref_name }}
+        BASE: ${{ inputs.base }}
+        LABEL: ${{ inputs.label }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: bash "${{ github.action_path }}/mark.sh"

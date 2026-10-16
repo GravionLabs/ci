@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Fake gh for the versioning tests. Answers from fixture files in $GH_FIX, logs every call to $GH_LOG.
+# Key = method + path (gh api) or the subcommand (pr-list, pr-view-<n>, repo-view-<owner_repo>, label-create-<label>,
+# issue-close-<n>), '/' and ' ' replaced by '_', query string dropped. <key>.json is the raw API
+# response (filtered with --jq / -q like gh does); a missing file for a GET means 404, <key>.fail
+# makes the call fail. Writes succeed unless <key>.fail exists.
+set -uo pipefail
+echo "gh $*" >> "$GH_LOG"
+method=GET jq_expr="" args=()
+if [ "$1" = api ]; then
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -X) method=$2; shift 2 ;;
+      --jq|-q) jq_expr=$2; shift 2 ;;
+      -f|-F) shift 2 ;;
+      --paginate|--silent) shift ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  key="$method ${args[0]%%\?*}"
+else
+  sub="$1-$2"; shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --jq|-q) jq_expr=$2; shift 2 ;;
+      -R|--json|--base|--state|--limit|--head|--color|--description|--reason|--comment) shift 2 ;;
+      --force) shift ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  key="$sub${args[0]:+-${args[0]}}"
+fi
+key=${key//\//_}; key=${key// /_}
+[ -e "$GH_FIX/$key.fail" ] && { echo "HTTP 403: $key" >&2; exit 1; }
+if [ -e "$GH_FIX/$key.json" ]; then
+  if [ -n "$jq_expr" ]; then jq -r "$jq_expr" "$GH_FIX/$key.json"; else cat "$GH_FIX/$key.json"; fi
+  exit $?
+fi
+[ "$method" = GET ] && [ "${key#GET_}" != "$key" ] && { echo "HTTP 404: $key" >&2; exit 1; }
+case "$key" in pr-list*|pr-view*|repo-view*) echo "no fixture $key" >&2; exit 1 ;; esac
+exit 0
