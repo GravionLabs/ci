@@ -3,8 +3,9 @@ description: >
   After a release/<x.y> branch was merged into the default branch, closes every issue the
   release delivered: issues referenced with Closes/Fixes/Resolves #n in the merged PRs of the
   release branch and in the release PR, their open sub-issues, and parents labeled pbi or
-  feature whose sub-issues are all closed. Epics are never closed. Does nothing when the
-  triggering commit is not a merged release PR. Idempotent.
+  feature whose sub-issues are all closed. Epics are never closed. Removes the label set by
+  mark-merged-issues from the issues it closes and from referenced issues already closed.
+  Does nothing when the triggering commit is not a merged release PR. Idempotent.
   Requires issues: write, pull-requests: read and contents: read in the calling workflow.
 
 inputs:
@@ -12,6 +13,10 @@ inputs:
     description: 'Released version without prefix (e.g. 1.2.0); used in the closing comment'
     required: false
     default: ''
+  label:
+    description: 'Label set by mark-merged-issues; removed from the closed issues'
+    required: false
+    default: 'merged'
   token:
     description: 'GitHub token used for the gh CLI'
     required: false
@@ -29,5 +34,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         VERSION: ${{ inputs.version }}
+        LABEL: ${{ inputs.label }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: bash "${{ github.action_path }}/close.sh"

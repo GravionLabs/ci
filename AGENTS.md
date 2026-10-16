@@ -12,7 +12,8 @@ versioning/
   create-version-tag/   — Creates and pushes a git tag from a version string
   gh-release/           — Creates a GitHub Release with optional changelog extraction
   release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
-  close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents)
+  close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
+  mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents)
 
 dotnet/
   setup/                — Installs .NET SDK, caches NuGet packages, optionally adds a private feed
@@ -203,7 +204,8 @@ Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/<x.y> DRY_RUN=true 
 ### `versioning/close-release-issues`
 
 Run it in the release job of the push to `main`, after `gh-release`. When the pushed commit is the merge of a `release/*` PR it closes, as completed with a "Shipped in v…" comment, every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into that release branch and in the release PR, the open sub-issues of those issues, and parents labeled `pbi` or `feature` whose sub-issues are all closed (repeating upwards; `epic` is never closed, parents in other repositories are skipped). Any other commit: no-op. Idempotent.
-Inputs: `version` (for the comment), `token`, `dry-run`. Needs `issues: write`, `pull-requests: read`, `contents: read`.
+It also removes the label set by `mark-merged-issues` from every issue it closes and from referenced issues that are already closed (errors ignored).
+Inputs: `version` (for the comment), `label` (default `merged`), `token`, `dry-run`. Needs `issues: write`, `pull-requests: read`, `contents: read`.
 
 `versioning/gh-release` calls it by default (input `close-issues`, `continue-on-error`), so every release job gets it. The token needs `issues: write` and `pull-requests: read`; without them the step only warns. The release jobs of the reusable `*-package.yml` workflows and the `publish` job of `tauri-app.yml` request `issues: write` and `pull-requests: read` (besides `contents: write`), so the calling job must grant them: a reusable workflow that requests more than its caller allows fails at startup. `tauri-app.yml` calls this action itself in `publish`.
 
@@ -214,6 +216,28 @@ Inputs: `version` (for the comment), `token`, `dry-run`. Needs `issues: write`, 
 ```
 
 Test against a finished release: `GITHUB_REPOSITORY=<owner/repo> GITHUB_SHA=<release merge commit> DRY_RUN=true ASSUME_OPEN=true bash versioning/close-release-issues/close.sh` (`GH_TOKEN` set).
+
+### `versioning/mark-merged-issues`
+
+`Closes #n` only fires on the default branch, so issues merged into a release branch stay open until the release lands. Run this on every push to `release/**` (any `release/*` branch, incl. `release/next`): it labels every open issue delivered to the branch with `merged` (created once with `gh label create --force`) and comments once `Merged into <branch>; closes when the release lands on <base>.`. Issues = `Closes|Fixes|Resolves #n` in the PRs merged into the branch since it left the base, plus `Closes…` and `Refs #n` footer lines in the commit messages of `base...branch`; pull requests and closed issues are skipped. Parents labeled `pbi` or `feature` (same repository) whose open sub-issues all carry the label get it too, repeating upwards; `epic` never. Already labelled issues are left alone (idempotent). Missing permissions or API failures only warn (exit 0). `close-release-issues` removes the label when the release lands.
+Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `label` (default `merged`), `token`, `dry-run` (prints `would label #n`). Needs `contents: read`, `issues: write`, `pull-requests: read`.
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+jobs:
+  mark-merged-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+```
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
 
 ### `versioning/create-version-tag`
 

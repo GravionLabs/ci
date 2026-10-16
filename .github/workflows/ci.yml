@@ -50,6 +50,33 @@ jobs:
           check docker-version     "${{ steps.version.outputs.docker-version }}"
           [ $ERRORS -eq 0 ] || exit 1
 
+  test-versioning-scripts:
+    name: 'Test: mark-merged-issues / close-release-issues'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests (fake gh)
+        shell: bash
+        run: bash tests/versioning.test.sh
+
+      - name: Smoke test mark-merged-issues (dry run, no-op path)
+        uses: ./versioning/mark-merged-issues
+        with:
+          release-branch: release/1.3   # already merged into main: nothing ahead, nothing to label
+          dry-run: 'true'
+
+      - name: Smoke test mark-merged-issues (dry run against a public release branch)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # read-only; warns and exits 0 when the branch does not exist (between releases)
+        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/mark-merged-issues/mark.sh
+
   release:
     name: Release
     runs-on: ubuntu-latest
