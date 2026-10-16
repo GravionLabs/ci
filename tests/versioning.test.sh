@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Tests for versioning/mark-merged-issues/mark.sh against a fake gh (tests/stub/gh). Run: bash tests/versioning.test.sh
+# Tests for versioning/mark-merged-issues/mark.sh and the label removal in
+# versioning/close-release-issues/close.sh against a fake gh (tests/stub/gh). Run: bash tests/versioning.test.sh
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MARK="$ROOT/versioning/mark-merged-issues/mark.sh"
+CLOSE="$ROOT/versioning/close-release-issues/close.sh"
 export PATH="$ROOT/tests/stub:$PATH" GITHUB_REPOSITORY=o/r
 failures=0 total=0
 
@@ -130,6 +132,35 @@ has "pr list failure warns" "::warning::Cannot list the pull requests" "$out"
 mark_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_labels.fail"; run_mark
 [ "$code" = 0 ] && ok "label write failure exits 0" || fail "exit $code"
 has "label write failure warns" "::warning::Cannot label #10" "$out"
+
+echo "# close: removes the label from closed and already closed referenced issues"
+close_fixture() {
+  setup
+  fix GET_repos_o_r_commits_abc_pulls '[{"number":50,"head":{"ref":"release/1.0"}}]'
+  fix pr-view-50 '{"headRefName":"release/1.0","body":"Closes #10"}'
+  fix pr-list '[{"body":"Closes #11"}]'
+  issue 10 open pbi,merged; issue 11 closed pbi,merged
+}
+close_fixture
+out=$(GITHUB_SHA=abc bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code: $out"
+has "closes #10" "gh issue close 10" "$log"
+has "unlabels the closed #10" "gh api -X DELETE repos/o/r/issues/10/labels/merged" "$log"
+has "unlabels the already closed #11" "gh api -X DELETE repos/o/r/issues/11/labels/merged" "$log"
+hasnt "does not close #11 again" "gh issue close 11" "$log"
+count_is "unlabels #10 once" "issues/10/labels/merged" 1 "$log"
+
+echo "# close: label removal errors are ignored, custom label is URL-encoded"
+close_fixture; touch "$GH_FIX/DELETE_repos_o_r_issues_10_labels_in%20release.fail"
+out=$(GITHUB_SHA=abc LABEL="in release" bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "exit 0 despite failed removal" || fail "exit $code: $out"
+has "encoded label" "issues/11/labels/in%20release" "$log"
+
+echo "# close: dry run removes nothing"
+close_fixture
+out=$(GITHUB_SHA=abc DRY_RUN=true bash "$CLOSE" 2>&1); log=$(cat "$GH_LOG")
+has "prints the removal" "would remove merged from #11" "$out"
+hasnt "no delete" "-X DELETE" "$log"
 
 echo
 echo "$((total - failures))/$total passed"

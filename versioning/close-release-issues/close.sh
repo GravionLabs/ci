@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA; optional VERSION, DRY_RUN=true, ASSUME_OPEN=true
+# Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA; optional VERSION, LABEL (default merged), DRY_RUN=true, ASSUME_OPEN=true
 # (ASSUME_OPEN treats every referenced issue as open; use it with DRY_RUN to test against a finished release).
 set -euo pipefail
 
@@ -8,7 +8,8 @@ SHA="${GITHUB_SHA:?}"
 DRY_RUN="${DRY_RUN:-false}"
 ASSUME_OPEN="${ASSUME_OPEN:-false}"
 VERSION="${VERSION:-}"
-declare -A DONE=()
+LABEL="${LABEL:-merged}"
+declare -A DONE=() UNLABELLED=()
 
 if ! release_pr=$(gh api "repos/$REPO/commits/$SHA/pulls" \
   --jq '[.[] | select(.head.ref | startswith("release/"))][0].number // empty'); then
@@ -33,9 +34,25 @@ state_of() {
   gh api "repos/$REPO/issues/$1" --jq '.state'
 }
 
+# removes the label set by mark-merged-issues; errors (label absent, no permission) are ignored
+unlabel() {
+  local n=$1 path
+  [ -n "${UNLABELLED[$n]:-}" ] && return 0
+  UNLABELLED[$n]=1
+  if [ "$DRY_RUN" = true ]; then
+    echo "would remove $LABEL from #$n"
+    return 0
+  fi
+  path=$(jq -rn --arg l "$LABEL" '$l | @uri')
+  gh api -X DELETE "repos/$REPO/issues/$n/labels/$path" --silent >/dev/null 2>&1 || true
+}
+
 close_issue() {
   local n=$1
-  [ "$(state_of "$n")" = closed ] && return 0
+  if [ "$(state_of "$n")" = closed ]; then
+    unlabel "$n"
+    return 0
+  fi
   local tag=""
   [ -n "$VERSION" ] && tag="v$VERSION "
   if [ "$DRY_RUN" = true ]; then
@@ -46,6 +63,7 @@ close_issue() {
       --comment "Shipped in ${tag}(release PR #$release_pr)."
   fi
   DONE[$n]=1
+  unlabel "$n"
 }
 
 close_children() {
