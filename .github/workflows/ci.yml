@@ -76,13 +76,14 @@ jobs:
           release-branch: release/next
           base: release/next
           dry-run: 'true'
+          project-status: 'In release'
 
       - name: Smoke test mark-merged-issues (dry run against a public release branch)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         # read-only; warns and exits 0 when the branch does not exist (between releases)
-        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/mark-merged-issues/mark.sh
+        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
 
   release:
     name: Release

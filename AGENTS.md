@@ -220,7 +220,8 @@ Test against a finished release: `GITHUB_REPOSITORY=<owner/repo> GITHUB_SHA=<rel
 ### `versioning/mark-merged-issues`
 
 `Closes #n` only fires on the default branch, so issues merged into a release branch stay open until the release lands. Run this on every push to `release/**` (any `release/*` branch, incl. `release/next`): it labels every open issue delivered to the branch with `merged` (created once with `gh label create --force`) and comments once `Merged into <branch>; closes when the release lands on <base>.`. Issues = `Closes|Fixes|Resolves #n` in the PRs merged into the branch since it left the base, plus `Closes…` and `Refs #n` footer lines in the commit messages of `base...branch`; pull requests and closed issues are skipped. Parents labeled `pbi` or `feature` (same repository) whose open sub-issues all carry the label get it too, repeating upwards; `epic` never. Already labelled issues are left alone (idempotent). Missing permissions or API failures only warn (exit 0). `close-release-issues` removes the label when the release lands.
-Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `label` (default `merged`), `token`, `dry-run` (prints `would label #n`). Needs `contents: read`, `issues: write`, `pull-requests: read`.
+Optional project status: with `project-status` set (e.g. `In release`), the project items of exactly the issues labelled in this run (the MARKED set, parents included) also get that Status. Items already `Done` or already at that Status are skipped; a project without a Status option of that name gets one warning per project; dry-run prints `would set #n to <status> in <project>`. Projects need a token with project access: pass `project-token` as a classic PAT with scope `project` (fine-grained tokens cannot access user-owned projects); when the token lacks access the step warns once with that cause and never fails.
+Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `label` (default `merged`), `token`, `dry-run` (prints `would label #n`), `project-status` (default empty = off), `project-token` (default: `token`). Needs `contents: read`, `issues: write`, `pull-requests: read`; the project calls need the PAT scope above, not a job permission.
 
 ```yaml
 on:
@@ -235,9 +236,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+        with:
+          project-status: In release
+          project-token: ${{ secrets.GH_PAT }}
 ```
 
-Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true [PROJECT_STATUS='In release' PROJECT_TOKEN=<pat>] bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
 
 ### `versioning/create-version-tag`
 
