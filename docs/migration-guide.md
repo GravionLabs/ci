@@ -64,6 +64,10 @@ To install the CLI and the MCP server together with the application, list them i
 
 Checks for pull requests stay in the repository (`ci.yml`, `app.yml`) and can use the `rust/ci` action.
 
+## Issue workflows
+
+Copies of `add-to-project.yml`, `issue-conventions.yml` or `issue-title.yml` are replaced by one caller of `issues.yml` (`on: issues` and `pull_request_target`, `permissions: issues: write`, `secrets: inherit`); see the `issues.yml` section in the README. Keep the PAT as secret `GH_PAT` (classic, scopes `project` and `repo`) and pass the project as `project-url`.
+
 ## Checklist
 
 - [ ] `GitVersion.yml` present, no `next-version` pinned to an old minor.

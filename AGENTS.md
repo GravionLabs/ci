@@ -15,6 +15,9 @@ versioning/
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)
 
+issues/
+  conventions/          — Sets the `[Level] ` title prefix from the level label (legacy `Epic:`/`Feature:`/`Bug:` prefixes replaced) and flags missing required sections with `needs-refinement`
+
 dotnet/
   setup/                — Installs .NET SDK, caches NuGet packages, optionally adds a private feed
   build/                — checkout + setup + restore + build (+ optional publish); default dotnet-project: **/*.{sln,slnx}
@@ -54,6 +57,8 @@ node/
   node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
   angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
   tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`)
+  issues.yml            — Reusable issue workflow: add-to-project ‖ conventions (inputs `project-url`, `required-sections`, `levels`; secret `GH_PAT`)
+  issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
@@ -167,6 +172,52 @@ jobs:
       packages: write
       contents: write
 ```
+
+## Reusable Workflow: `issues.yml`
+
+Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@main` from a workflow on `issues` and `pull_request_target`.
+
+### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `project-url` | No | `""` | Project URL; empty disables `add-to-project` |
+| `required-sections` | No | `{}` | JSON map of level label to required headings; `{}` disables the section check |
+| `levels` | No | `epic,feature,pbi,task,bug` | Level labels in precedence order |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `GH_PAT` | No | Classic PAT with scopes `project` and `repo` (the `GITHUB_TOKEN` cannot write to user-owned projects) |
+
+### Behavior
+
+- Two independent jobs, no checkout, no `needs`. Titles and bodies are untrusted: read through the API only, never through `${{ }}`.
+- **add-to-project:** `issues` opened/reopened/transferred and `pull_request_target` opened/reopened; SHA-pinned `actions/add-to-project`. Missing `GH_PAT` = one warning, job green.
+- **conventions** (`issues/conventions`): on open issues (opened, edited, labeled, unlabeled, reopened) with the `GITHUB_TOKEN`, so its edits trigger no rerun.
+  - Title rule: the first label of `levels` the issue carries gives exactly one `[Level] ` prefix (`pbi` becomes `[PBI]`); other leading `[...]` and legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced. No level label: nothing happens.
+  - Section rule: for levels in `required-sections`, headings (`##` to `####`, case-insensitive) that are missing add the label `needs-refinement` and one comment carrying the marker `<!-- gravionlabs-ci:issue-conventions -->` (updated, not duplicated); complete sections remove the label.
+- The calling job must grant `issues: write`. This repository's caller is `.github/workflows/issue-events.yml` (workflow "Issue events").
+
+```yaml
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened, transferred]
+  pull_request_target:
+    types: [opened, reopened]
+permissions:
+  issues: write
+jobs:
+  issues:
+    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      required-sections: '{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}'
+    secrets: inherit
+```
+
+Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/*.yml`.
 
 ## Composite Actions
 

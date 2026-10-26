@@ -27,6 +27,8 @@ versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 ├── create-version-tag/     # Create and push a git tag
 └── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+issues/
+└── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 rust/
@@ -49,6 +51,8 @@ node/
 ├── node-package.yml        # Reusable Node.js Package CI/CD workflow
 ├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
 ├── tauri-app.yml           # Reusable Rust CLI and Tauri 2 app workflow (version → checks → binaries ‖ installers → publish → changelog)
+├── issues.yml              # Reusable issue workflow (add to project, title/section conventions)
+├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -510,6 +514,44 @@ steps:
 | `project-status` | Status to set on the project items of the labelled issues (e.g. "In release"); empty = off | No       |                     |
 | `project-token`  | Token for the project API (classic PAT with scope project); defaults to token              | No       |                     |
 <!-- /action-docs:inputs -->
+
+---
+
+### `issues/conventions`
+
+Sets the `[Level] ` title prefix from the level label of an issue and flags issues that miss required sections. Run it on `issues` events; used by `issues.yml`.
+
+- **Title:** the first label of `levels` that the issue carries decides the prefix (`epic` becomes `[Epic]`, `pbi` `[PBI]`, others capitalized). Existing leading `[...]` prefixes and the legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced by exactly one `[Level] `. Issues without a level label are left alone.
+- **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed.
+
+> **Prerequisite:** `permissions: issues: write`. The default `token` is the `GITHUB_TOKEN`, so the edits it makes trigger no further workflow run.
+
+**Usage:**
+
+```yaml
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
+permissions:
+  issues: write
+
+steps:
+  - uses: GravionLabs/ci/issues/conventions@main
+    with:
+      required-sections: '{"task":["Files","Done when"]}'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="issues/conventions/action.yml" -->
+| Name                | Description                                                                                                                                            | Required | Default                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------|
+| `levels`            | Comma-separated level labels in precedence order; the label becomes the title prefix (known ones as Epic, Feature, PBI, Task, Bug, others capitalized) | No       | epic,feature,pbi,task,bug |
+| `required-sections` | JSON map of level label to required headings, e.g. {"task":["Files","Done when"]}; empty or {} disables the section check                              | No       | {}                        |
+| `token`             | Token with issues write access                                                                                                                         | No       | ${{ github.token }}       |
+<!-- /action-docs:inputs -->
+
+Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 treats a bare directory as a file).
 
 ---
 
@@ -1158,6 +1200,55 @@ jobs:
 |---------------------|----------|------------------------------------------------------|
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
+
+### `issues.yml`
+
+Reusable workflow for issue and pull request events, two independent jobs:
+
+- **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
+- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
+
+**Usage:**
+
+```yaml
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened, transferred]
+  pull_request_target:
+    types: [opened, reopened]
+permissions:
+  issues: write
+jobs:
+  issues:
+    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      required-sections: '{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}'
+    secrets: inherit
+```
+
+This repository calls it from `.github/workflows/issue-events.yml` (workflow "Issue events", formerly `add-to-project.yml`).
+
+**Inputs**
+
+| Input               | Required | Default                    | Description                                                                                                  |
+|---------------------|----------|----------------------------|--------------------------------------------------------------------------------------------------------------|
+| `project-url`       | No       | `""`                       | Project URL (`https://github.com/users/<owner>/projects/<n>`); empty disables `add-to-project`               |
+| `required-sections` | No       | `{}`                       | JSON map of level label to required headings, e.g. `{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}`; `{}` disables the section check |
+| `levels`            | No       | `epic,feature,pbi,task,bug` | Comma-separated level labels in precedence order                                                             |
+
+**Secrets**
+
+| Secret   | Required | Description                                                          |
+|----------|----------|----------------------------------------------------------------------|
+| `GH_PAT` | No       | Classic PAT with the scopes `project` and `repo`, for `add-to-project` |
+
+**Token notes**
+
+- `GH_PAT` must be a classic PAT with the scopes `project` and `repo`: the `GITHUB_TOKEN` cannot write to a user-owned project. Without it the job logs one warning and stays green.
+- `conventions` writes with the `GITHUB_TOKEN`, so its own edits (title, label, comment) trigger no rerun. The calling job must grant `issues: write`; the workflow requests no more.
+- `pull_request_target` is safe here: no job checks out PR code and titles and bodies are only read through the API, never through `${{ }}` expressions. Dependabot and fork PRs receive the secret too.
+- Tests: `bash tests/issues-workflow.test.sh` (workflow invariants) and `node --test "issues/conventions/*.test.mjs"`; the `actionlint` job of `ci.yml` lints all workflows.
 
 ---
 
