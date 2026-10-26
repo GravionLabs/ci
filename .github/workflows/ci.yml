@@ -131,10 +131,23 @@ jobs:
         shell: bash
         run: node --test "issues/conventions/*.test.mjs"
 
+  test-project-needs:
+    name: 'Test: project/needs'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        shell: bash
+        # needs.sh against a stub pwsh, token check step, action.yml invariants (yq is preinstalled)
+        run: bash tests/project-needs.test.sh
+
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test-determine-version, actionlint, test-issue-conventions]
+    needs: [test-determine-version, actionlint, test-issue-conventions, test-project-needs]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
