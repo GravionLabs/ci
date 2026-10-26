@@ -85,6 +85,18 @@ jobs:
         # read-only; warns and exits 0 when the branch does not exist (between releases)
         run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
 
+  test-issue-conventions:
+    name: 'Test: issues/conventions'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        shell: bash
+        run: node --test "issues/conventions/*.test.mjs"
+
   release:
     name: Release
     runs-on: ubuntu-latest
