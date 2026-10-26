@@ -28,6 +28,7 @@ issue() {
 }
 parent() { fix "GET_repos_o_r_issues_$1_parent" "{\"number\":$2,\"repository_url\":\"https://api.github.com/repos/${3:-o/r}\"}"; }
 subs() { fix "GET_repos_o_r_issues_$1_sub_issues" "$2"; }
+run_mark_out() { local f; f=$(mktemp); GITHUB_OUTPUT=$f run_mark; OUTF=$f; }
 run_mark() { out=$(RELEASE_BRANCH="${BRANCH:-release/next}" bash "$MARK" 2>&1); code=$?; log=$(cat "$GH_LOG"); }
 
 # release/next is 3 commits ahead of main: #10 (open, PBI), #11 (open, already labelled, via a Refs
@@ -93,6 +94,18 @@ has "prints would label #20" "would label #20" "$out"
 hasnt "no #30" "would label #30" "$out"
 hasnt "no write" "-X POST" "$log"
 hasnt "no label create" "label create" "$log"
+
+echo "# mark: output labelled lists the newly labelled issues"
+mark_fixture; run_mark_out
+[ "$(cat "$OUTF")" = "labelled=10 20" ] && ok "labelled=10 20" || fail "output: $(cat "$OUTF")"
+mark_fixture; issue 10 open pbi,merged; issue 20 open feature,merged; run_mark_out
+[ "$(cat "$OUTF")" = "labelled=" ] && ok "idempotent run: labelled empty" || fail "output: $(cat "$OUTF")"
+mark_fixture; DRY_RUN=true run_mark_out
+[ "$(cat "$OUTF")" = "labelled=" ] && ok "dry run: labelled empty" || fail "output: $(cat "$OUTF")"
+mark_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_labels.fail"; run_mark_out
+[ "$code" = 0 ] && [ "$(cat "$OUTF")" = "labelled=" ] && ok "label write failure: exit 0, labelled empty" || fail "exit $code, output: $(cat "$OUTF")"
+mark_fixture; BRANCH=main run_mark_out
+[ "$(cat "$OUTF")" = "labelled=" ] && ok "non-release branch: labelled empty" || fail "output: $(cat "$OUTF")"
 
 echo "# mark: custom label and base"
 mark_fixture
