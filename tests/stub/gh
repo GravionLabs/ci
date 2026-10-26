@@ -7,6 +7,7 @@
 # a missing graphql fixture answers empty. Writes succeed unless <key>.fail exists.
 set -uo pipefail
 echo "gh $*" >> "$GH_LOG"
+echo "token=${GH_TOKEN:-}" >> "$GH_LOG"
 method=GET jq_expr="" args=()
 declare -A vars=()
 if [ "$1" = api ]; then
@@ -23,7 +24,7 @@ if [ "$1" = api ]; then
   key="$method ${args[0]%%\?*}"
   # graphql: key = graphql_<operation name>_<issue number or item id>
   if [ "${args[0]}" = graphql ]; then
-    op=$(sed -nE 's/^(query|mutation) ([A-Za-z]+).*/\2/p' <<<"${vars[query]:-}" | head -n1)
+    op=$(grep -oE '(query|mutation)[[:space:]]+[A-Za-z]+' <<<"${vars[query]:-}" | head -n1 | awk '{print $2}')
     key="graphql_${op}_${vars[number]:-${vars[itemId]:-}}"
   fi
 else

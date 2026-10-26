@@ -151,12 +151,15 @@ scope_error() {
 }
 
 set_status() {
-  local n=$1 resp rows item project title current field option
+  local n=$1 resp rows item project title current field option errf
+  errf=$(mktemp)
   if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api graphql -f query="$ITEM_QUERY" \
-      -f owner="${REPO%%/*}" -f name="${REPO#*/}" -F number="$n" 2>&1); then
+      -f owner="${REPO%%/*}" -f name="${REPO#*/}" -F number="$n" 2>"$errf"); then
+    resp="$resp$(cat "$errf")"; rm -f "$errf"
     scope_error "$resp" || echo "::warning::Cannot read the project items of #$n: $resp"
     return 0
   fi
+  rm -f "$errf"
   rows=$(jq -r --arg s "$PROJECT_STATUS" '.data.repository.issue.projectItems.nodes[]?
     | [.id, .project.id, .project.title, (.fieldValueByName.name // "-"), (.project.field.id // "-"),
        ([.project.field.options[]? | select(.name == $s) | .id][0] // "-")] | @tsv' <<<"$resp") || rows=""
