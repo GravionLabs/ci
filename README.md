@@ -522,7 +522,7 @@ steps:
 Sets the `[Level] ` title prefix from the level label of an issue and flags issues that miss required sections. Run it on `issues` events; used by `issues.yml`.
 
 - **Title:** the first label of `levels` that the issue carries decides the prefix (`epic` becomes `[Epic]`, `pbi` `[PBI]`, others capitalized). Existing leading `[...]` prefixes and the legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced by exactly one `[Level] `. Issues without a level label are left alone.
-- **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed.
+- **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed; when the level label changes to one without required sections, the label is removed only if the action set it (its comment says so).
 
 > **Prerequisite:** `permissions: issues: write`. The default `token` is the `GITHUB_TOKEN`, so the edits it makes trigger no further workflow run.
 
@@ -551,7 +551,7 @@ steps:
 | `token`             | Token with issues write access                                                                                                                         | No       | ${{ github.token }}       |
 <!-- /action-docs:inputs -->
 
-Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 treats a bare directory as a file).
+Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 treats a bare directory as a file); Node 21+).
 
 ---
 

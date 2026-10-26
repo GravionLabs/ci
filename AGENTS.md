@@ -198,7 +198,8 @@ Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@main` from a workfl
 - **conventions** (`issues/conventions`): on open issues (opened, edited, labeled, unlabeled, reopened) with the `GITHUB_TOKEN`, so its edits trigger no rerun.
   - Title rule: the first label of `levels` the issue carries gives exactly one `[Level] ` prefix (`pbi` becomes `[PBI]`); other leading `[...]` and legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced. No level label: nothing happens.
   - Section rule: for levels in `required-sections`, headings (`##` to `####`, case-insensitive) that are missing add the label `needs-refinement` and one comment carrying the marker `<!-- gravionlabs-ci:issue-conventions -->` (updated, not duplicated); complete sections remove the label.
-- The calling job must grant `issues: write`. This repository's caller is `.github/workflows/issue-events.yml` (workflow "Issue events").
+- The calling job must grant `issues: write`. `secrets: inherit` works; passing only `GH_PAT: ${{ secrets.GH_PAT }}` limits what `pull_request_target` runs (fork PRs) receive. The secret keeps the name `GH_PAT` (not kebab-case) so it matches the repository secret under `secrets: inherit`.
+- This repository's caller is `.github/workflows/issue-events.yml` (workflow "Issue events"): top-level `permissions: {}`, `issues: write` on the job, only `GH_PAT` passed.
 
 ```yaml
 on:
@@ -217,9 +218,14 @@ jobs:
     secrets: inherit
 ```
 
-Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/*.yml`.
+Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`). The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it and `test-issue-conventions`.
 
 ## Composite Actions
+
+### `issues/conventions`
+
+Run on `issues` events (opened, edited, labeled, unlabeled, reopened) of open issues; used by `issues.yml`. Re-reads the issue, then sets exactly one `[Level] ` title prefix from the first `levels` label it carries (case-insensitive; leading `[...]` and legacy `Epic:`/`Feature:`/`Bug:` replaced; no level label: title unchanged). For levels in `required-sections` it adds or removes `needs-refinement` and keeps one marker comment `<!-- gravionlabs-ci:issue-conventions -->` up to date; a label it set is removed when the level no longer requires sections.
+Inputs: `levels` (default `epic,feature,pbi,task,bug`), `required-sections` (JSON map level → heading array, default `{}`; invalid JSON or a non-array value fails with `Invalid required-sections JSON`), `token` (default `GITHUB_TOKEN`). Needs `issues: write`. Code: `conventions.mjs` (pure rules), `run.mjs` (API calls), tests in `conventions.test.mjs`.
 
 ### `versioning/determine-version`
 
