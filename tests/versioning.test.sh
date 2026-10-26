@@ -133,6 +133,128 @@ mark_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_labels.fail"; run_mark
 [ "$code" = 0 ] && ok "label write failure exits 0" || fail "exit $code"
 has "label write failure warns" "::warning::Cannot label #10" "$out"
 
+echo "# mark: project status"
+# #10 and #20 get labelled; #11 is already labelled (also in MARKED)
+status_fixture() {
+  mark_fixture
+  export PROJECT_STATUS="In release"
+  items() { fix "graphql_ItemStatus_$1" "{\"data\":{\"repository\":{\"issue\":{\"projectItems\":{\"nodes\":[$2]}}}}}"; }
+  # node <itemId> <projectId> <title> <current status or ""> <with option true|false>
+  node() {
+    local cur=null opts='[{"id":"o1","name":"Todo"},{"id":"o2","name":"In release"}]'
+    [ -n "$4" ] && cur="{\"name\":\"$4\"}"
+    [ "$5" = false ] && opts='[{"id":"o1","name":"Todo"}]'
+    printf '{"id":"%s","project":{"id":"%s","title":"%s","field":{"id":"f1","options":%s}},"fieldValueByName":%s}' "$1" "$2" "$3" "$opts" "$cur"
+  }
+}
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+items 11 "$(node I11 P1 Board Done true)"
+items 20 "$(node I20 P1 Board 'In release' true)"
+run_mark
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code: $out"
+has "sets #10 via SetStatus" "gh api graphql -f query=mutation SetStatus" "$log"
+has "mutation carries ids" "-f projectId=P1 -f itemId=I10 -f fieldId=f1 -f optionId=o2" "$log"
+count_is "only #10 mutated" "mutation SetStatus" 1 "$log"
+hasnt "Done item skipped" "itemId=I11" "$log"
+hasnt "item already at the status skipped" "itemId=I20" "$log"
+
+status_fixture
+items 10 ""
+run_mark
+[ "$code" = 0 ] && ok "exit 0 without project items" || fail "exit $code"
+hasnt "issue without project item not mutated" "mutation SetStatus" "$log"
+hasnt "no warning" "::warning::" "$out"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo false)"
+items 11 "$(node I11 P1 Board Todo false)"
+items 20 "$(node I20 P2 Other Todo false),$(node J20 P1 Board Todo false)"
+run_mark
+count_is "option warning once per project" "has no Status option" 2 "$out"
+hasnt "no mutation without the option" "mutation SetStatus" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+echo "Resource not accessible by personal access token" > "$GH_FIX/graphql_ItemStatus_10.fail"
+run_mark
+[ "$code" = 0 ] && ok "scope failure exits 0" || fail "exit $code"
+count_is "scope warning once" "::warning::The token cannot access the project" 1 "$out"
+has "warning names the classic PAT" "classic PAT" "$out"
+count_is "no further graphql after the scope failure" "gh api graphql" 1 "$log"
+has "labels still written" "issues/10/labels" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+echo "Your token has not been granted the required scopes: INSUFFICIENT_SCOPES" > "$GH_FIX/graphql_ItemStatus_10.fail"
+run_mark
+count_is "INSUFFICIENT_SCOPES warns once" "::warning::The token cannot access the project" 1 "$out"
+count_is "INSUFFICIENT_SCOPES stops further graphql" "gh api graphql" 1 "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+echo "Resource not accessible by personal access token" > "$GH_FIX/graphql_SetStatus_I10.fail"
+run_mark
+count_is "mutation scope warning once" "::warning::The token cannot access the project" 1 "$out"
+[ "$code" = 0 ] && ok "mutation scope failure exits 0" || fail "exit $code"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+items 20 "$(node I20 P1 Board Todo true)"
+echo "Resource not accessible by personal access token" > "$GH_FIX/graphql_SetStatus_I10.fail"
+run_mark
+count_is "no further mutation after a mutation scope failure" "mutation SetStatus" 1 "$log"
+count_is "no item query for #20 after the scope failure" "gh api graphql" 2 "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+items 20 "$(node I20 P1 Board Todo true)"
+echo "boom" > "$GH_FIX/graphql_SetStatus_I10.fail"
+run_mark
+[ "$code" = 0 ] && ok "mutation failure exits 0" || fail "exit $code"
+has "mutation failure warns" "::warning::Cannot set the status of #10 in Board" "$out"
+has "continues with the next issue after a mutation failure" "itemId=I20" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true),$(node J10 P2 Other Todo false)"
+run_mark
+count_is "mutates only the project with the option" "mutation SetStatus" 1 "$log"
+count_is "warns for the project without the option" "has no Status option" 1 "$out"
+has "names the project without the option" "Project Other has no Status option" "$out"
+
+status_fixture
+items 20 "$(node I20 P1 Board Todo true)"
+run_mark
+has "labelled parent #20 gets the status" "itemId=I20" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+GH_TOKEN=base-tok PROJECT_TOKEN=pat-tok run_mark
+has "graphql uses PROJECT_TOKEN" "token=pat-tok" "$log"
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+GH_TOKEN=base-tok run_mark
+has "PROJECT_TOKEN falls back to GH_TOKEN" "token=base-tok" "$log"
+
+status_fixture
+echo "boom" > "$GH_FIX/graphql_ItemStatus_10.fail"
+items 20 "$(node I20 P1 Board Todo true)"
+run_mark
+has "other failure warns per issue" "::warning::Cannot read the project items of #10" "$out"
+has "continues with the next issue" "itemId=I20" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+DRY_RUN=true run_mark
+has "dry run prints would set" "would set #10 to In release in Board" "$out"
+hasnt "dry run makes no mutation" "mutation SetStatus" "$log"
+
+status_fixture
+items 10 "$(node I10 P1 Board Todo true)"
+PROJECT_STATUS="" run_mark
+hasnt "no graphql without PROJECT_STATUS" "graphql" "$log"
+unset PROJECT_STATUS
+
 echo "# close: removes the label from closed and already closed referenced issues"
 close_fixture() {
   setup

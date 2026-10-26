@@ -471,6 +471,46 @@ steps:
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
 <!-- /action-docs:inputs -->
 
+### `versioning/mark-merged-issues`
+
+On every push to a `release/*` branch (incl. `release/next`), labels the open issues delivered to it with `merged` and comments once. `close-release-issues` removes the label when the release lands.
+
+With `project-status` set (e.g. `In release`), the project items of the labelled issues also get that Status. The status is applied to the whole labelled set of the run, including issues labelled earlier, so a manually chosen Status may be overwritten; items already `Done` or already at that Status are skipped. A project without a Status option of that name gets one warning. Project failures only warn and never fail the job.
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`, `pull-requests: read`. The project API needs `project-token`: a classic PAT with scope `project` (fine-grained tokens cannot access user-owned projects). Without project access the step warns once and does not fail.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+steps:
+  - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+    with:
+      project-status: In release
+      project-token: ${{ secrets.GH_PAT }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/mark-merged-issues/action.yml" -->
+| Name             | Description                                                                                | Required | Default             |
+|------------------|--------------------------------------------------------------------------------------------|----------|---------------------|
+| `release-branch` | Release branch (release/*); defaults to the ref that triggered the workflow                | No       |                     |
+| `base`           | Base branch the release lands on; defaults to the repository default branch                | No       |                     |
+| `label`          | Label for issues merged into the release branch                                            | No       | merged              |
+| `token`          | GitHub token used for the gh CLI                                                           | No       | ${{ github.token }} |
+| `dry-run`        | Print the issues that would be labelled without changing anything                          | No       | false               |
+| `project-status` | Status to set on the project items of the labelled issues (e.g. "In release"); empty = off | No       |                     |
+| `project-token`  | Token for the project API (classic PAT with scope project); defaults to token              | No       |                     |
+<!-- /action-docs:inputs -->
+
 ---
 
 ## Rust Actions

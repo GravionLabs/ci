@@ -3,22 +3,30 @@
 # Key = method + path (gh api) or the subcommand (pr-list, pr-view-<n>, repo-view-<owner_repo>, label-create-<label>,
 # issue-close-<n>), '/' and ' ' replaced by '_', query string dropped. <key>.json is the raw API
 # response (filtered with --jq / -q like gh does); a missing file for a GET means 404, <key>.fail
-# makes the call fail. Writes succeed unless <key>.fail exists.
+# makes the call fail (its content goes to stderr). `gh api graphql` is keyed graphql_<operation>_<number|itemId>;
+# a missing graphql fixture answers empty. Writes succeed unless <key>.fail exists.
 set -uo pipefail
 echo "gh $*" >> "$GH_LOG"
+echo "token=${GH_TOKEN:-}" >> "$GH_LOG"
 method=GET jq_expr="" args=()
+declare -A vars=()
 if [ "$1" = api ]; then
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
       -X) method=$2; shift 2 ;;
       --jq|-q) jq_expr=$2; shift 2 ;;
-      -f|-F) shift 2 ;;
+      -f|-F) vars["${2%%=*}"]=${2#*=}; shift 2 ;;
       --paginate|--silent) shift ;;
       *) args+=("$1"); shift ;;
     esac
   done
   key="$method ${args[0]%%\?*}"
+  # graphql: key = graphql_<operation name>_<issue number or item id>
+  if [ "${args[0]}" = graphql ]; then
+    op=$(grep -oE '(query|mutation)[[:space:]]+[A-Za-z]+' <<<"${vars[query]:-}" | head -n1 | awk '{print $2}')
+    key="graphql_${op}_${vars[number]:-${vars[itemId]:-}}"
+  fi
 else
   sub="$1-$2"; shift 2
   while [ $# -gt 0 ]; do
@@ -32,7 +40,7 @@ else
   key="$sub${args[0]:+-${args[0]}}"
 fi
 key=${key//\//_}; key=${key// /_}
-[ -e "$GH_FIX/$key.fail" ] && { echo "HTTP 403: $key" >&2; exit 1; }
+[ -e "$GH_FIX/$key.fail" ] && { echo "HTTP 403: $key" >&2; cat "$GH_FIX/$key.fail" >&2; exit 1; }
 if [ -e "$GH_FIX/$key.json" ]; then
   if [ -n "$jq_expr" ]; then jq -r "$jq_expr" "$GH_FIX/$key.json"; else cat "$GH_FIX/$key.json"; fi
   exit $?

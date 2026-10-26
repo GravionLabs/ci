@@ -6,6 +6,8 @@ description: >
   gets one comment. Parents labeled pbi or feature whose open sub-issues all carry the label get
   it too (repeating upwards; epics never). Pull requests and closed issues are skipped. Idempotent.
   close-release-issues removes the label when the release lands on the default branch.
+  With project-status set, the project items of those issues also get that Status (needs a classic
+  PAT with scope project as project-token; failures only warn).
   Missing permissions only warn. Requires contents: read, issues: write and pull-requests: read.
 
 inputs:
@@ -29,6 +31,14 @@ inputs:
     description: 'Print the issues that would be labelled without changing anything'
     required: false
     default: 'false'
+  project-status:
+    description: 'Status to set on the project items of the labelled issues (e.g. "In release"); empty = off'
+    required: false
+    default: ''
+  project-token:
+    description: 'Token for the project API (classic PAT with scope project); defaults to token'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -41,4 +51,6 @@ runs:
         BASE: ${{ inputs.base }}
         LABEL: ${{ inputs.label }}
         DRY_RUN: ${{ inputs.dry-run }}
+        PROJECT_STATUS: ${{ inputs.project-status }}
+        PROJECT_TOKEN: ${{ inputs.project-token || inputs.token }}
       run: bash "${{ github.action_path }}/mark.sh"
