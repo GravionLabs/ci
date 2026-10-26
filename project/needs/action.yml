@@ -1,0 +1,71 @@
+name: Project needs
+description: >-
+  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of GravionLabs/apm-hub at a pinned ref.
+  Run it on issues, pull_request_target, schedule or workflow_dispatch events. Only the apm-hub scripts are checked out
+  (sparse, into .apm-hub in the workspace); the calling repository and PR code are never checked out, and event data
+  reaches the script through the environment only. No token: one warning and a green step.
+
+inputs:
+  project-url:
+    description: Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>
+    required: true
+  token:
+    description: Classic PAT with the scopes project and repo (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning
+    required: false
+    default: ''
+  mode:
+    description: 'event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository'
+    required: false
+    default: event
+  apm-hub-ref:
+    description: Tag or commit of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1
+    required: false
+    default: v2.5.4
+
+runs:
+  using: composite
+  steps:
+    - name: Check token
+      id: token
+      shell: bash
+      env:
+        HAS_TOKEN: ${{ inputs.token != '' }}
+      run: |
+        if [ "$HAS_TOKEN" = "true" ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::No token for project/needs (pass a classic PAT with the scopes project and repo); skipping the Needs sync."
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # Public repository; the PAT is used because a caller job with `permissions: {}` leaves the GITHUB_TOKEN no read access.
+    - name: Check out Sync-ProjectNeeds.ps1 (GravionLabs/apm-hub)
+      if: steps.token.outputs.present == 'true'
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        repository: GravionLabs/apm-hub
+        ref: ${{ inputs.apm-hub-ref }}
+        path: .apm-hub
+        token: ${{ inputs.token }}
+        persist-credentials: false
+        sparse-checkout-cone-mode: false
+        # Sync-ProjectNeeds.ps1 imports ../../github-issue/scripts/NeedsRules.psm1
+        sparse-checkout: |
+          packages/github/.apm/skills/github-project/scripts/
+          packages/github/.apm/skills/github-issue/scripts/
+
+    - name: Sync Needs
+      if: steps.token.outputs.present == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        PROJECT_URL: ${{ inputs.project-url }}
+        MODE: ${{ inputs.mode }}
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_ACTION: ${{ github.event.action }}
+        ISSUE_NUMBER: ${{ github.event.issue.number }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        LABEL_NAME: ${{ github.event.label.name }}
+        SYNC_SCRIPT: ${{ github.workspace }}/.apm-hub/packages/github/.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1
+      run: bash "$GITHUB_ACTION_PATH/needs.sh"
