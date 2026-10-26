@@ -6,6 +6,19 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.1.0] — 2026-10-26
+
+### Documentation
+- Update CHANGELOG.md for v1.0.60 [skip ci]
+
+
+### Features
+- Mark-merged-issues sets project status (#58) (#71)
+- Add reusable issues workflow with add-to-project (#60) (#75)
+- Needs job in issues.yml keeps project Needs current (#63) (#79)
+- Reusable release-branch workflow (#59) (#84)
+
+
 ## [1.0.60] — 2026-10-25
 
 ### Documentation
