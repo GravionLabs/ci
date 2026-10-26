@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   MARKER,
+  NO_SECTIONS_BODY,
   commentBody,
   expectedTitle,
   levelOf,
@@ -54,6 +55,16 @@ describe('levelOf', () => {
   it('supports custom levels', () => {
     assert.equal(levelOf(['spike'], parseLevels('spike')), 'spike');
   });
+
+  it('matches label names case-insensitively', () => {
+    assert.equal(levelOf(['PBI'], LEVELS), 'pbi');
+    assert.equal(levelOf([{ name: 'Task' }], LEVELS), 'task');
+  });
+
+  it('is null for missing labels or an empty level list', () => {
+    assert.equal(levelOf(undefined, LEVELS), null);
+    assert.equal(levelOf(['pbi'], {}), null);
+  });
 });
 
 describe('expectedTitle', () => {
@@ -88,6 +99,16 @@ describe('expectedTitle', () => {
     assert.equal(expectedTitle(once, 'bug', LEVELS), once);
   });
 
+  it('has no trailing space when only prefixes are left', () => {
+    assert.equal(expectedTitle('[Task]', 'pbi', LEVELS), '[PBI]');
+    assert.equal(expectedTitle('Epic:', 'epic', LEVELS), '[Epic]');
+    assert.equal(expectedTitle('', 'bug', LEVELS), '[Bug]');
+  });
+
+  it('keeps brackets that are not leading', () => {
+    assert.equal(expectedTitle('fix: crash in [Board]', 'bug', LEVELS), '[Bug] fix: crash in [Board]');
+  });
+
   it('uses the display name of custom levels', () => {
     assert.equal(expectedTitle('look into it', 'spike', parseLevels('spike')), '[Spike] look into it');
   });
@@ -107,6 +128,12 @@ describe('parseRequiredSections', () => {
   it('throws a clear message for invalid JSON or a non-object', () => {
     assert.throws(() => parseRequiredSections('{nope'), /Invalid required-sections JSON/);
     assert.throws(() => parseRequiredSections('["a"]'), /Invalid required-sections JSON/);
+    assert.throws(() => parseRequiredSections('null'), /Invalid required-sections JSON/);
+  });
+
+  it('rejects a level whose headings are not an array of strings', () => {
+    assert.throws(() => parseRequiredSections('{"task":"Files"}'), /"task" must be an array of heading strings/);
+    assert.throws(() => parseRequiredSections('{"task":["Files",1]}'), /"task" must be an array/);
   });
 });
 
@@ -154,66 +181,115 @@ describe('commentBody', () => {
 });
 
 describe('run', () => {
+  // Fake GitHub API: holds the issue state, records every write, applies it, so tests check the
+  // resulting state and the set of writes, not the order of calls.
   function fake({ title = 'x', labels = [], body = '', comments = [] }) {
-    const calls = [];
-    const rec = (name, result) => async (args) => {
-      calls.push([name, args]);
-      return result;
+    const state = { title, labels: labels.map((name) => ({ name })), body, comments: [...comments] };
+    const writes = [];
+    const write = (name, apply) => async (args) => {
+      assert.equal(args.owner, 'o');
+      assert.equal(args.repo, 'r');
+      if (name !== 'createLabel' && name !== 'updateComment') assert.equal(args.issue_number, 7);
+      writes.push({ name, args });
+      apply?.(args);
+      return {};
     };
+    const listComments = async () => {};
     const github = {
-      paginate: async () => comments,
+      paginate: async (fn, args) => {
+        assert.equal(fn, listComments);
+        assert.equal(args.issue_number, 7);
+        return state.comments;
+      },
       rest: {
         issues: {
-          get: async () => ({ data: { title, labels, body } }),
-          listComments: () => {},
-          update: rec('update'),
-          createLabel: rec('createLabel'),
-          addLabels: rec('addLabels'),
-          removeLabel: rec('removeLabel'),
-          createComment: rec('createComment'),
-          updateComment: rec('updateComment'),
+          get: async (args) => {
+            assert.equal(args.issue_number, 7);
+            return { data: structuredClone({ title: state.title, labels: state.labels, body: state.body }) };
+          },
+          listComments,
+          update: write('update', (a) => (state.title = a.title)),
+          createLabel: write('createLabel'),
+          addLabels: write('addLabels', (a) => state.labels.push(...a.labels.map((name) => ({ name })))),
+          removeLabel: write('removeLabel', (a) => (state.labels = state.labels.filter((l) => l.name !== a.name))),
+          createComment: write('createComment', (a) =>
+            state.comments.push({ id: 99, user: { type: 'Bot' }, body: a.body }),
+          ),
+          updateComment: write('updateComment', (a) => {
+            state.comments.find((c) => c.id === a.comment_id).body = a.body;
+          }),
         },
       },
     };
-    const core = { info: () => {}, warning: () => {} };
+    const warnings = [];
+    const core = { info: () => {}, warning: (m) => warnings.push(m) };
     const context = { repo: { owner: 'o', repo: 'r' }, payload: { issue: { number: 7 } } };
     const inputs = { levels: 'epic,feature,pbi,task,bug', requiredSections: JSON.stringify(REQUIRED) };
-    return { github, core, context, inputs, calls, names: () => calls.map((c) => c[0]) };
+    const names = () => writes.map((w) => w.name).sort();
+    const arg = (name) => writes.find((w) => w.name === name)?.args;
+    const labelNames = () => state.labels.map((l) => l.name).sort();
+    return { github, core, context, inputs, state, writes, warnings, names, arg, labelNames };
   }
   const exec = (f) => run({ github: f.github, context: f.context, core: f.core, inputs: f.inputs });
+  const bot = (body, id = 5) => ({ id, user: { type: 'Bot' }, body });
 
   it('does nothing without a level label', async () => {
-    const f = fake({ labels: [{ name: 'dependencies' }] });
+    const f = fake({ title: 'feat: x', labels: ['dependencies'] });
     await exec(f);
-    assert.deepEqual(f.names(), []);
+    assert.deepEqual(f.writes, []);
   });
 
   it('updates the title only when it differs', async () => {
-    const same = fake({ title: '[Epic] x', labels: [{ name: 'epic' }] });
+    const same = fake({ title: '[Epic] x', labels: ['epic'] });
     await exec(same);
-    assert.deepEqual(same.names(), []);
+    assert.deepEqual(same.writes, []);
 
-    const diff = fake({ title: 'x', labels: [{ name: 'epic' }] });
+    const diff = fake({ title: 'x', labels: ['epic'] });
     await exec(diff);
-    assert.deepEqual(diff.calls, [['update', { owner: 'o', repo: 'r', issue_number: 7, title: '[Epic] x' }]]);
+    assert.deepEqual(diff.names(), ['update']);
+    assert.equal(diff.state.title, '[Epic] x');
   });
 
   it('labels and comments once when sections are missing', async () => {
-    const f = fake({ title: '[Task] x', labels: [{ name: 'task' }], body: '### Files' });
+    const f = fake({ title: '[Task] x', labels: ['task'], body: '### Files' });
     await exec(f);
-    assert.deepEqual(f.names(), ['createLabel', 'addLabels', 'createComment']);
-    assert.match(f.calls[2][1].body, /`### Done when`/);
+    assert.deepEqual(f.names(), ['addLabels', 'createComment', 'createLabel']);
+    assert.deepEqual(f.labelNames(), ['needs-refinement', 'task']);
+    assert.match(f.arg('createComment').body, /`### Done when`/);
+    assert.deepEqual(f.warnings, ['Missing sections: Done when']);
+  });
+
+  it('does not add the label again when it is already set', async () => {
+    const f = fake({ title: '[Task] x', labels: ['task', 'needs-refinement'], body: '### Files' });
+    await exec(f);
+    assert.deepEqual(f.names(), ['createComment']);
+  });
+
+  it('is idempotent: a second run writes nothing', async () => {
+    for (const body of ['### Files', '### Files\n### Done when']) {
+      const f = fake({ title: 'x', labels: ['task'], body });
+      await exec(f);
+      f.writes.length = 0;
+      await exec(f);
+      assert.deepEqual(f.writes, [], `second run for body ${JSON.stringify(body)}`);
+    }
+  });
+
+  it('writes nothing for a complete issue without label or comment', async () => {
+    const f = fake({ title: '[Task] x', labels: ['task'], body: '### Files\n### Done when' });
+    await exec(f);
+    assert.deepEqual(f.writes, []);
   });
 
   it('ignores a 422 on label creation but rethrows other errors', async () => {
-    const f = fake({ title: '[Task] x', labels: [{ name: 'task' }] });
+    const f = fake({ title: '[Task] x', labels: ['task'] });
     f.github.rest.issues.createLabel = async () => {
       throw Object.assign(new Error('exists'), { status: 422 });
     };
     await exec(f);
     assert.ok(f.names().includes('createComment'));
 
-    const g = fake({ title: '[Task] x', labels: [{ name: 'task' }] });
+    const g = fake({ title: '[Task] x', labels: ['task'] });
     g.github.rest.issues.createLabel = async () => {
       throw Object.assign(new Error('boom'), { status: 500 });
     };
@@ -223,40 +299,76 @@ describe('run', () => {
   it('updates the existing marker comment instead of creating another', async () => {
     const f = fake({
       title: '[Task] x',
-      labels: [{ name: 'task' }, { name: 'needs-refinement' }],
+      labels: ['task', 'needs-refinement'],
       body: '### Files',
-      comments: [{ id: 5, user: { type: 'Bot' }, body: `${MARKER}\nold` }],
+      comments: [bot(`${MARKER}\nold`)],
     });
     await exec(f);
-    assert.deepEqual(f.names(), ['createLabel', 'updateComment']);
-    assert.equal(f.calls[1][1].comment_id, 5);
+    assert.deepEqual(f.names(), ['updateComment']);
+    assert.equal(f.arg('updateComment').comment_id, 5);
+    assert.equal(f.state.comments.length, 1);
   });
 
   it('ignores marker comments written by non-bots', async () => {
     const f = fake({
       title: '[Task] x',
-      labels: [{ name: 'task' }],
+      labels: ['task'],
       comments: [{ id: 5, user: { type: 'User' }, body: `${MARKER}\nfake` }],
     });
     await exec(f);
     assert.ok(f.names().includes('createComment'));
+    assert.ok(!f.names().includes('updateComment'));
   });
 
   it('removes the label and confirms when sections are complete', async () => {
     const f = fake({
       title: '[Task] x',
-      labels: [{ name: 'task' }, { name: 'needs-refinement' }],
+      labels: ['task', 'needs-refinement'],
       body: '### Files\n### Done when',
-      comments: [{ id: 5, user: { type: 'Bot' }, body: `${MARKER}\nold` }],
+      comments: [bot(`${MARKER}\nold`)],
     });
     await exec(f);
     assert.deepEqual(f.names(), ['removeLabel', 'updateComment']);
-    assert.match(f.calls[1][1].body, /All required sections for a Task are present/);
+    assert.deepEqual(f.labelNames(), ['task']);
+    assert.match(f.arg('updateComment').body, /All required sections for a Task are present/);
+  });
+
+  it('tolerates a label that is already gone (404) but rethrows other errors', async () => {
+    const issue = { title: '[Task] x', labels: ['task', 'needs-refinement'], body: '### Files\n### Done when' };
+    const f = fake(issue);
+    f.github.rest.issues.removeLabel = async () => {
+      throw Object.assign(new Error('Label does not exist'), { status: 404 });
+    };
+    await exec(f);
+
+    const g = fake(issue);
+    g.github.rest.issues.removeLabel = async () => {
+      throw Object.assign(new Error('forbidden'), { status: 403 });
+    };
+    await assert.rejects(exec(g), /forbidden/);
   });
 
   it('skips the section check for levels without required sections', async () => {
-    const f = fake({ title: '[Bug] x', labels: [{ name: 'bug' }] });
+    const f = fake({ title: '[Bug] x', labels: ['bug'] });
     await exec(f);
-    assert.deepEqual(f.names(), []);
+    assert.deepEqual(f.writes, []);
+  });
+
+  it('undoes its own label when the level no longer requires sections', async () => {
+    const missing = commentBody('Task', ['Done when']);
+    for (const labels of [['bug', 'needs-refinement'], ['needs-refinement']]) {
+      const f = fake({ title: labels[0] === 'bug' ? '[Bug] x' : 'x', labels, comments: [bot(missing)] });
+      await exec(f);
+      assert.deepEqual(f.names(), ['removeLabel', 'updateComment'], `labels ${labels}`);
+      assert.equal(f.state.comments[0].body, NO_SECTIONS_BODY);
+    }
+  });
+
+  it('keeps a needs-refinement label it did not set', async () => {
+    for (const comments of [[], [bot(commentBody('Task', []))]]) {
+      const f = fake({ title: '[Bug] x', labels: ['bug', 'needs-refinement'], comments });
+      await exec(f);
+      assert.deepEqual(f.writes, []);
+    }
   });
 });

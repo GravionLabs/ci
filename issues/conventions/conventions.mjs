@@ -19,7 +19,7 @@ export function parseLevels(csv) {
 /** The level label from the issue's labels (names or `{ name }` objects), or `null` when it has none. */
 export function levelOf(labels, levels) {
   const names = new Set(
-    (labels ?? []).map((label) => (typeof label === 'string' ? label : label.name)),
+    (labels ?? []).map((label) => String(typeof label === 'string' ? label : label?.name).toLowerCase()),
   );
   return Object.keys(levels).find((level) => names.has(level)) ?? null;
 }
@@ -32,7 +32,8 @@ export function expectedTitle(title, level, levels) {
     if (next === rest) break;
     rest = next;
   }
-  return `[${levels[level]}] ${rest.trim()}`;
+  rest = rest.trim();
+  return rest ? `[${levels[level]}] ${rest}` : `[${levels[level]}]`;
 }
 
 /** Map level -> required headings from JSON; empty input means no section check. */
@@ -47,6 +48,11 @@ export function parseRequiredSections(json) {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Invalid required-sections JSON: expected an object of level -> headings');
   }
+  for (const [level, headings] of Object.entries(parsed)) {
+    if (!Array.isArray(headings) || headings.some((h) => typeof h !== 'string')) {
+      throw new Error(`Invalid required-sections JSON: "${level}" must be an array of heading strings`);
+    }
+  }
   return parsed;
 }
 
@@ -57,6 +63,9 @@ export function missingSections(body, level, required) {
   );
   return (required[level] ?? []).filter((name) => !headings.has(name.toLowerCase()));
 }
+
+/** The comment once the issue's level requires no sections any more (level label changed or removed). */
+export const NO_SECTIONS_BODY = `${MARKER}\nNo sections are required for this issue any more.`;
 
 /** The comment for an issue that misses sections, or that has them all again. */
 export function commentBody(levelName, missing) {

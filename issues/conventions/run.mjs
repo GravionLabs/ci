@@ -1,6 +1,7 @@
 import {
   MARKER,
   NEEDS_REFINEMENT,
+  NO_SECTIONS_BODY,
   commentBody,
   expectedTitle,
   levelOf,
@@ -8,6 +9,15 @@ import {
   parseLevels,
   parseRequiredSections,
 } from './conventions.mjs';
+
+/** Awaits a request and ignores the given HTTP status (e.g. a label that exists or is already gone). */
+async function ignoring(status, request) {
+  try {
+    await request;
+  } catch (error) {
+    if (error.status !== status) throw error;
+  }
+}
 
 /** Fixes the "[Level] " title prefix and flags issues that miss required sections. */
 export default async function run({ github, context, core, inputs }) {
@@ -19,20 +29,18 @@ export default async function run({ github, context, core, inputs }) {
   const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number });
 
   const level = levelOf(issue.labels, levels);
-  if (!level) {
-    core.info('No level label; nothing to check.');
-    return;
+  if (!level) core.info('No level label; title unchanged.');
+  else {
+    const title = expectedTitle(issue.title, level, levels);
+    if (title !== issue.title) {
+      await github.rest.issues.update({ owner, repo, issue_number, title });
+      core.info(`Title: "${issue.title}" -> "${title}"`);
+    }
   }
 
-  const title = expectedTitle(issue.title, level, levels);
-  if (title !== issue.title) {
-    await github.rest.issues.update({ owner, repo, issue_number, title });
-    core.info(`Title: "${issue.title}" -> "${title}"`);
-  }
-
-  if (!required[level]) return;
-  const missing = missingSections(issue.body, level, required);
+  const sections = level ? required[level] : undefined;
   const labeled = issue.labels.some((l) => (l.name ?? l) === NEEDS_REFINEMENT);
+  if (!sections && !labeled) return;
 
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner,
@@ -41,21 +49,34 @@ export default async function run({ github, context, core, inputs }) {
     per_page: 100,
   });
   const previous = comments.find((c) => c.user?.type === 'Bot' && c.body?.startsWith(MARKER));
+  const removeLabel = () =>
+    ignoring(404, github.rest.issues.removeLabel({ owner, repo, issue_number, name: NEEDS_REFINEMENT }));
+
+  if (!sections) {
+    // The level no longer requires sections: undo the label only when our comment shows we set it.
+    if (previous?.body.includes(`labeled \`${NEEDS_REFINEMENT}\``)) {
+      await removeLabel();
+      await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body: NO_SECTIONS_BODY });
+    }
+    return;
+  }
+
+  const missing = missingSections(issue.body, level, required);
   const body = commentBody(levels[level], missing);
 
   if (missing.length > 0) {
-    await github.rest.issues
-      .createLabel({
-        owner,
-        repo,
-        name: NEEDS_REFINEMENT,
-        color: 'FBCA04',
-        description: 'Misses sections required by the issue conventions',
-      })
-      .catch((error) => {
-        if (error.status !== 422) throw error;
-      });
     if (!labeled) {
+      // creates the repository label on first use; 422 = it exists already
+      await ignoring(
+        422,
+        github.rest.issues.createLabel({
+          owner,
+          repo,
+          name: NEEDS_REFINEMENT,
+          color: 'FBCA04',
+          description: 'Misses sections required by the issue conventions',
+        }),
+      );
       await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [NEEDS_REFINEMENT] });
     }
     if (!previous) await github.rest.issues.createComment({ owner, repo, issue_number, body });
@@ -64,9 +85,7 @@ export default async function run({ github, context, core, inputs }) {
     }
     core.warning(`Missing sections: ${missing.join(', ')}`);
   } else {
-    if (labeled) {
-      await github.rest.issues.removeLabel({ owner, repo, issue_number, name: NEEDS_REFINEMENT });
-    }
+    if (labeled) await removeLabel();
     if (previous && previous.body !== body) {
       await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
     }
