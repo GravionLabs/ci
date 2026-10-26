@@ -85,6 +85,29 @@ jobs:
         # read-only; warns and exits 0 when the branch does not exist (between releases)
         run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
 
+  actionlint:
+    name: 'Lint: workflows (actionlint)'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run actionlint
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+        # -shellcheck= disables the shellcheck pass (the runner has shellcheck, local runs usually not),
+        # so the gate gives the same result everywhere
+        run: |
+          bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION"
+          ./actionlint -color -shellcheck= .github/workflows/*.yml
+
+      - name: Test issues.yml invariants
+        shell: bash
+        # no title/body expressions, no checkout, SHA pin, if: event lists, permissions
+        run: bash tests/issues-workflow.test.sh
+
   test-issue-conventions:
     name: 'Test: issues/conventions'
     runs-on: ubuntu-latest
