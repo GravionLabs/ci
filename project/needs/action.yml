@@ -17,6 +17,10 @@ inputs:
     description: 'event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository'
     required: false
     default: event
+  issues:
+    description: 'Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)'
+    required: false
+    default: ''
   apm-hub-ref:
     description: Commit SHA (or tag) of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = the default
     required: false
@@ -65,6 +69,7 @@ runs:
         GH_REPO: ${{ github.repository }}
         PROJECT_URL: ${{ inputs.project-url }}
         MODE: ${{ inputs.mode }}
+        ISSUES: ${{ inputs.issues }}
         EVENT_NAME: ${{ github.event_name }}
         EVENT_ACTION: ${{ github.event.action }}
         ISSUE_NUMBER: ${{ github.event.issue.number }}

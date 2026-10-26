@@ -590,6 +590,7 @@ steps:
 | `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —                                        |
 | `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |                                          |
 | `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event                                    |
+| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |                                          |
 | `apm-hub-ref` | Commit SHA (or tag) of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = the default                                                                      | No       | 62d8b8c30f3a3ef646826617699f3774f17298a9 |
 <!-- /action-docs:inputs -->
 

@@ -234,7 +234,7 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ### `project/needs`
 
-Keeps the project field `Needs` current: sparse-checks out the `github-project` and `github-issue` script directories of `GravionLabs/apm-hub` at `apm-hub-ref` (default is a commit SHA with a `# vX.Y.Z` tag comment, bumped by the `customManagers` entry in `renovate.json`; both occurrences carry a `# renovate:` comment; fetched with the `GITHUB_TOKEN`, never the PAT) and runs `Sync-ProjectNeeds.ps1`. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`), `apm-hub-ref`. Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`.
+Keeps the project field `Needs` current: sparse-checks out the `github-project` and `github-issue` script directories of `GravionLabs/apm-hub` at `apm-hub-ref` (default is a commit SHA with a `# vX.Y.Z` tag comment, bumped by the `customManagers` entry in `renovate.json`; both occurrences carry a `# renovate:` comment; fetched with the `GITHUB_TOKEN`, never the PAT) and runs `Sync-ProjectNeeds.ps1`. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`), `issues` (space/comma/newline-separated issue numbers; with `mode: event` each is synced with parents and dependents, independent of the event; invalid number = error), `apm-hub-ref`. Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`.
 
 ### `issues/conventions`
 

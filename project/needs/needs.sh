@@ -5,6 +5,8 @@
 #   GH_REPO       owner/repo whose items are synced (required)
 #   SYNC_SCRIPT   path of Sync-ProjectNeeds.ps1 (required)
 #   MODE          event (default) | full
+#   ISSUES        issue numbers (space, comma or newline separated); with MODE=event each is synced with parents and
+#                 dependents, independent of the event (MODE=full wins)
 #   EVENT_NAME, EVENT_ACTION, ISSUE_NUMBER, HEAD_REF, LABEL_NAME   event data
 # Exit code: the one of Sync-ProjectNeeds.ps1; 1 on invalid input; 0 when the event has nothing to sync.
 set -euo pipefail
@@ -15,6 +17,7 @@ EVENT_ACTION=${EVENT_ACTION:-}
 ISSUE_NUMBER=${ISSUE_NUMBER:-}
 HEAD_REF=${HEAD_REF:-}
 LABEL_NAME=${LABEL_NAME:-}
+ISSUES=${ISSUES:-}
 
 if [[ ! "${PROJECT_URL:-}" =~ ^https://github\.com/(users|orgs)/([A-Za-z0-9][A-Za-z0-9-]*)/projects/([0-9]+)/?$ ]]; then
   echo "::error::Invalid project-url '${PROJECT_URL:-}' (expected https://github.com/users|orgs/<owner>/projects/<n>)"
@@ -39,7 +42,27 @@ fi
 
 args=(-Owner "$owner" -Number "$number" -Repo "$GH_REPO")
 
-if [ "$MODE" = full ] || [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+if [ "$MODE" = event ] && [ -n "${ISSUES//[[:space:],]/}" ]; then
+  list=()
+  declare -A seen=()
+  IFS=$' \t\n,' read -r -d '' -a tokens <<<"$ISSUES" || true
+  for n in "${tokens[@]}"; do
+    [ -n "$n" ] || continue
+    if [[ ! "$n" =~ ^[0-9]+$ ]]; then
+      echo "::error::Invalid issue number '$n' in issues (expected numbers separated by space, comma or newline)"
+      exit 1
+    fi
+    n=$((10#$n))
+    [ -n "${seen[$n]:-}" ] && continue
+    seen[$n]=1
+    list+=("$n")
+  done
+  rc=0
+  for n in "${list[@]}"; do
+    pwsh -NoProfile -File "$SYNC_SCRIPT" "${args[@]}" -Issue "$n" -IncludeParents -IncludeDependents || { c=$?; [ "$rc" -ne 0 ] || rc=$c; }
+  done
+  exit "$rc"
+elif [ "$MODE" = full ] || [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
   : # full sync of the repository's items
 elif [ "$EVENT_NAME" = issues ]; then
   if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then

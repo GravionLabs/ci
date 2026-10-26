@@ -88,6 +88,31 @@ run_needs EVENT_NAME=push
 has "unknown event: notice" "::notice::Event 'push' is not handled" "$out"
 eq "unknown event: exit 0" 0 "$code"
 
+echo "# issues list"
+run_needs EVENT_NAME=push ISSUES='12 34'
+eq "push with issues: one call per issue" "$BASE -Issue 12 -IncludeParents -IncludeDependents
+$BASE -Issue 34 -IncludeParents -IncludeDependents" "$out"
+eq "issues: exit 0" 0 "$code"
+run_needs EVENT_NAME=push ISSUES="12,34
+12 034"
+eq "comma, newline, duplicates: each once" "$BASE -Issue 12 -IncludeParents -IncludeDependents
+$BASE -Issue 34 -IncludeParents -IncludeDependents" "$out"
+run_needs EVENT_NAME=issues EVENT_ACTION=opened ISSUE_NUMBER=63 ISSUES=12
+eq "issues overrides the event" "$BASE -Issue 12 -IncludeParents -IncludeDependents" "$out"
+run_needs EVENT_NAME=push ISSUES='12 x'
+has "invalid token: error" "::error::Invalid issue number 'x'" "$out"
+eq "invalid token: exit 1" 1 "$code"
+eq "invalid token: nothing synced" 0 "$(grep -c '^pwsh' <<<"$out")"
+run_needs EVENT_NAME=push 'ISSUES=1;id'
+eq "injection-like token: exit 1" 1 "$code"
+run_needs MODE=full EVENT_NAME=push ISSUES=12
+eq "mode full wins over issues" "$BASE" "$out"
+run_needs EVENT_NAME=push ISSUES=' , '
+has "blank issues: falls back to the event" "::notice::Event 'push' is not handled" "$out"
+run_needs EVENT_NAME=push ISSUES='12 34' PWSH_EXIT=3
+eq "failing sync: both issues tried" 2 "$(grep -c '^pwsh' <<<"$out")"
+eq "failing sync: exit code propagated" 3 "$code"
+
 echo "# project-url, inputs, exit code"
 run_needs PROJECT_URL=https://github.com/orgs/acme-co/projects/4 EVENT_NAME=schedule
 eq "orgs URL: owner and number" "pwsh -NoProfile -File $SCRIPT -Owner acme-co -Number 4 -Repo GravionLabs/ci" "$out"
@@ -147,8 +172,11 @@ eq "no run script expands an expression" 0 "$(q '[.runs.steps[].run | select(. !
 eq "SYNC_SCRIPT points into the sparse checkout" \
   '${{ github.workspace }}/.apm-hub/packages/github/.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1' \
   "$(q '.runs.steps[] | select(.env.SYNC_SCRIPT != null) | .env.SYNC_SCRIPT')"
-eq "inputs" 'apm-hub-ref,mode,project-url,token' "$(q '.inputs | keys | sort | join(",")')"
+eq "inputs" 'apm-hub-ref,issues,mode,project-url,token' "$(q '.inputs | keys | sort | join(",")')"
 eq "project-url required" true "$(q '.inputs["project-url"].required')"
+eq "issues default empty" '' "$(q '.inputs.issues.default')"
+eq "issues reaches the step via env only" '${{ inputs.issues }}' "$(q '.runs.steps[] | select(.env.ISSUES != null) | .env.ISSUES')"
+eq "issues input used nowhere else" 1 "$(grep -c 'inputs\.issues' "$ACTION")"
 eq "mode default" event "$(q '.inputs.mode.default')"
 if [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then ok "apm-hub-ref default is a commit SHA"; else fail "apm-hub-ref default is a commit SHA ($pin)"; fi
 
