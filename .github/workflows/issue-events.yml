@@ -11,12 +11,15 @@ on:
   pull_request_target:
     types: [opened, reopened]
 
-permissions:
-  issues: write
+permissions: {}
 
 jobs:
   issues:
+    permissions:
+      issues: write
     uses: ./.github/workflows/issues.yml
     with:
       project-url: https://github.com/users/GravionLabs/projects/17
-    secrets: inherit
+    # only the secret issues.yml needs, not secrets: inherit (pull_request_target runs for fork PRs)
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
