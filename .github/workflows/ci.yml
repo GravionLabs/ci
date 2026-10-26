@@ -8,7 +8,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, release/next]
   workflow_dispatch:
 
 jobs:
@@ -71,7 +71,10 @@ jobs:
       - name: Smoke test mark-merged-issues (dry run, no-op path)
         uses: ./versioning/mark-merged-issues
         with:
-          release-branch: release/1.3   # already merged into main: nothing ahead, nothing to label
+          # a branch compared with itself is 0 commits ahead -> "nothing to do"; between releases
+          # (release/next deleted) the compare fails, mark.sh warns and exits 0
+          release-branch: release/next
+          base: release/next
           dry-run: 'true'
 
       - name: Smoke test mark-merged-issues (dry run against a public release branch)

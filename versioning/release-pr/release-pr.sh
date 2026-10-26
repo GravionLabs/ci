@@ -25,7 +25,7 @@ if [ "$ahead" = 0 ]; then
   exit 0
 fi
 
-# only PRs merged since the branch left the base: a reused branch name (release/1.1 deleted and cut
+# only PRs merged since the branch left the base: a reused branch name (release/next deleted and cut
 # again) would otherwise list the PRs of its earlier life
 merged=$(gh pr list -R "$REPO" --base "$BRANCH" --state merged --limit 200 \
   --json number,title,author,body,mergedAt | jq --arg since "$since" '[.[] | select(.mergedAt > $since)]')
