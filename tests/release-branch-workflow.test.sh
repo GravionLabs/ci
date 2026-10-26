@@ -56,6 +56,28 @@ case "$needs_if" in *"inputs.project-url != ''"*) ok "needs off without project-
 case "$needs_if" in *"steps.mark.outputs.labelled != ''"*) ok "needs skipped without labelled issues" ;; *) fail "needs skipped without labelled issues" ;; esac
 case "$needs_if" in "!inputs.dry-run"*) ok "needs skipped on dry run" ;; *) fail "needs skipped on dry run" ;; esac
 
+# --- complete wiring ---
+RP="$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@main\") | .with"
+eq "release-pr wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},release-branch=${{ inputs.release-branch }},token=${{ secrets.GH_PAT || github.token }}' \
+  "$(q "$RP | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
+eq "mark wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},label=${{ inputs.label }},project-status=${{ inputs.project-status }},project-token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }},release-branch=${{ inputs.release-branch }},token=${{ github.token }}' \
+  "$(q "$MARK | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
+eq "needs wiring" 'apm-hub-ref=${{ inputs.apm-hub-ref }},issues=${{ steps.mark.outputs.labelled }},project-url=${{ inputs.project-url }},token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' \
+  "$(q "$NEEDS | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
+eq "needs if exact" "!inputs.dry-run && inputs.project-url != '' && steps.mark.outputs.labelled != ''" "$needs_if"
+eq "concurrency group" 'release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}' "$(q "$JOB.concurrency.group")"
+eq "concurrency does not cancel" false "$(q "$JOB.concurrency[\"cancel-in-progress\"]")"
+
+# --- dry-run Needs step: run its script ---
+DRY="$S[] | select(.name == \"Needs sync (dry run)\")"
+eq "dry-run step condition" "inputs.dry-run && inputs.project-url != ''" "$(q "$DRY | .if")"
+dry_script=$(q "$DRY | .run")
+out=$(LABELLED='' bash -c "$dry_script"); code=$?
+eq "dry-run step green" 0 "$code"
+eq "dry-run step without issues" 'would sync Needs of the issues newly labelled in a real run, with parents and dependents' "$out"
+out=$(LABELLED='4 7' bash -c "$dry_script")
+eq "dry-run step lists issues" 'would sync Needs of the issues newly labelled in a real run (4 7), with parents and dependents' "$out"
+
 # --- token check: run its script ---
 script=$(q "$S[0].run")
 check() {
@@ -70,7 +92,7 @@ check true true;   eq "PAT, require-pat: green" 0 "$code"
 eq "ci dry-run job calls the workflow" './.github/workflows/release-branch.yml' "$(q '.jobs["test-release-branch-workflow"].uses' "$CI")"
 eq "ci dry-run job is a dry run" true "$(q '.jobs["test-release-branch-workflow"].with["dry-run"]' "$CI")"
 eq "ci dry-run job permissions" '{"contents":"read","issues":"write","pull-requests":"write"}' "$(qj '.jobs["test-release-branch-workflow"].permissions' "$CI")"
-case "$(q '.jobs.release.needs | join(",")' "$CI")" in *test-release-branch-workflow*) ok "release needs the dry-run job" ;; *) fail "release needs the dry-run job" ;; esac
+eq "release does not need the @main dry-run job" 0 "$(q '[.jobs.release.needs[] | select(. == "test-release-branch-workflow")] | length' "$CI")"
 
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]

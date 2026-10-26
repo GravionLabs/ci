@@ -229,7 +229,7 @@ jobs:
     secrets: inherit
 ```
 
-Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`.
+Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`; the dry-run job `test-release-branch-workflow` and `bash tests/release-branch-workflow.test.sh` (in the `actionlint` job) cover `release-branch.yml`, the job is not a `release` prerequisite.
 
 ## Reusable Workflow: `release-branch.yml`
 
@@ -258,7 +258,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@main` from 
 ### Behavior
 
 - One job, no checkout, top-level `permissions: {}`; the calling job must grant `contents: read`, `issues: write`, `pull-requests: write`. `secrets: inherit` works.
-- Steps: check `GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which prints the issues).
+- Steps: check `GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which only prints that it would sync, since a dry run labels nothing). Only newly labelled issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
 - Actions are referenced at `@main`: works for callers once those versions are released.
 - Test: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints it.
 

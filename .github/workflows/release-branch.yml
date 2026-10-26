@@ -10,6 +10,8 @@
 # PROJECT_TOKEN is a classic PAT with the scope project (plus repo for a private repository) for the project Status and Needs
 # calls; it falls back to GH_PAT. Secret names match issues.yml, so `secrets: inherit` works.
 # The actions are referenced at @main: this workflow works for callers once those versions are released.
+# The Needs sync covers only the issues newly labelled in this run (decision): a failed sync is not retried by a rerun,
+# because those issues are then already labelled; the hourly full sync (project-needs.yml style) catches up.
 # Never checks out caller code; event data reaches scripts through env only.
 name: Release branch
 
@@ -74,6 +76,10 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
+    # pushes to one release branch run one after the other (PR creation and labelling must not race); a running mark is never cancelled
+    concurrency:
+      group: release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}
+      cancel-in-progress: false
     steps:
       - name: Check GH_PAT
         shell: bash
@@ -115,7 +121,8 @@ jobs:
         shell: bash
         env:
           LABELLED: ${{ steps.mark.outputs.labelled }}
-        run: echo "would sync Needs of ${LABELLED:-no issues} (with parents and dependents)"
+        # a dry run labels nothing, so the output is empty: say what a real run does
+        run: echo "would sync Needs of the issues newly labelled in a real run${LABELLED:+ ($LABELLED)}, with parents and dependents"
 
       - name: Sync Needs of the labelled issues
         if: '!inputs.dry-run && inputs.project-url != '''' && steps.mark.outputs.labelled != '''''

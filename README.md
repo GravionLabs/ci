@@ -519,6 +519,14 @@ steps:
 | `project-token`  | Token for the project API (classic PAT with scope project); defaults to token              | No       |                     |
 <!-- /action-docs:inputs -->
 
+**Outputs**
+
+<!-- action-docs:outputs source="versioning/mark-merged-issues/action.yml" -->
+| Name       | Description                                                                                   |
+|------------|-----------------------------------------------------------------------------------------------|
+| `labelled` | Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run) |
+<!-- /action-docs:outputs -->
+
 ---
 
 ### `issues/conventions`
@@ -1332,7 +1340,7 @@ Reusable workflow for pushes to a release branch. One job, three steps in order;
 
 1. `versioning/release-pr` keeps the PR `release: <x.y>` from the release branch to the default branch open and current (never merges).
 2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
-3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it prints the issues instead.
+3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it only prints that it would sync (a dry run labels nothing). Only issues newly labelled in the run are synced: a failed sync is not retried by a rerun, because those issues are then already labelled.
 
 No checkout; `permissions: {}` at the top, the job requests `contents: read`, `issues: write`, `pull-requests: write`, which the calling job must grant.
 
@@ -1381,7 +1389,7 @@ jobs:
 - The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
 - The secret names match `issues.yml`, so `secrets: inherit` works.
 - The actions are referenced at `@main`: the workflow works for callers once those versions are released.
-- Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow and a dry-run job exercises it.
+- Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow and a dry-run job exercises it (it is not a `release` prerequisite, since it runs the `@main` actions).
 
 ---
 
