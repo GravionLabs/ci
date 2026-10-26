@@ -229,7 +229,7 @@ jobs:
     secrets: inherit
 ```
 
-Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`; the dry-run job `test-release-branch-workflow` and `bash tests/release-branch-workflow.test.sh` (in the `actionlint` job) cover `release-branch.yml`, the job is not a `release` prerequisite.
+Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`; `bash tests/release-branch-workflow.test.sh` (in the `actionlint` job) covers `release-branch.yml`.
 
 ## Reusable Workflow: `release-branch.yml`
 

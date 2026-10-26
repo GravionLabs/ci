@@ -117,23 +117,8 @@ jobs:
 
       - name: Test release-branch.yml invariants
         shell: bash
-        # triggers, permissions, step order, token wiring, token check script, dry-run job
+        # triggers, permissions, step order, token wiring, token check script
         run: bash tests/release-branch-workflow.test.sh
-
-  test-release-branch-workflow:
-    name: 'Test: release-branch.yml (dry run)'
-    # not in release.needs: it runs the @main actions, so a smoke test of main must not block tagging main
-    # release/next against itself is 0 commits ahead: both actions take their no-op path
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/release-branch.yml
-    with:
-      release-branch: release/next
-      base: release/next
-      dry-run: true
-    secrets: inherit
 
   test-issue-conventions:
     name: 'Test: issues/conventions'

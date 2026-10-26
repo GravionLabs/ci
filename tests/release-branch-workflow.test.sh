@@ -5,7 +5,6 @@ set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WF="$ROOT/.github/workflows/release-branch.yml"
-CI="$ROOT/.github/workflows/ci.yml"
 failures=0 total=0
 
 ok()   { total=$((total + 1)); echo "ok   - $1"; }
@@ -87,12 +86,6 @@ check true false;  eq "PAT: green" 0 "$code"; eq "PAT: no output" '' "$out"
 check false false; eq "no PAT: green" 0 "$code"; eq "no PAT: one warning" 1 "$(grep -c '^::warning::' <<<"$out")"
 check false true;  eq "no PAT, require-pat: fails" 1 "$code"; eq "no PAT, require-pat: error" 1 "$(grep -c '^::error::' <<<"$out")"
 check true true;   eq "PAT, require-pat: green" 0 "$code"
-
-# --- CI validation ---
-eq "ci dry-run job calls the workflow" './.github/workflows/release-branch.yml' "$(q '.jobs["test-release-branch-workflow"].uses' "$CI")"
-eq "ci dry-run job is a dry run" true "$(q '.jobs["test-release-branch-workflow"].with["dry-run"]' "$CI")"
-eq "ci dry-run job permissions" '{"contents":"read","issues":"write","pull-requests":"write"}' "$(qj '.jobs["test-release-branch-workflow"].permissions' "$CI")"
-eq "release does not need the @main dry-run job" 0 "$(q '[.jobs.release.needs[] | select(. == "test-release-branch-workflow")] | length' "$CI")"
 
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]

@@ -4,7 +4,7 @@
 # 2. versioning/mark-merged-issues labels the open issues merged into the branch (label input) and, with project-status,
 #    sets that project Status (empty = off).
 # 3. project/needs syncs the project field Needs of the issues labelled in this run, with parents and dependents
-#    (input project-url; empty = off; skipped on a dry run, which prints the issues instead).
+#    (input project-url; empty = off; skipped on a dry run, which prints what it would sync).
 # Tokens: GH_PAT is a classic PAT (scope repo; a PR created with the GITHUB_TOKEN triggers no pull_request workflows, so
 # required checks would never run). Without it the GITHUB_TOKEN is used with a warning, or the job fails when require-pat is true.
 # PROJECT_TOKEN is a classic PAT with the scope project (plus repo for a private repository) for the project Status and Needs
