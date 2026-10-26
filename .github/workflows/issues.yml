@@ -1,0 +1,82 @@
+# Reusable workflow for issue and pull request events of a calling repository.
+# - add-to-project: adds new issues and pull requests to a project (input project-url; empty = off).
+#   GH_PAT is a classic PAT with the scopes `project` and `repo`; the GITHUB_TOKEN cannot write to a user-owned project.
+#   pull_request_target: Dependabot and fork PRs get the secret too; no job of this workflow checks out code.
+# - conventions: sets the "[Level] " title prefix from the level label and flags missing required sections,
+#   writing with the GITHUB_TOKEN (its edit triggers no further run). Needs `issues: write` from the caller.
+# Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
+name: Issues
+
+on:
+  workflow_call:
+    inputs:
+      project-url:
+        description: 'Project URL for add-to-project, e.g. https://github.com/users/<owner>/projects/<n>; empty disables the job'
+        type: string
+        required: false
+        default: ''
+      required-sections:
+        description: 'JSON map of level label to required headings, e.g. {"task":["Files","Done when"]}; {} disables the section check'
+        type: string
+        required: false
+        default: '{}'
+      levels:
+        description: 'Comma-separated level labels in precedence order'
+        type: string
+        required: false
+        default: 'epic,feature,pbi,task,bug'
+    secrets:
+      GH_PAT:
+        description: 'Classic PAT with the scopes project and repo, for add-to-project'
+        required: false
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    name: Add to project
+    if: >-
+      inputs.project-url != '' &&
+      ((github.event_name == 'issues' && contains(fromJSON('["opened","reopened","transferred"]'), github.event.action)) ||
+      (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","reopened"]'), github.event.action)))
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check GH_PAT
+        id: token
+        shell: bash
+        env:
+          HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secret GH_PAT is not set (pass secrets: inherit or GH_PAT); skipping add-to-project."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Add to project
+        if: steps.token.outputs.present == 'true'
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        with:
+          project-url: ${{ inputs.project-url }}
+          github-token: ${{ secrets.GH_PAT }}
+
+  conventions:
+    name: Issue conventions
+    if: >-
+      github.event_name == 'issues' && github.event.issue.state == 'open' &&
+      contains(fromJSON('["opened","edited","labeled","unlabeled","reopened"]'), github.event.action)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    concurrency:
+      group: issue-conventions-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Apply issue conventions
+        uses: GravionLabs/ci/issues/conventions@main
+        with:
+          levels: ${{ inputs.levels }}
+          required-sections: ${{ inputs.required-sections }}
+          token: ${{ github.token }}

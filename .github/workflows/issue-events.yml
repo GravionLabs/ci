@@ -1,0 +1,22 @@
+# Issue and pull request events of this repository, handled by the reusable workflow issues.yml:
+# adds new issues and pull requests to the GravionLabs project (https://github.com/users/GravionLabs/projects/17)
+# and applies the issue title/section conventions.
+# GH_PAT is a classic PAT with the scopes `project` and `repo`; the GITHUB_TOKEN cannot write to a user-owned project.
+# pull_request_target: Dependabot and fork PRs get the secret too; issues.yml never checks out PR code.
+name: Issue events
+
+on:
+  issues:
+    types: [opened, reopened, transferred, edited, labeled, unlabeled]
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  issues:
+    uses: ./.github/workflows/issues.yml
+    with:
+      project-url: https://github.com/users/GravionLabs/projects/17
+    secrets: inherit
