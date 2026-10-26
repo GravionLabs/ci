@@ -50,6 +50,10 @@ jobs:
           check docker-version     "${{ steps.version.outputs.docker-version }}"
           [ $ERRORS -eq 0 ] || exit 1
 
+      - name: Test GitVersion release/next increment
+        shell: bash
+        run: bash tests/determine-version.test.sh
+
   test-versioning-scripts:
     name: 'Test: mark-merged-issues / close-release-issues'
     runs-on: ubuntu-latest
