@@ -1,0 +1,127 @@
+# Reusable workflow for pushes to a release branch (callers trigger it on push to `release/**`; this file has no triggers of its own).
+# One job, three steps in order:
+# 1. versioning/release-pr keeps the PR release/<x.y> -> default branch open and current (never merges).
+# 2. versioning/mark-merged-issues labels the open issues merged into the branch (label input) and, with project-status,
+#    sets that project Status (empty = off).
+# 3. project/needs syncs the project field Needs of the issues labelled in this run, with parents and dependents
+#    (input project-url; empty = off; skipped on a dry run, which prints the issues instead).
+# Tokens: GH_PAT is a classic PAT (scope repo; a PR created with the GITHUB_TOKEN triggers no pull_request workflows, so
+# required checks would never run). Without it the GITHUB_TOKEN is used with a warning, or the job fails when require-pat is true.
+# PROJECT_TOKEN is a classic PAT with the scope project (plus repo for a private repository) for the project Status and Needs
+# calls; it falls back to GH_PAT. Secret names match issues.yml, so `secrets: inherit` works.
+# The actions are referenced at @main: this workflow works for callers once those versions are released.
+# Never checks out caller code; event data reaches scripts through env only.
+name: Release branch
+
+on:
+  workflow_call:
+    inputs:
+      release-branch:
+        description: 'Release branch, e.g. release/next; empty = the triggering ref'
+        type: string
+        required: false
+        default: ''
+      base:
+        description: 'Base branch of the release PR; empty = the repository default branch'
+        type: string
+        required: false
+        default: ''
+      label:
+        description: 'Label set on the issues merged into the release branch'
+        type: string
+        required: false
+        default: merged
+      project-status:
+        description: 'Project Status set on the project items of the labelled issues; empty disables it'
+        type: string
+        required: false
+        default: 'In release'
+      project-url:
+        description: 'Project URL for the Needs sync of the labelled issues; empty disables the sync'
+        type: string
+        required: false
+        default: ''
+      apm-hub-ref:
+        description: 'Needs sync: tag or commit of GravionLabs/apm-hub providing Sync-ProjectNeeds.ps1; empty = the default of project/needs'
+        type: string
+        required: false
+        default: ''
+      require-pat:
+        description: 'Fail instead of warning when the secret GH_PAT is missing'
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: 'Print what would change without changing anything'
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      GH_PAT:
+        description: 'Classic PAT with the scope repo for the release PR, so its required checks run'
+        required: false
+      PROJECT_TOKEN:
+        description: 'Classic PAT with the scope project (plus repo for a private repository) for project Status and Needs; falls back to GH_PAT'
+        required: false
+
+permissions: {}
+
+jobs:
+  release-branch:
+    name: Release branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check GH_PAT
+        shell: bash
+        env:
+          HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+          REQUIRE_PAT: ${{ inputs.require-pat }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            exit 0
+          fi
+          if [ "$REQUIRE_PAT" = "true" ]; then
+            echo "::error::Secret GH_PAT is not set (pass secrets: inherit or GH_PAT) and require-pat is true."
+            exit 1
+          fi
+          echo "::warning::Secret GH_PAT is not set; a release PR created with the GITHUB_TOKEN triggers no pull_request workflows, so its required checks never run."
+
+      - name: Release PR
+        uses: GravionLabs/ci/versioning/release-pr@main
+        with:
+          release-branch: ${{ inputs.release-branch }}
+          base: ${{ inputs.base }}
+          token: ${{ secrets.GH_PAT || github.token }}
+          dry-run: ${{ inputs.dry-run }}
+
+      - name: Mark merged issues
+        id: mark
+        uses: GravionLabs/ci/versioning/mark-merged-issues@main
+        with:
+          release-branch: ${{ inputs.release-branch }}
+          base: ${{ inputs.base }}
+          label: ${{ inputs.label }}
+          token: ${{ github.token }}
+          project-status: ${{ inputs.project-status }}
+          project-token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
+          dry-run: ${{ inputs.dry-run }}
+
+      - name: Needs sync (dry run)
+        if: inputs.dry-run && inputs.project-url != ''
+        shell: bash
+        env:
+          LABELLED: ${{ steps.mark.outputs.labelled }}
+        run: echo "would sync Needs of ${LABELLED:-no issues} (with parents and dependents)"
+
+      - name: Sync Needs of the labelled issues
+        if: '!inputs.dry-run && inputs.project-url != '''' && steps.mark.outputs.labelled != '''''
+        uses: GravionLabs/ci/project/needs@main
+        with:
+          project-url: ${{ inputs.project-url }}
+          token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
+          issues: ${{ steps.mark.outputs.labelled }}
+          apm-hub-ref: ${{ inputs.apm-hub-ref }}
