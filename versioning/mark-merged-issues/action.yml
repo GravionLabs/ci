@@ -40,10 +40,16 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  labelled:
+    description: 'Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run)'
+    value: ${{ steps.mark.outputs.labelled }}
+
 runs:
   using: 'composite'
   steps:
-    - name: Label issues merged into the release branch
+    - id: mark
+      name: Label issues merged into the release branch
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}

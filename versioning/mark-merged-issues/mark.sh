@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Env: GH_TOKEN, GITHUB_REPOSITORY, RELEASE_BRANCH; optional BASE, LABEL (default merged), DRY_RUN=true,
-# PROJECT_STATUS (set this project Status on the project items of the labelled issues), PROJECT_TOKEN (default GH_TOKEN)
+# GITHUB_OUTPUT (output labelled), PROJECT_STATUS (set this project Status on the project items of the labelled issues), PROJECT_TOKEN (default GH_TOKEN)
 set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:?}"
@@ -12,9 +12,18 @@ PROJECT_STATUS="${PROJECT_STATUS:-}"
 PROJECT_TOKEN="${PROJECT_TOKEN:-${GH_TOKEN:-}}"
 LABEL_JSON=$(jq -n --arg l "$LABEL" '$l')
 CLOSES_RE='\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[: ]+#[0-9]+'
-declare -A MARKED=() SEEN=() UP=() NO_OPTION=()
+declare -A MARKED=() LABELLED=() SEEN=() UP=() NO_OPTION=()
 label_ready=false
 project_blocked=false
+
+# Output `labelled`: issues newly labelled in this run (not those already labelled), also on warn exits.
+write_output() {
+  [ -n "${GITHUB_OUTPUT:-}" ] || return 0
+  local list=""
+  [ "${#LABELLED[@]}" -eq 0 ] || list=$(printf '%s\n' "${!LABELLED[@]}" | sort -n | tr '\n' ' ')
+  echo "labelled=${list% }" >> "$GITHUB_OUTPUT"
+}
+trap write_output EXIT
 
 warn_exit() {
   echo "::warning::$1; grant contents: read, issues: write and pull-requests: read to the job."
@@ -73,6 +82,7 @@ mark() {
   echo "labelling #$n"
   gh api -X POST "repos/$REPO/issues/$n/labels" -f "labels[]=$LABEL" --silent \
     || warn_exit "Cannot label #$n"
+  LABELLED[$n]=1
   gh api -X POST "repos/$REPO/issues/$n/comments" --silent \
     -f body="Merged into \`$BRANCH\`; closes when the release lands on \`$BASE\`." \
     || echo "::warning::Cannot comment on #$n."

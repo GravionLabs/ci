@@ -115,6 +115,11 @@ jobs:
         # no title/body expressions, no checkout, SHA pin, if: event lists, permissions
         run: bash tests/issues-workflow.test.sh
 
+      - name: Test release-branch.yml invariants
+        shell: bash
+        # triggers, permissions, step order, token wiring, token check script
+        run: bash tests/release-branch-workflow.test.sh
+
   test-issue-conventions:
     name: 'Test: issues/conventions'
     runs-on: ubuntu-latest
