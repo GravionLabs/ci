@@ -7,8 +7,8 @@
 # - needs (opt-in, input needs): keeps the project field Needs current via project/needs, which runs Sync-ProjectNeeds.ps1
 #   of GravionLabs/apm-hub at a pinned ref (input apm-hub-ref). Event mode syncs the issue of the event (issues: labeled,
 #   unlabeled, closed, reopened; pull_request_target: opened, closed, ready_for_review, issue number from the head branch);
-#   mode full or a schedule/workflow_dispatch caller syncs every item. Token: PROJECT_TOKEN (classic PAT, scope project;
-#   it also checks out the public apm-hub scripts), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
+#   mode full or a schedule/workflow_dispatch caller syncs every item. Token: PROJECT_TOKEN (classic PAT, scope project,
+#   plus repo for a private repository), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
 # Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
 name: Issues
 
@@ -50,7 +50,7 @@ on:
         description: 'Classic PAT with the scopes project and repo, for add-to-project'
         required: false
       PROJECT_TOKEN:
-        description: 'Classic PAT with the scope project, for the needs job; falls back to GH_PAT'
+        description: 'Classic PAT with the scope project (plus repo for a private repository), for the needs job; falls back to GH_PAT'
         required: false
 
 permissions: {}

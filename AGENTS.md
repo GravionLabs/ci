@@ -197,7 +197,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@main` from a workfl
 | Secret | Required | Description |
 |---|---|---|
 | `GH_PAT` | No | Classic PAT with scopes `project` and `repo` (the `GITHUB_TOKEN` cannot write to user-owned projects) |
-| `PROJECT_TOKEN` | No | Classic PAT with scope `project` (fine-grained tokens cannot access user-owned projects) for the `needs` job; `PROJECT_TOKEN \|\| GH_PAT` |
+| `PROJECT_TOKEN` | No | Classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects), for the `needs` job; `PROJECT_TOKEN \|\| GH_PAT` |
 
 ### Behavior
 
@@ -206,7 +206,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@main` from a workfl
 - **conventions** (`issues/conventions`): on open issues (opened, edited, labeled, unlabeled, reopened) with the `GITHUB_TOKEN`, so its edits trigger no rerun.
   - Title rule: the first label of `levels` the issue carries gives exactly one `[Level] ` prefix (`pbi` becomes `[PBI]`); other leading `[...]` and legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced. No level label: nothing happens.
   - Section rule: for levels in `required-sections`, headings (`##` to `####`, case-insensitive) that are missing add the label `needs-refinement` and one comment carrying the marker `<!-- gravionlabs-ci:issue-conventions -->` (updated, not duplicated); complete sections remove the label.
-- **needs** (opt-in `needs: true`, runs `project/needs`, `permissions: {}`): `issues` labeled/unlabeled/closed/reopened and `pull_request_target` opened/closed/ready_for_review sync the issue of the event (PR: number from the head branch) plus parent; dependents too on closed/reopened and on the label `merged`. `mode: full`, `schedule` and `workflow_dispatch` sync every item. Runs `Sync-ProjectNeeds.ps1` of `GravionLabs/apm-hub` at the pinned `apm-hub-ref` (sparse checkout; never checks out caller or PR code). Token `PROJECT_TOKEN || GH_PAT`, classic PAT with scope `project`; none = one warning, green. Concurrency per issue/PR with cancel-in-progress.
+- **needs** (opt-in `needs: true`, runs `project/needs`, `permissions: {}`): `issues` labeled/unlabeled/closed/reopened and `pull_request_target` opened/closed/ready_for_review sync the issue of the event (PR: number from the head branch) plus parent; dependents too on closed/reopened and on the label `merged`. `mode: full`, `schedule` and `workflow_dispatch` sync every item. Runs `Sync-ProjectNeeds.ps1` of `GravionLabs/apm-hub` at the pinned `apm-hub-ref` (sparse checkout; never checks out caller or PR code). Token `PROJECT_TOKEN || GH_PAT`, classic PAT with scope `project` (plus `repo` for a private repository); none = one warning, green. Concurrency per issue/PR with cancel-in-progress.
 - The calling job must grant `issues: write`. `secrets: inherit` works; passing only `GH_PAT: ${{ secrets.GH_PAT }}` limits what `pull_request_target` runs (fork PRs) receive. The secret keeps the name `GH_PAT` (not kebab-case) so it matches the repository secret under `secrets: inherit`.
 - This repository's caller is `.github/workflows/issue-events.yml` (workflow "Issue events"): top-level `permissions: {}`, `issues: write` on the job, `GH_PAT` and `PROJECT_TOKEN` passed, `needs: true`. The hourly full sync is `.github/workflows/project-needs.yml` (`mode: full`; its job also grants `issues: write` because GitHub validates all jobs of `issues.yml` at startup).
 
@@ -234,7 +234,7 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ### `project/needs`
 
-Keeps the project field `Needs` current: sparse-checks out the `github-project` and `github-issue` script directories of `GravionLabs/apm-hub` at `apm-hub-ref` (default is a tag, bumped by the `customManagers` entry in `renovate.json`; both occurrences carry a `# renovate:` comment) and runs `Sync-ProjectNeeds.ps1`. Inputs: `project-url` (required), `token` (classic PAT, scopes `project` and `repo`; empty = warning, green), `mode` (`event`|`full`), `apm-hub-ref`. Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`.
+Keeps the project field `Needs` current: sparse-checks out the `github-project` and `github-issue` script directories of `GravionLabs/apm-hub` at `apm-hub-ref` (default is a commit SHA with a `# vX.Y.Z` tag comment, bumped by the `customManagers` entry in `renovate.json`; both occurrences carry a `# renovate:` comment; fetched with the `GITHUB_TOKEN`, never the PAT) and runs `Sync-ProjectNeeds.ps1`. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`), `apm-hub-ref`. Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`.
 
 ### `issues/conventions`
 
