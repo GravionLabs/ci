@@ -9,7 +9,7 @@
       "description": "Pinned GravionLabs/apm-hub ref of project/needs (default and fallback)",
       "managerFilePatterns": ["/^project/needs/action\\.yml$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[^\\n]*?(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[^\\n]*?(?<currentDigest>[0-9a-f]{40})[^\\n]*? # (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
       ]
     }
   ],
