@@ -18,7 +18,7 @@ inputs:
     required: false
     default: event
   apm-hub-ref:
-    description: Tag or commit of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1
+    description: Tag or commit of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = v2.5.4
     required: false
     default: v2.5.4
 
@@ -44,7 +44,8 @@ runs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       with:
         repository: GravionLabs/apm-hub
-        ref: ${{ inputs.apm-hub-ref }}
+        # an explicitly passed empty input (issues.yml default) does not apply the input default: fall back to the pin
+        ref: ${{ inputs.apm-hub-ref || 'v2.5.4' }}
         path: .apm-hub
         token: ${{ inputs.token }}
         persist-credentials: false

@@ -134,7 +134,7 @@ eq "exactly one checkout" 1 "$(q "[$CO] | length")"
 co_uses=$(q "$CO | .uses")
 if [[ "$co_uses" =~ ^actions/checkout@[0-9a-f]{40}$ ]]; then ok "checkout pinned by SHA"; else fail "checkout pinned by SHA ($co_uses)"; fi
 eq "checkout repository" GravionLabs/apm-hub "$(q "$CO | .with.repository")"
-eq "checkout ref from input" '${{ inputs.apm-hub-ref }}' "$(q "$CO | .with.ref")"
+eq "checkout ref from input, empty falls back to the pin" "\${{ inputs.apm-hub-ref || 'v2.5.4' }}" "$(q "$CO | .with.ref")"
 eq "checkout path" .apm-hub "$(q "$CO | .with.path")"
 eq "persist-credentials false" false "$(q "$CO | .with[\"persist-credentials\"]")"
 eq "sparse cone mode off" false "$(q "$CO | .with[\"sparse-checkout-cone-mode\"]")"
@@ -148,6 +148,8 @@ eq "inputs" 'apm-hub-ref,mode,project-url,token' "$(q '.inputs | keys | sort | j
 eq "project-url required" true "$(q '.inputs["project-url"].required')"
 eq "mode default" event "$(q '.inputs.mode.default')"
 eq "apm-hub-ref default" v2.5.4 "$(q '.inputs["apm-hub-ref"].default')"
+eq "empty-ref fallback equals the input default" "$(q '.inputs["apm-hub-ref"].default')" \
+  "$(q "$CO | .with.ref" | sed -nE "s/.*\|\| '([^']*)'.*/\1/p")"
 eq "token default empty" '' "$(q '.inputs.token.default')"
 
 echo "$((total - failures))/$total passed"
