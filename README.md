@@ -56,6 +56,7 @@ node/
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 ├── project-needs.yml       # This repository's hourly full Needs sync (workflow "Project needs")
+├── release-branch.yml      # Reusable release-branch workflow (release PR, merged label, project Status, Needs sync)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -1322,6 +1323,65 @@ jobs:
 - `conventions` writes with the `GITHUB_TOKEN`, so its own edits (title, label, comment) trigger no rerun. The calling job must grant `issues: write`; the workflow requests no more.
 - `pull_request_target` is safe here: no job checks out PR code and titles and bodies are only read through the API, never through `${{ }}` expressions. Dependabot and fork PRs receive the secret too.
 - Tests: `bash tests/issues-workflow.test.sh` (workflow invariants), `bash tests/project-needs.test.sh` (`project/needs`) and `node --test "issues/conventions/*.test.mjs"`; the `actionlint` job of `ci.yml` lints all workflows.
+
+---
+
+### `release-branch.yml`
+
+Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
+
+1. `versioning/release-pr` keeps the PR `release: <x.y>` from the release branch to the default branch open and current (never merges).
+2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
+3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it prints the issues instead.
+
+No checkout; `permissions: {}` at the top, the job requests `contents: read`, `issues: write`, `pull-requests: write`, which the calling job must grant.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions: {}
+jobs:
+  release-branch:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: GravionLabs/ci/.github/workflows/release-branch.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+    secrets: inherit
+```
+
+**Inputs**
+
+| Input            | Required | Default       | Description                                                                                              |
+|------------------|----------|---------------|----------------------------------------------------------------------------------------------------------|
+| `release-branch` | No       | `""`          | Release branch, e.g. `release/next`; empty = the triggering ref                                          |
+| `base`           | No       | `""`          | Base branch of the release PR; empty = the repository default branch                                     |
+| `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
+| `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
+| `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
+| `apm-hub-ref`    | No       | `""`          | Needs sync: tag or commit of `GravionLabs/apm-hub` providing `Sync-ProjectNeeds.ps1`; empty = default of `project/needs` |
+| `require-pat`    | No       | `false`       | Fail instead of warning when the secret `GH_PAT` is missing                                              |
+| `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
+
+**Secrets**
+
+| Secret          | Required | Description                                                                                                  |
+|-----------------|----------|--------------------------------------------------------------------------------------------------------------|
+| `GH_PAT`        | No       | Classic PAT with the scope `repo` (and `workflow` when the release PR changes workflow files) for the release PR |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs; falls back to `GH_PAT` |
+
+**Token requirements**
+
+- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass `GH_PAT`. Without it the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
+- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
+- The secret names match `issues.yml`, so `secrets: inherit` works.
+- The actions are referenced at `@main`: the workflow works for callers once those versions are released.
+- Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow and a dry-run job exercises it.
 
 ---
 

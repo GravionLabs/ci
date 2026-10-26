@@ -63,6 +63,7 @@ node/
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`, `apm-hub-ref`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
   project-needs.yml     — This repository's hourly full Needs sync (schedule + workflow_dispatch, issues.yml with `needs: true`, `mode: full`)
+  release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → mark-merged-issues (`labelled` output) → project/needs for the labelled issues (inputs incl. `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
@@ -230,6 +231,37 @@ jobs:
 
 Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`. The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`.
 
+## Reusable Workflow: `release-branch.yml`
+
+Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@main` from a workflow on `push` to `release/**` (the file has no triggers of its own).
+
+### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `release-branch` | No | `""` | Release branch; empty = the triggering ref |
+| `base` | No | `""` | Base branch of the release PR; empty = repository default branch |
+| `label` | No | `merged` | Label for issues merged into the release branch |
+| `project-status` | No | `In release` | Project Status of the labelled issues; empty disables it |
+| `project-url` | No | `""` | Project URL for the Needs sync; empty disables the sync |
+| `apm-hub-ref` | No | `""` | Needs sync: apm-hub ref of `Sync-ProjectNeeds.ps1`; empty = default of `project/needs` |
+| `require-pat` | No | `false` | Fail instead of warning when `GH_PAT` is missing |
+| `dry-run` | No | `false` | Print what would change |
+
+### Secrets
+
+| Secret | Required | Description |
+|---|---|---|
+| `GH_PAT` | No | Classic PAT, scope `repo` (plus `workflow`): the release PR created with it triggers its required checks (a `GITHUB_TOKEN` PR does not) |
+| `PROJECT_TOKEN` | No | Classic PAT, scope `project` (plus `repo` for a private repository; fine-grained tokens and the `GITHUB_TOKEN` cannot write user-owned projects), for Status and Needs; falls back to `GH_PAT` |
+
+### Behavior
+
+- One job, no checkout, top-level `permissions: {}`; the calling job must grant `contents: read`, `issues: write`, `pull-requests: write`. `secrets: inherit` works.
+- Steps: check `GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which prints the issues).
+- Actions are referenced at `@main`: works for callers once those versions are released.
+- Test: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints it.
+
 ## Composite Actions
 
 ### `project/needs`
@@ -269,6 +301,8 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT || github.token }}
 ```
+
+The reusable workflow `release-branch.yml` wraps it together with `mark-merged-issues`.
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/<x.y> DRY_RUN=true bash versioning/release-pr/release-pr.sh` (`GH_TOKEN` set).
 
@@ -311,6 +345,8 @@ jobs:
           project-status: In release
           project-token: ${{ secrets.GH_PAT }}
 ```
+
+Output `labelled`: space-separated numbers of the issues newly labelled in the run. The reusable workflow `release-branch.yml` wraps this action with `release-pr` and a Needs sync.
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true [PROJECT_STATUS='In release' PROJECT_TOKEN=<pat>] bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
 
