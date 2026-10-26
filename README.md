@@ -27,6 +27,10 @@ versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 ├── create-version-tag/     # Create and push a git tag
 └── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+issues/
+└── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
+project/
+└── needs/                  # Keep the project field Needs current (Sync-ProjectNeeds.ps1 of apm-hub at a pinned ref)
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 rust/
@@ -49,6 +53,10 @@ node/
 ├── node-package.yml        # Reusable Node.js Package CI/CD workflow
 ├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
 ├── tauri-app.yml           # Reusable Rust CLI and Tauri 2 app workflow (version → checks → binaries ‖ installers → publish → changelog)
+├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
+├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
+├── project-needs.yml       # This repository's hourly full Needs sync (workflow "Project needs")
+├── release-branch.yml      # Reusable release-branch workflow (release PR, merged label, project Status, Needs sync)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -470,6 +478,132 @@ steps:
 | `version`    | Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4) | **Yes**  | —       |
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
 <!-- /action-docs:inputs -->
+
+### `versioning/mark-merged-issues`
+
+On every push to a `release/*` branch (incl. `release/next`), labels the open issues delivered to it with `merged` and comments once. `close-release-issues` removes the label when the release lands.
+
+With `project-status` set (e.g. `In release`), the project items of the labelled issues also get that Status. The status is applied to the whole labelled set of the run, including issues labelled earlier, so a manually chosen Status may be overwritten; items already `Done` or already at that Status are skipped. A project without a Status option of that name gets one warning. Project failures only warn and never fail the job.
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`, `pull-requests: read`. The project API needs `project-token`: a classic PAT with scope `project` (fine-grained tokens cannot access user-owned projects). Without project access the step warns once and does not fail.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+steps:
+  - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+    with:
+      project-status: In release
+      project-token: ${{ secrets.GH_PAT }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/mark-merged-issues/action.yml" -->
+| Name             | Description                                                                                | Required | Default             |
+|------------------|--------------------------------------------------------------------------------------------|----------|---------------------|
+| `release-branch` | Release branch (release/*); defaults to the ref that triggered the workflow                | No       |                     |
+| `base`           | Base branch the release lands on; defaults to the repository default branch                | No       |                     |
+| `label`          | Label for issues merged into the release branch                                            | No       | merged              |
+| `token`          | GitHub token used for the gh CLI                                                           | No       | ${{ github.token }} |
+| `dry-run`        | Print the issues that would be labelled without changing anything                          | No       | false               |
+| `project-status` | Status to set on the project items of the labelled issues (e.g. "In release"); empty = off | No       |                     |
+| `project-token`  | Token for the project API (classic PAT with scope project); defaults to token              | No       |                     |
+<!-- /action-docs:inputs -->
+
+**Outputs**
+
+<!-- action-docs:outputs source="versioning/mark-merged-issues/action.yml" -->
+| Name       | Description                                                                                   |
+|------------|-----------------------------------------------------------------------------------------------|
+| `labelled` | Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run) |
+<!-- /action-docs:outputs -->
+
+---
+
+### `issues/conventions`
+
+Sets the `[Level] ` title prefix from the level label of an issue and flags issues that miss required sections. Run it on `issues` events; used by `issues.yml`.
+
+- **Title:** the first label of `levels` that the issue carries decides the prefix (`epic` becomes `[Epic]`, `pbi` `[PBI]`, others capitalized). Existing leading `[...]` prefixes and the legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced by exactly one `[Level] `. Issues without a level label are left alone.
+- **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed; when the level label changes to one without required sections, the label is removed only if the action set it (its comment says so).
+
+> **Prerequisite:** `permissions: issues: write`. The default `token` is the `GITHUB_TOKEN`, so the edits it makes trigger no further workflow run.
+
+**Usage:**
+
+```yaml
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
+permissions:
+  issues: write
+
+steps:
+  - uses: GravionLabs/ci/issues/conventions@main
+    with:
+      required-sections: '{"task":["Files","Done when"]}'
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="issues/conventions/action.yml" -->
+| Name                | Description                                                                                                                                            | Required | Default                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------|
+| `levels`            | Comma-separated level labels in precedence order; the label becomes the title prefix (known ones as Epic, Feature, PBI, Task, Bug, others capitalized) | No       | epic,feature,pbi,task,bug |
+| `required-sections` | JSON map of level label to required headings, e.g. {"task":["Files","Done when"]}; empty or {} disables the section check                              | No       | {}                        |
+| `token`             | Token with issues write access                                                                                                                         | No       | ${{ github.token }}       |
+<!-- /action-docs:inputs -->
+
+Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 treats a bare directory as a file); Node 21+).
+
+### `project/needs`
+
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of `GravionLabs/apm-hub` at a pinned ref. Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
+
+- **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`; dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
+- **Full mode (`mode: full`):** syncs every item of the repository; `schedule` and `workflow_dispatch` events always do this.
+- **Security:** only the two apm-hub script directories are checked out (sparse, into `.apm-hub` of the workspace); the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
+- **Token:** classic PAT with the scope `project`, plus `repo` for a private repository; a user-owned project is not writable with the `GITHUB_TOKEN`. The public apm-hub scripts are fetched with the `GITHUB_TOKEN`, never with the PAT, which needs no permission, so the step works in a job with `permissions: {}`. No token: one warning, green step.
+- **Pin:** `apm-hub-ref` defaults to a commit SHA of `GravionLabs/apm-hub` with its tag as comment (empty falls back to it); Renovate bumps SHA and tag through the `customManagers` entry in `renovate.json`.
+
+**Usage:**
+
+```yaml
+on:
+  schedule:
+    - cron: '0 * * * *'
+permissions: {}
+
+steps:
+  - uses: GravionLabs/ci/project/needs@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      mode: full
+      token: ${{ secrets.PROJECT_TOKEN }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="project/needs/action.yml" -->
+| Name          | Description                                                                                                                                                              | Required | Default                                  |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|------------------------------------------|
+| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —                                        |
+| `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |                                          |
+| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event                                    |
+| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |                                          |
+| `apm-hub-ref` | Commit SHA (or tag) of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = the default                                                                      | No       | 62d8b8c30f3a3ef646826617699f3774f17298a9 |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
 
 ---
 
@@ -1119,6 +1253,144 @@ jobs:
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
 
+### `issues.yml`
+
+Reusable workflow for issue and pull request events, three independent jobs:
+
+- **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
+- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
+- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
+
+**Usage:**
+
+```yaml
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened, transferred, closed]
+  pull_request_target:
+    types: [opened, reopened, closed, ready_for_review]
+permissions:
+  issues: write
+jobs:
+  issues:
+    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      needs: true
+      required-sections: '{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}'
+    secrets: inherit
+```
+
+This repository calls it from `.github/workflows/issue-events.yml` (workflow "Issue events", formerly `add-to-project.yml`). The extra event types `closed` and `ready_for_review` only matter to the `needs` job; the other jobs ignore them.
+
+**Hourly full sync** (repairs missed events, e.g. a cancelled run); this repository's copy is `.github/workflows/project-needs.yml`:
+
+```yaml
+name: Project needs
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  needs:
+    permissions:
+      issues: write   # GitHub validates the permissions of every job of issues.yml at startup
+    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      needs: true
+      mode: full
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+```
+
+**Inputs**
+
+| Input               | Required | Default                    | Description                                                                                                  |
+|---------------------|----------|----------------------------|--------------------------------------------------------------------------------------------------------------|
+| `project-url`       | No       | `""`                       | Project URL (`https://github.com/users/<owner>/projects/<n>`); empty disables `add-to-project`               |
+| `required-sections` | No       | `{}`                       | JSON map of level label to required headings, e.g. `{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}`; `{}` disables the section check |
+| `levels`            | No       | `epic,feature,pbi,task,bug` | Comma-separated level labels in precedence order                                                             |
+| `needs`             | No       | `false`                    | Run the `needs` job (requires `project-url`)                                                                 |
+| `mode`              | No       | `event`                    | `needs` job: `event` (sync the issue of the event) or `full` (sync every item of the repository)             |
+| `apm-hub-ref`       | No       | `""`                       | `needs` job: tag or commit of `GravionLabs/apm-hub` providing `Sync-ProjectNeeds.ps1`; empty = the default of `project/needs` (bumped by Renovate) |
+
+**Secrets**
+
+| Secret          | Required | Description                                                                                                   |
+|-----------------|----------|---------------------------------------------------------------------------------------------------------------|
+| `GH_PAT`        | No       | Classic PAT with the scopes `project` and `repo`, for `add-to-project` (and `needs` when `PROJECT_TOKEN` is unset) |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project`, plus `repo` for a private repository, for the `needs` job; `PROJECT_TOKEN \|\| GH_PAT` is used |
+
+**Token notes**
+
+- `GH_PAT` must be a classic PAT with the scopes `project` and `repo`: the `GITHUB_TOKEN` cannot write to a user-owned project. Without it the job logs one warning and stays green.
+- `needs` uses `secrets.PROJECT_TOKEN || secrets.GH_PAT`: a classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects); the public apm-hub scripts are fetched with the `GITHUB_TOKEN`, not the PAT. No token = one warning, job green. `cancel-in-progress` is on, so a `merged` label event can be cancelled by the next event on the same issue; the hourly full sync repairs it.
+- `conventions` writes with the `GITHUB_TOKEN`, so its own edits (title, label, comment) trigger no rerun. The calling job must grant `issues: write`; the workflow requests no more.
+- `pull_request_target` is safe here: no job checks out PR code and titles and bodies are only read through the API, never through `${{ }}` expressions. Dependabot and fork PRs receive the secret too.
+- Tests: `bash tests/issues-workflow.test.sh` (workflow invariants), `bash tests/project-needs.test.sh` (`project/needs`) and `node --test "issues/conventions/*.test.mjs"`; the `actionlint` job of `ci.yml` lints all workflows.
+
+---
+
+### `release-branch.yml`
+
+Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
+
+1. `versioning/release-pr` keeps the PR `release: <x.y>` from the release branch to the default branch open and current (never merges).
+2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
+3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it only prints that it would sync (a dry run labels nothing). Only issues newly labelled in the run are synced: a failed sync is not retried by a rerun, because those issues are then already labelled.
+
+No checkout; `permissions: {}` at the top, the job requests `contents: read`, `issues: write`, `pull-requests: write`, which the calling job must grant.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions: {}
+jobs:
+  release-branch:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: GravionLabs/ci/.github/workflows/release-branch.yml@main
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+    secrets: inherit
+```
+
+**Inputs**
+
+| Input            | Required | Default       | Description                                                                                              |
+|------------------|----------|---------------|----------------------------------------------------------------------------------------------------------|
+| `release-branch` | No       | `""`          | Release branch, e.g. `release/next`; empty = the triggering ref                                          |
+| `base`           | No       | `""`          | Base branch of the release PR; empty = the repository default branch                                     |
+| `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
+| `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
+| `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
+| `apm-hub-ref`    | No       | `""`          | Needs sync: tag or commit of `GravionLabs/apm-hub` providing `Sync-ProjectNeeds.ps1`; empty = default of `project/needs` |
+| `require-pat`    | No       | `false`       | Fail instead of warning when the secret `GH_PAT` is missing                                              |
+| `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
+
+**Secrets**
+
+| Secret          | Required | Description                                                                                                  |
+|-----------------|----------|--------------------------------------------------------------------------------------------------------------|
+| `GH_PAT`        | No       | Classic PAT with the scope `repo` (and `workflow` when the release PR changes workflow files) for the release PR |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs; falls back to `GH_PAT` |
+
+**Token requirements**
+
+- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass `GH_PAT`. Without it the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
+- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
+- The secret names match `issues.yml`, so `secrets: inherit` works.
+- The actions are referenced at `@main`: the workflow works for callers once those versions are released.
+- Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow.
+
 ---
 
 ### `node/ci`
@@ -1227,6 +1499,16 @@ pages:
 
 ---
 
+
+## Releasing ci
+
+- Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
+- `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
+- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
+- **A plain merge is only a patch.** GitVersion on `main` ignores the branch rule after a `--no-ff` merge and yields `1.0.61`, not `1.1.0`. The minor bump needs a `+semver: minor` footer in a commit message that reaches `main`: put it in the merge commit message (or squash message) of the release PR, or in a commit on `release/next`. `versioning/release-pr` does not add it; it must be added by hand when merging. `tests/determine-version.test.sh` asserts both cases.
+- Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
+
+---
 
 ## Pinning to a Specific Version
 

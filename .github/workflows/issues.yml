@@ -1,0 +1,126 @@
+# Reusable workflow for issue and pull request events of a calling repository.
+# - add-to-project: adds new issues and pull requests to a project (input project-url; empty = off).
+#   GH_PAT is a classic PAT with the scopes `project` and `repo`; the GITHUB_TOKEN cannot write to a user-owned project.
+#   pull_request_target: Dependabot and fork PRs get the secret too; no job of this workflow checks out code.
+# - conventions: sets the "[Level] " title prefix from the level label and flags missing required sections,
+#   writing with the GITHUB_TOKEN (its edit triggers no further run). Needs `issues: write` from the caller.
+# - needs (opt-in, input needs): keeps the project field Needs current via project/needs, which runs Sync-ProjectNeeds.ps1
+#   of GravionLabs/apm-hub at a pinned ref (input apm-hub-ref). Event mode syncs the issue of the event (issues: labeled,
+#   unlabeled, closed, reopened; pull_request_target: opened, closed, ready_for_review, issue number from the head branch);
+#   mode full or a schedule/workflow_dispatch caller syncs every item. Token: PROJECT_TOKEN (classic PAT, scope project,
+#   plus repo for a private repository), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
+# Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
+name: Issues
+
+on:
+  workflow_call:
+    inputs:
+      project-url:
+        description: 'Project URL for add-to-project, e.g. https://github.com/users/<owner>/projects/<n>; empty disables the job'
+        type: string
+        required: false
+        default: ''
+      required-sections:
+        description: 'JSON map of level label to required headings, e.g. {"task":["Files","Done when"]}; {} disables the section check'
+        type: string
+        required: false
+        default: '{}'
+      levels:
+        description: 'Comma-separated level labels in precedence order'
+        type: string
+        required: false
+        default: 'epic,feature,pbi,task,bug'
+      needs:
+        description: 'Run the needs job that keeps the project field Needs current (requires project-url)'
+        type: boolean
+        required: false
+        default: false
+      mode:
+        description: 'needs job: event (sync the issue of the event) or full (sync every item of the repository)'
+        type: string
+        required: false
+        default: event
+      apm-hub-ref:
+        description: 'needs job: tag or commit of GravionLabs/apm-hub providing Sync-ProjectNeeds.ps1; empty = the default of project/needs'
+        type: string
+        required: false
+        default: ''
+    secrets:
+      GH_PAT:
+        description: 'Classic PAT with the scopes project and repo, for add-to-project'
+        required: false
+      PROJECT_TOKEN:
+        description: 'Classic PAT with the scope project (plus repo for a private repository), for the needs job; falls back to GH_PAT'
+        required: false
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    name: Add to project
+    if: >-
+      inputs.project-url != '' &&
+      ((github.event_name == 'issues' && contains(fromJSON('["opened","reopened","transferred"]'), github.event.action)) ||
+      (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","reopened"]'), github.event.action)))
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check GH_PAT
+        id: token
+        shell: bash
+        env:
+          HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secret GH_PAT is not set (pass secrets: inherit or GH_PAT); skipping add-to-project."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Add to project
+        if: steps.token.outputs.present == 'true'
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        with:
+          project-url: ${{ inputs.project-url }}
+          github-token: ${{ secrets.GH_PAT }}
+
+  conventions:
+    name: Issue conventions
+    if: >-
+      github.event_name == 'issues' && github.event.issue.state == 'open' &&
+      contains(fromJSON('["opened","edited","labeled","unlabeled","reopened"]'), github.event.action)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    concurrency:
+      group: issue-conventions-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Apply issue conventions
+        uses: GravionLabs/ci/issues/conventions@main
+        with:
+          levels: ${{ inputs.levels }}
+          required-sections: ${{ inputs.required-sections }}
+          token: ${{ github.token }}
+
+  needs:
+    name: Project Needs
+    if: >-
+      inputs.needs && inputs.project-url != '' &&
+      (inputs.mode == 'full' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && contains(fromJSON('["labeled","unlabeled","closed","reopened"]'), github.event.action)) ||
+      (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","closed","ready_for_review"]'), github.event.action)))
+    runs-on: ubuntu-latest
+    permissions: {}
+    concurrency:
+      group: project-needs-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number || github.event_name }}
+      cancel-in-progress: true
+    steps:
+      - name: Sync project Needs
+        uses: GravionLabs/ci/project/needs@main
+        with:
+          project-url: ${{ inputs.project-url }}
+          mode: ${{ inputs.mode }}
+          apm-hub-ref: ${{ inputs.apm-hub-ref }}
+          token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}

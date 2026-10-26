@@ -64,6 +64,12 @@ To install the CLI and the MCP server together with the application, list them i
 
 Checks for pull requests stay in the repository (`ci.yml`, `app.yml`) and can use the `rust/ci` action.
 
+## Issue workflows
+
+Copies of `add-to-project.yml`, `issue-conventions.yml` or `issue-title.yml` are replaced by one caller of `issues.yml` (`on: issues` and `pull_request_target`, `permissions: issues: write`, `secrets: inherit`); see the `issues.yml` section in the README. Keep the PAT as secret `GH_PAT` (classic, scopes `project` and `repo`) and pass the project as `project-url`.
+
+A repository's own project-needs workflow (running `Sync-ProjectNeeds.ps1` itself) is replaced by `needs: true` in that caller (add `closed` to the `issues` types and `closed`, `ready_for_review` to the `pull_request_target` types) plus a scheduled caller for the hourly full sync: `schedule` (`0 * * * *`) and `workflow_dispatch` calling `issues.yml` with `needs: true` and `mode: full`; copy `.github/workflows/project-needs.yml`. Pass the secret `PROJECT_TOKEN` (classic PAT, scope `project`) or let it fall back to `GH_PAT`. The pinned apm-hub script version is `apm-hub-ref` (default bumped by Renovate).
+
 ## Checklist
 
 - [ ] `GitVersion.yml` present, no `next-version` pinned to an old minor.
