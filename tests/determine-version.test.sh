@@ -36,7 +36,7 @@ pre=$(var PreReleaseTag)
 if [ -n "$pre" ]; then ok "release/next is a pre-release ($pre)"; else fail "release/next has empty pre-release tag"; fi
 
 # On main the minor does not follow from the branch rule alone: a plain merge stays a patch,
-# so the release commit carries the "+semver: minor" bump (see concerns in the task report).
+# so the release commit carries the "+semver: minor" bump.
 git checkout -q main
 git merge -q --no-ff release/next -m "Merge pull request #0 from GravionLabs/release/next"
 eq "main after a plain release/next merge is only a patch" "1.0.61" "$(var MajorMinorPatch)"

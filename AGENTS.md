@@ -311,7 +311,7 @@ Requires `pages: write`, `id-token: write` permissions on the calling job — us
 ## Releasing ci
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
-- `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` builds `1.1.0-beta.N` pre-releases.
+- `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
 - Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
 - **A plain merge is only a patch.** GitVersion on `main` ignores the branch rule after a `--no-ff` merge and yields `1.0.61`, not `1.1.0`. The minor bump needs a `+semver: minor` footer in a commit message that reaches `main`: put it in the merge commit message (or squash message) of the release PR, or in a commit on `release/next`. `versioning/release-pr` does not add it; it must be added by hand when merging. `tests/determine-version.test.sh` asserts both cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
@@ -322,4 +322,4 @@ Requires `pages: write`, `id-token: write` permissions on the calling job — us
 - Run `python3 scripts/generate_docs.py` after changing action inputs/outputs to regenerate README tables.
 - Add `<!-- action-docs:inputs source="..." -->` markers if adding a new action section to README.md.
 - For glob inputs in bash `run:` steps, always add `shopt -s globstar nullglob` before the command.
-- Target PRs at `release/next`, not `main`, unless it is a hotfix.
+- Target PRs at `release/next`; see "Releasing ci".
