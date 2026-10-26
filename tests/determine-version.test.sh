@@ -25,7 +25,12 @@ git add GitVersion.yml && git commit -q -m "chore: init"
 git tag v1.0.60
 git commit -q --allow-empty -m "fix: after tag"
 
-var() { "$GV" . /output json /showvariable "$1" 2>/dev/null; }
+# Build-agent variables are cleared so GitVersion treats the fixture as a plain local repo.
+var() {
+  env -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_REF_NAME -u GITHUB_HEAD_REF -u GITHUB_BASE_REF \
+    -u GITHUB_SHA -u TF_BUILD -u GITLAB_CI -u TEAMCITY_VERSION -u JENKINS_URL -u APPVEYOR \
+    "$GV" . /output json /showvariable "$1" 2>/dev/null | tail -n 1
+}
 
 eq "main after tag is a patch" "1.0.61" "$(var MajorMinorPatch)"
 
