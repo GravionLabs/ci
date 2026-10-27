@@ -55,7 +55,7 @@ eq "conventions issue types" 'edited,labeled,opened,reopened,unlabeled' "$(event
 eq "conventions ignores PRs" '' "$(events pull_request_target "$conv_if")"
 
 # --- inputs ---
-eq "inputs" 'apm-hub-ref,levels,mode,needs,project-url,required-sections' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
+eq "inputs" 'levels,mode,needs,project-url,required-sections' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
 eq "project-url default" '' "$(q '.on.workflow_call.inputs["project-url"].default')"
 eq "levels default" 'epic,feature,pbi,task,bug' "$(q '.on.workflow_call.inputs.levels.default')"
 eq "required-sections default" '{}' "$(q '.on.workflow_call.inputs["required-sections"].default')"
@@ -63,7 +63,6 @@ eq "GH_PAT optional" false "$(q '.on.workflow_call.secrets.GH_PAT.required')"
 eq "needs input is boolean" boolean "$(q '.on.workflow_call.inputs.needs.type')"
 eq "needs default false" false "$(q '.on.workflow_call.inputs.needs.default')"
 eq "mode default event" event "$(q '.on.workflow_call.inputs.mode.default')"
-eq "apm-hub-ref default empty" '' "$(q '.on.workflow_call.inputs["apm-hub-ref"].default')"
 eq "PROJECT_TOKEN optional" false "$(q '.on.workflow_call.secrets.PROJECT_TOKEN.required')"
 eq "secrets" 'GH_PAT,PROJECT_TOKEN' "$(q '.on.workflow_call.secrets | keys | sort | join(",")')"
 
@@ -83,8 +82,8 @@ eq "needs concurrency cancels" true "$(q "$NEEDS.concurrency[\"cancel-in-progres
 eq "needs has one step" 1 "$(q "$NEEDS.steps | length")"
 eq "needs uses project/needs" 'GravionLabs/ci/project/needs@main' "$(q "$NEEDS.steps[0].uses")"
 eq "needs token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$NEEDS.steps[0].with.token")"
-eq "needs passes project-url, mode, apm-hub-ref" \
-  'apm-hub-ref=${{ inputs.apm-hub-ref }},mode=${{ inputs.mode }},project-url=${{ inputs.project-url }}' \
+eq "needs passes project-url and mode" \
+  'mode=${{ inputs.mode }},project-url=${{ inputs.project-url }}' \
   "$(q "$NEEDS.steps[0].with | del(.token) | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "add-to-project skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dispatch|inputs\.mode" <<<"$(q "$ATP.if")")"
 eq "conventions skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dispatch|inputs\.mode" <<<"$(q "$CONV.if")")"

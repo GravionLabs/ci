@@ -43,11 +43,6 @@ on:
         type: string
         required: false
         default: ''
-      apm-hub-ref:
-        description: 'Needs sync: tag or commit of GravionLabs/apm-hub providing Sync-ProjectNeeds.ps1; empty = the default of project/needs'
-        type: string
-        required: false
-        default: ''
       require-pat:
         description: 'Fail instead of warning when the secret GH_PAT is missing'
         type: boolean
@@ -131,4 +126,3 @@ jobs:
           project-url: ${{ inputs.project-url }}
           token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
           issues: ${{ steps.mark.outputs.labelled }}
-          apm-hub-ref: ${{ inputs.apm-hub-ref }}
