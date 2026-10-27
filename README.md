@@ -30,7 +30,7 @@ versioning/
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
-└── needs/                  # Keep the project field Needs current (Sync-ProjectNeeds.ps1 of apm-hub at a pinned ref)
+└── needs/                  # Keep the project field Needs current (Sync-ProjectNeeds.ps1 of the github-project skill)
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
 rust/
@@ -567,13 +567,12 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 
 ### `project/needs`
 
-Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of `GravionLabs/apm-hub` at a pinned ref. Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](.apm/skills/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
 - **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`; dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
 - **Full mode (`mode: full`):** syncs every item of the repository; `schedule` and `workflow_dispatch` events always do this.
-- **Security:** only the two apm-hub script directories are checked out (sparse, into `.apm-hub` of the workspace); the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
-- **Token:** classic PAT with the scope `project`, plus `repo` for a private repository; a user-owned project is not writable with the `GITHUB_TOKEN`. The public apm-hub scripts are fetched with the `GITHUB_TOKEN`, never with the PAT, which needs no permission, so the step works in a job with `permissions: {}`. No token: one warning, green step.
-- **Pin:** `apm-hub-ref` defaults to a commit SHA of `GravionLabs/apm-hub` with its tag as comment (empty falls back to it); Renovate bumps SHA and tag through the `customManagers` entry in `renovate.json`.
+- **Security:** nothing is checked out; the script is read from the action's own repository ref, the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
+- **Token:** classic PAT with the scope `project`, plus `repo` for a private repository; a user-owned project is not writable with the `GITHUB_TOKEN`. The step works in a job with `permissions: {}`. No token: one warning, green step.
 
 **Usage:**
 
@@ -600,7 +599,6 @@ steps:
 | `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |                                          |
 | `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event                                    |
 | `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |                                          |
-| `apm-hub-ref` | Commit SHA (or tag) of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = the default                                                                      | No       | 62d8b8c30f3a3ef646826617699f3774f17298a9 |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
@@ -1315,7 +1313,6 @@ jobs:
 | `levels`            | No       | `epic,feature,pbi,task,bug` | Comma-separated level labels in precedence order                                                             |
 | `needs`             | No       | `false`                    | Run the `needs` job (requires `project-url`)                                                                 |
 | `mode`              | No       | `event`                    | `needs` job: `event` (sync the issue of the event) or `full` (sync every item of the repository)             |
-| `apm-hub-ref`       | No       | `""`                       | `needs` job: tag or commit of `GravionLabs/apm-hub` providing `Sync-ProjectNeeds.ps1`; empty = the default of `project/needs` (bumped by Renovate) |
 
 **Secrets**
 
@@ -1327,7 +1324,7 @@ jobs:
 **Token notes**
 
 - `GH_PAT` must be a classic PAT with the scopes `project` and `repo`: the `GITHUB_TOKEN` cannot write to a user-owned project. Without it the job logs one warning and stays green.
-- `needs` uses `secrets.PROJECT_TOKEN || secrets.GH_PAT`: a classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects); the public apm-hub scripts are fetched with the `GITHUB_TOKEN`, not the PAT. No token = one warning, job green. `cancel-in-progress` is on, so a `merged` label event can be cancelled by the next event on the same issue; the hourly full sync repairs it.
+- `needs` uses `secrets.PROJECT_TOKEN || secrets.GH_PAT`: a classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects). No token = one warning, job green. `cancel-in-progress` is on, so a `merged` label event can be cancelled by the next event on the same issue; the hourly full sync repairs it.
 - `conventions` writes with the `GITHUB_TOKEN`, so its own edits (title, label, comment) trigger no rerun. The calling job must grant `issues: write`; the workflow requests no more.
 - `pull_request_target` is safe here: no job checks out PR code and titles and bodies are only read through the API, never through `${{ }}` expressions. Dependabot and fork PRs receive the secret too.
 - Tests: `bash tests/issues-workflow.test.sh` (workflow invariants), `bash tests/project-needs.test.sh` (`project/needs`) and `node --test "issues/conventions/*.test.mjs"`; the `actionlint` job of `ci.yml` lints all workflows.
@@ -1372,7 +1369,6 @@ jobs:
 | `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
 | `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
 | `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
-| `apm-hub-ref`    | No       | `""`          | Needs sync: tag or commit of `GravionLabs/apm-hub` providing `Sync-ProjectNeeds.ps1`; empty = default of `project/needs` |
 | `require-pat`    | No       | `false`       | Fail instead of warning when the secret `GH_PAT` is missing                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 

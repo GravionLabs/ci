@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the arguments for apm-hub's Sync-ProjectNeeds.ps1 from the event and runs it with pwsh.
+# Builds the arguments for Sync-ProjectNeeds.ps1 of the github-project skill from the event and runs it with pwsh.
 # All input comes from the environment; event data (head ref, label) is only matched, never evaluated.
 #   PROJECT_URL   https://github.com/(users|orgs)/<owner>/projects/<n> (required)
 #   GH_REPO       owner/repo whose items are synced (required)

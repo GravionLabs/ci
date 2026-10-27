@@ -27,7 +27,7 @@ eq "no checkout" 0 "$(q "[$S[].uses | select(. != null and test(\"^actions/check
 eq "no run script expands an expression" 0 "$(q "[$S[].run | select(. != null and test(\"\\$\\{\\{\"))] | length")"
 
 # --- inputs and secrets ---
-eq "inputs" 'apm-hub-ref,base,dry-run,label,project-status,project-url,release-branch,require-pat' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
+eq "inputs" 'base,dry-run,label,project-status,project-url,release-branch,require-pat' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
 eq "project-status default" 'In release' "$(q '.on.workflow_call.inputs["project-status"].default')"
 eq "label default" merged "$(q '.on.workflow_call.inputs.label.default')"
 eq "project-url default empty" '' "$(q '.on.workflow_call.inputs["project-url"].default')"
@@ -61,7 +61,7 @@ eq "release-pr wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},re
   "$(q "$RP | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "mark wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},label=${{ inputs.label }},project-status=${{ inputs.project-status }},project-token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }},release-branch=${{ inputs.release-branch }},token=${{ github.token }}' \
   "$(q "$MARK | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
-eq "needs wiring" 'apm-hub-ref=${{ inputs.apm-hub-ref }},issues=${{ steps.mark.outputs.labelled }},project-url=${{ inputs.project-url }},token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' \
+eq "needs wiring" 'issues=${{ steps.mark.outputs.labelled }},project-url=${{ inputs.project-url }},token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' \
   "$(q "$NEEDS | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "needs if exact" "!inputs.dry-run && inputs.project-url != '' && steps.mark.outputs.labelled != ''" "$needs_if"
 eq "concurrency group" 'release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}' "$(q "$JOB.concurrency.group")"
