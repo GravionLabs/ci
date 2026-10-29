@@ -78,8 +78,12 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # The project's own workflows (e.g. Auto-add sub-issues) or a second run can add the item first; the action then
+      # fails with "Content already exists in this project". The item is in the project either way, so the step must
+      # not fail the run. A real failure (bad token) still shows as an annotation.
       - name: Add to project
         if: steps.token.outputs.present == 'true'
+        continue-on-error: true
         uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         with:
           project-url: ${{ inputs.project-url }}
