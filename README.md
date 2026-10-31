@@ -1496,6 +1496,28 @@ pages:
 ---
 
 
+## `scripts/Set-RepoRulesets.ps1`
+
+Requires the check of the reusable workflow `pr-checks.yml` in every repository: it adds the context to the `required_status_checks` rule of the existing rulesets `main` (default branch) and `release` (`release/**`), creating the rule, or the ruleset, when missing. `release` also gets the `pull_request` rule so the check applies to PRs into release branches. Other rules and other required checks stay.
+
+```powershell
+pwsh scripts/Set-RepoRulesets.ps1 -Repo ci,py-common                # dry run: prints the plan per repository
+pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repository; removes the superseded check `ready`
+```
+
+| Parameter | Description |
+|---|---|
+| `-Repo` | Repository names (`name` or `owner/name`) |
+| `-All` | Every non-archived repository of `-Owner` (default `GravionLabs`) |
+| `-Context` | Required check context, default `PR checks`. GitHub names the check of a reusable-workflow job `<caller job id> / <job name>`; the callers use the job id `pr-checks`, so the check list shows `pr-checks / PR checks`: pass `-Context 'pr-checks / PR checks'` when that is the name that appears |
+| `-Replace` | Contexts removed in the same update (e.g. `ready`) |
+| `-Apply` | Write the changes; without it the script is a dry run and makes no write call |
+
+- Skipped with a warning: a repository without a caller of `GravionLabs/ci/.github/workflows/pr-checks.yml` under `.github/workflows` (a required check that never runs would block every PR); archived repositories are skipped.
+- Token: `gh` with a classic PAT with scope `repo` (administration of the repository, needed to write rulesets) or a fine-grained token with `Administration: write`.
+- Rollback: delete the ruleset (Settings > Rules > Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`) and recreate it from the dry run output without the check.
+- Tests: `npm test` (`tests/project/set-repo-rulesets.test.ts`, stubbed `gh`, needs pwsh).
+
 ## Releasing ci
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
