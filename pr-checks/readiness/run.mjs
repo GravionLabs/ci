@@ -29,11 +29,21 @@ export default async function run({ github, context, core, inputs }) {
     const { data: issue } = await github.rest.issues
       .get({ owner, repo, issue_number })
       .catch(() => ({ data: null }));
-    if (!issue || issue.pull_request) continue;
-    const { data: blockers } = await github.request(
-      'GET /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by',
-      { owner, repo, issue_number },
-    );
+    if (!issue) {
+      problems.push(`#${issue_number} does not exist or cannot be read`);
+      continue;
+    }
+    if (issue.pull_request) continue;
+    let blockers;
+    try {
+      ({ data: blockers } = await github.request(
+        'GET /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by',
+        { owner, repo, issue_number },
+      ));
+    } catch (error) {
+      problems.push(`#${issue_number}: the blocked-by issues cannot be read (${error.status ?? error.message})`);
+      blockers = [];
+    }
     problems.push(...readinessProblems(issue, blockers, notReadyLabels));
   }
 

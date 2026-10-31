@@ -151,9 +151,24 @@ describe('run', () => {
     assert.deepEqual(h.calls.failed, []);
   });
 
-  it('skips references that are pull requests or missing', async () => {
-    const h = harness({ body: 'Closes #1, closes #2', issues: { 1: { labels: [], pull_request: {} } } });
+  it('skips references that are pull requests', async () => {
+    const h = harness({ body: 'Closes #1', issues: { 1: { labels: [], pull_request: {} } } });
     await run({ ...h, inputs: inputs() });
     assert.deepEqual(h.calls.failed, []);
+  });
+
+  it('reports a referenced issue that does not exist', async () => {
+    const h = harness({ body: 'Closes #9999' });
+    await run({ ...h, inputs: inputs() });
+    assert.match(h.calls.failed[0], /#9999 does not exist or cannot be read/);
+  });
+
+  it('reports blockers that cannot be read', async () => {
+    const h = harness({ body: 'Closes #1', issues: { 1: { labels: [] } } });
+    h.github.request = async () => {
+      throw Object.assign(new Error('Forbidden'), { status: 403 });
+    };
+    await run({ ...h, inputs: inputs() });
+    assert.match(h.calls.failed[0], /#1: the blocked-by issues cannot be read \(403\)/);
   });
 });
