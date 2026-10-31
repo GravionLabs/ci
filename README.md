@@ -590,6 +590,8 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 
 Fails when a pull request touches `governance.adrPaths` (or closes an issue labelled `needs-decision`) without an added or changed ADR in `governance.adrDir`, or adds an ADR without a valid `Status:` line or with a number already used on the base branch. A renamed file counts by its new name; a deleted ADR does not count. Config is read from the base branch through the API; without `governance.adrPaths` the action is skipped green. Needs `contents: read`, `issues: read`, `pull-requests: read`.
 
+Limits: glob patterns support `**`, `*` and `?` but not `{a,b}` or `[...]` (such a pattern never matches). `governance.adrDir` is required once `governance.adrPaths` is set. The Status rule needs a `Status:` line; a `## Status` heading does not count.
+
 <!-- action-docs:inputs source="pr-checks/adr/action.yml" -->
 | Name    | Description                                               | Required | Default             |
 |---------|-----------------------------------------------------------|----------|---------------------|
