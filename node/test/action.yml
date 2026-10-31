@@ -3,9 +3,9 @@ description: 'Run Node.js unit tests with code coverage collection and result pu
 
 inputs:
   node-version:
-    description: 'Version of Node.js to use (e.g. 20, 22)'
+    description: 'Version of Node.js to use (e.g. 24, 26)'
     required: false
-    default: '24'
+    default: '26'
   package-manager:
     description: 'Package manager to use (npm, pnpm, yarn)'
     required: false

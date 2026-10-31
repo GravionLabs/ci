@@ -1,0 +1,15 @@
+{
+  "name": "ci-tests",
+  "private": true,
+  "description": "Vitest tests of the github-project skill scripts (pwsh) shipped from GravionLabs/ci",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "vitest": "^4.1.2"
+  }
+}

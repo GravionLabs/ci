@@ -8,10 +8,10 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: 'Node.js version to use (e.g. 20, 22, 24)'
+        description: 'Node.js version to use (e.g. 24, 26)'
         type: string
         required: false
-        default: '24'
+        default: '26'
       package-manager:
         description: 'Package manager to use (npm, pnpm, yarn)'
         type: string

@@ -154,53 +154,20 @@ eq "later steps run only with a token" "steps.token.outputs.present == 'true'" \
   "$(q '[.runs.steps[] | select(.id != "token") | .if] | unique | join(",")')"
 
 echo "# action.yml structure"
-CO='.runs.steps[] | select(.uses != null and (.uses | test("^actions/checkout@")))'
-eq "exactly one checkout" 1 "$(q "[$CO] | length")"
-co_uses=$(q "$CO | .uses")
-if [[ "$co_uses" =~ ^actions/checkout@[0-9a-f]{40}$ ]]; then ok "checkout pinned by SHA"; else fail "checkout pinned by SHA ($co_uses)"; fi
-eq "checkout repository" GravionLabs/apm-hub "$(q "$CO | .with.repository")"
-# the pin is read from the input default (bumped by Renovate), never hardcoded here
-pin=$(q '.inputs["apm-hub-ref"].default')
-eq "checkout ref from input, empty falls back to the pin" "\${{ inputs.apm-hub-ref || '$pin' }}" "$(q "$CO | .with.ref")"
-eq "checkout uses the default GITHUB_TOKEN, not the PAT" null "$(q "$CO | .with.token")"
-eq "checkout path" .apm-hub "$(q "$CO | .with.path")"
-eq "persist-credentials false" false "$(q "$CO | .with[\"persist-credentials\"]")"
-eq "sparse cone mode off" false "$(q "$CO | .with[\"sparse-checkout-cone-mode\"]")"
-eq "sparse dirs" 'packages/github/.apm/skills/github-issue/scripts/,packages/github/.apm/skills/github-project/scripts/' \
-  "$(q "$CO | .with[\"sparse-checkout\"] | split(\"\n\") | map(select(. != \"\")) | sort | join(\",\")")"
+eq "no checkout step (the script comes from this repository)" 0 "$(q '[.runs.steps[] | select(.uses != null)] | length')"
 eq "no run script expands an expression" 0 "$(q '[.runs.steps[].run | select(. != null and test("\$\{\{"))] | length')"
-eq "SYNC_SCRIPT points into the sparse checkout" \
-  '${{ github.workspace }}/.apm-hub/packages/github/.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1' \
+eq "SYNC_SCRIPT points into the skill of this repository" \
+  '${{ github.action_path }}/../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1' \
   "$(q '.runs.steps[] | select(.env.SYNC_SCRIPT != null) | .env.SYNC_SCRIPT')"
-eq "inputs" 'apm-hub-ref,issues,mode,project-url,token' "$(q '.inputs | keys | sort | join(",")')"
+SYNC_REL=$(q '.runs.steps[] | select(.env.SYNC_SCRIPT != null) | .env.SYNC_SCRIPT | sub("^\$\{\{ github.action_path \}\}/"; "")')
+if [ -f "$ROOT/project/needs/$SYNC_REL" ]; then ok "SYNC_SCRIPT exists"; else fail "SYNC_SCRIPT exists ($SYNC_REL)"; fi
+eq "inputs" 'issues,mode,project-url,token' "$(q '.inputs | keys | sort | join(",")')"
 eq "project-url required" true "$(q '.inputs["project-url"].required')"
 eq "issues default empty" '' "$(q '.inputs.issues.default')"
 eq "issues reaches the step via env only" '${{ inputs.issues }}' "$(q '.runs.steps[] | select(.env.ISSUES != null) | .env.ISSUES')"
 eq "issues input used nowhere else" 1 "$(grep -c 'inputs\.issues' "$ACTION")"
 eq "mode default" event "$(q '.inputs.mode.default')"
-if [[ "$pin" =~ ^[0-9a-f]{40}$ ]]; then ok "apm-hub-ref default is a commit SHA"; else fail "apm-hub-ref default is a commit SHA ($pin)"; fi
 
-echo "# Renovate keeps both pins current"
-# every occurrence of the pin carries a "# renovate:" line above it and the tag comment; the customManagers regex
-# of renovate.json must match each of them with the SHA as currentDigest and one tag as currentValue
-renovate=$(python3 - "$ROOT/renovate.json" "$ACTION" <<'PY'
-import json, re, sys
-cfg = json.load(open(sys.argv[1]))
-text = open(sys.argv[2]).read()
-mgr = [m for m in cfg["customManagers"] if any(re.search(p.strip("/"), "project/needs/action.yml") for p in m["managerFilePatterns"])]
-pat = re.sub(r"\(\?<", "(?P<", mgr[0]["matchStrings"][0])
-hits = [m.groupdict() for m in re.finditer(pat, text)]
-print(len(hits), text.count(hits[0]["currentDigest"]) if hits else 0,
-      ",".join(sorted({h["currentDigest"] for h in hits})), ",".join(sorted({h["currentValue"] for h in hits})),
-      ",".join(sorted({h["datasource"] + " " + h["depName"] for h in hits})))
-PY
-)
-read -r r_hits r_occ r_digest r_tags r_dep <<<"${renovate%% GravionLabs*}"
-eq "regex matches both pins" 2 "$r_hits"
-eq "every occurrence of the SHA is matched" 2 "$r_occ"
-eq "matched digest is the input default" "$pin" "$r_digest"
-if [[ "$r_tags" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then ok "one tag comment for both pins"; else fail "one tag comment for both pins ($r_tags)"; fi
-has "datasource github-tags of GravionLabs/apm-hub" "github-tags GravionLabs/apm-hub" "$renovate"
 eq "token default empty" '' "$(q '.inputs.token.default')"
 
 echo "$((total - failures))/$total passed"

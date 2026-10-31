@@ -1,9 +1,9 @@
 name: Project needs
 description: >-
-  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of GravionLabs/apm-hub at a pinned ref.
-  Run it on issues, pull_request_target, schedule or workflow_dispatch events. Only the apm-hub scripts are checked out
-  (sparse, into .apm-hub in the workspace); the calling repository and PR code are never checked out, and event data
-  reaches the script through the environment only. No token: one warning and a green step.
+  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of the github-project skill in this repository
+  (.apm/skills/github-project/scripts, resolved from the action path of the same ref).
+  Run it on issues, pull_request_target, schedule or workflow_dispatch events. The calling repository and PR code are
+  never checked out, and event data reaches the script through the environment only. No token: one warning and a green step.
 
 inputs:
   project-url:
@@ -21,11 +21,6 @@ inputs:
     description: 'Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)'
     required: false
     default: ''
-  apm-hub-ref:
-    description: Commit SHA (or tag) of GravionLabs/apm-hub that provides Sync-ProjectNeeds.ps1; empty = the default
-    required: false
-    # renovate: datasource=github-tags depName=GravionLabs/apm-hub
-    default: 62d8b8c30f3a3ef646826617699f3774f17298a9 # v2.5.4
 
 runs:
   using: composite
@@ -43,24 +38,6 @@ runs:
           echo "present=false" >> "$GITHUB_OUTPUT"
         fi
 
-    # Public repository: fetched with the GITHUB_TOKEN (default of actions/checkout), never with the PAT; reading a public
-    # repository needs no permission, so this works in a job with `permissions: {}`.
-    - name: Check out Sync-ProjectNeeds.ps1 (GravionLabs/apm-hub)
-      if: steps.token.outputs.present == 'true'
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      with:
-        repository: GravionLabs/apm-hub
-        # an explicitly passed empty input (issues.yml default) does not apply the input default: fall back to the pin
-        # renovate: datasource=github-tags depName=GravionLabs/apm-hub
-        ref: ${{ inputs.apm-hub-ref || '62d8b8c30f3a3ef646826617699f3774f17298a9' }} # v2.5.4
-        path: .apm-hub
-        persist-credentials: false
-        sparse-checkout-cone-mode: false
-        # Sync-ProjectNeeds.ps1 imports ../../github-issue/scripts/NeedsRules.psm1
-        sparse-checkout: |
-          packages/github/.apm/skills/github-project/scripts/
-          packages/github/.apm/skills/github-issue/scripts/
-
     - name: Sync Needs
       if: steps.token.outputs.present == 'true'
       shell: bash
@@ -75,5 +52,5 @@ runs:
         ISSUE_NUMBER: ${{ github.event.issue.number }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         LABEL_NAME: ${{ github.event.label.name }}
-        SYNC_SCRIPT: ${{ github.workspace }}/.apm-hub/packages/github/.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1
+        SYNC_SCRIPT: ${{ github.action_path }}/../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1
       run: bash "$GITHUB_ACTION_PATH/needs.sh"
