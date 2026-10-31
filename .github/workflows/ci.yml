@@ -130,7 +130,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'   # node --test with a quoted glob needs Node 21+
+          node-version: '26'   # node --test with a quoted glob needs Node 21+
 
       - name: Unit tests
         shell: bash
@@ -159,7 +159,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
 
       - run: npm ci
