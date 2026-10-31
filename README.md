@@ -522,8 +522,8 @@ steps:
 **Outputs**
 
 <!-- action-docs:outputs source="versioning/mark-merged-issues/action.yml" -->
-| Name       | Description                                                                                   |
-|------------|-----------------------------------------------------------------------------------------------|
+| Name       | Description                                                                                           |
+|------------|-------------------------------------------------------------------------------------------------------|
 | `labelled` | Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run) |
 <!-- /action-docs:outputs -->
 
@@ -593,12 +593,12 @@ steps:
 **Inputs**
 
 <!-- action-docs:inputs source="project/needs/action.yml" -->
-| Name          | Description                                                                                                                                                              | Required | Default                                  |
-|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|------------------------------------------|
-| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —                                        |
-| `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |                                          |
-| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event                                    |
-| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |                                          |
+| Name          | Description                                                                                                                                                              | Required | Default |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —       |
+| `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |         |
+| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event   |
+| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |         |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
@@ -842,7 +842,7 @@ Sets up Node.js with `actions/setup-node`, enables the package manager globally 
 ```yaml
 - uses: GravionLabs/ci/node/setup@main
   with:
-    node-version: '24'
+    node-version: '26'
     package-manager: 'pnpm'
 ```
 
@@ -851,7 +851,7 @@ Sets up Node.js with `actions/setup-node`, enables the package manager globally 
 <!-- action-docs:inputs source="node/setup/action.yml" -->
 | Name                      | Description                                                                                                                             | Required | Default |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                 | No       | 24      |
+| `node-version`            | Version of Node.js to use (e.g. 24, 26)                                                                                                 | No       | 26      |
 | `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm     |
 | `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |         |
 <!-- /action-docs:inputs -->
@@ -875,7 +875,7 @@ Installs dependencies and builds a Node.js project. Calls `node/setup` internall
 <!-- action-docs:inputs source="node/build/action.yml" -->
 | Name                      | Description                                                                                                                                        | Required | Default |
 |---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                            | No       | 24      |
+| `node-version`            | Version of Node.js to use (e.g. 24, 26)                                                                                                            | No       | 26      |
 | `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                           | No       | npm     |
 | `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.            | No       |         |
 | `working-directory`       | Working directory containing the Node.js project                                                                                                   | No       | .       |
@@ -902,7 +902,7 @@ Runs lint, build, and test with a single setup and dependency installation. Wrap
 <!-- action-docs:inputs source="node/ci/action.yml" -->
 | Name                      | Description                                                                                                                             | Required | Default   |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
-| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                 | No       | 24        |
+| `node-version`            | Version of Node.js to use (e.g. 24, 26)                                                                                                 | No       | 26        |
 | `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                | No       | npm       |
 | `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json. | No       |           |
 | `working-directory`       | Working directory containing the Node.js project                                                                                        | No       | .         |
@@ -935,7 +935,7 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 <!-- action-docs:inputs source="node/test/action.yml" -->
 | Name                      | Description                                                                                                                                                                                                                         | Required | Default   |
 |---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-----------|
-| `node-version`            | Version of Node.js to use (e.g. 20, 22)                                                                                                                                                                                             | No       | 24        |
+| `node-version`            | Version of Node.js to use (e.g. 24, 26)                                                                                                                                                                                             | No       | 26        |
 | `package-manager`         | Package manager to use (npm, pnpm, yarn)                                                                                                                                                                                            | No       | npm       |
 | `package-manager-version` | Version of the package manager to install (e.g. pnpm 11.6.0). Leave empty to auto-detect from the packageManager field in package.json.                                                                                             | No       |           |
 | `working-directory`       | Working directory containing the Node.js project                                                                                                                                                                                    | No       | .         |
@@ -1398,7 +1398,7 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 ```yaml
 - uses: GravionLabs/ci/node/ci@main
   with:
-    node-version: '22'
+    node-version: '26'
     working-directory: '.'
     package-manager: 'pnpm'
     run-lint: true
@@ -1408,7 +1408,7 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 
 | Name                | Description                                                    | Required | Default                        |
 |---------------------|----------------------------------------------------------------|----------|--------------------------------|
-| `node-version`      | Node.js version to use                                         | No       | `24`                           |
+| `node-version`      | Node.js version to use                                         | No       | `26`                           |
 | `working-directory` | Working directory of the project                               | No       | `.`                            |
 | `package-manager`   | Package manager to use (`npm`, `pnpm`, `yarn`)                 | No       | `npm`                          |
 | `package-manager-version` | Package manager version (e.g. `11.6.0`). Empty = auto-detect from `packageManager` field | No       | `""`                           |
