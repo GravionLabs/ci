@@ -47,9 +47,9 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
       if (a.includes('--method')) return { rest: {} };
       if (url.startsWith('users/')) return { rest: [Object.keys(repos).map((n) => ({ full_name: 'GravionLabs/' + n }))] };
       const r = repos[m[1]]; const sub = m[2];
-      if (!sub) return { rest: { archived: !!r.archived } };
+      if (!sub) { console.error('gh: a warning on a successful call'); return { rest: { archived: !!r.archived } }; }
       if (sub === 'contents/.github/workflows') {
-        if (r.workflow === null) throw new Error('Not Found');
+        if (r.workflow === null) throw new Error('gh: Not Found (HTTP 404)');
         return { rest: [{ name: 'ci.yml', path: '.github/workflows/ci.yml' }, { name: 'pr.yml', path: '.github/workflows/pr.yml' }] };
       }
       if (sub === 'contents/.github/workflows/ci.yml') return { rest: 'on: push' };
@@ -121,7 +121,9 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
 
   it('skips a repository without a workflows directory', () => {
     const r = run({ a: { workflow: null, rulesets: [] } }, '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
+    expect(r.stdout + r.stderr).toContain('no caller');
   });
 
   it('skips an archived repository', () => {
@@ -137,6 +139,15 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     expect(r.writes).toHaveLength(0);
     expect(r.stdout).toContain("update ruleset 'main'");
     expect(r.stdout).toContain('dry run');
+    expect(r.stdout).toContain("update ruleset 'main' (id 1)");
+    expect(r.stdout).toContain("update ruleset 'release' (id 2)");
+  });
+
+  it('omits the parameters key of rules without parameters', () => {
+    const r = run({ a: { workflow: CALLER, rulesets: [mainRuleset(), releaseRuleset()] } }, '-Repo', 'a', '-Apply');
+    expect(r.writes).toHaveLength(2);
+    for (const w of r.writes) expect(JSON.stringify(w.body)).not.toContain('"parameters":null');
+    expect(r.writes[0].body.rules[0]).toEqual({ type: 'deletion' });
   });
 
   it('-All covers every listed repository', () => {

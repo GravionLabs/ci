@@ -11,7 +11,7 @@
   branches. Other rules and other required checks stay; -Replace removes superseded checks in the same update.
   Without -Apply it is a dry run: it prints the planned change and makes no write call. Uses 'gh api' only (token scopes: repo plus
   administration, i.e. a classic PAT with 'repo', or a fine-grained token with Administration: write).
-  Rollback: delete the ruleset (Settings > Rules > Rulesets, or 'gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>').
+  Rollback: delete the ruleset (the dry run prints each ruleset id; Settings > Rules > Rulesets, or 'gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>').
 .PARAMETER Repo     Repository names ('name' or 'owner/name').
 .PARAMETER All      Every non-archived repository of -Owner.
 .PARAMETER Owner    Account that owns the repositories (default GravionLabs).
@@ -34,21 +34,34 @@ $ErrorActionPreference = 'Stop'
 
 function Invoke-Gh {
   param([string[]]$GhArgs, $Body)
-  $out = if ($null -ne $Body) { $Body | ConvertTo-Json -Depth 20 -Compress | & gh @GhArgs --input - 2>&1 }
-         else { & gh @GhArgs 2>&1 }
-  if ($LASTEXITCODE -ne 0) { throw "gh $($GhArgs -join ' ') failed: $($out -join "`n")" }
+  $errFile = [System.IO.Path]::GetTempFileName()
+  try {
+    $out = if ($null -ne $Body) { $Body | ConvertTo-Json -Depth 20 -Compress | & gh @GhArgs --input - 2>$errFile }
+           else { & gh @GhArgs 2>$errFile }
+    if ($LASTEXITCODE -ne 0) { throw "gh $($GhArgs -join ' ') failed: $((Get-Content -Raw $errFile) ?? '')$($out -join "`n")" }
+  } finally { Remove-Item $errFile -ErrorAction SilentlyContinue }
   ($out -join "`n")
 }
 function Get-Json { param([string[]]$GhArgs, [switch]$AsHashtable) $t = Invoke-Gh $GhArgs; if ($t.Trim()) { $t | ConvertFrom-Json -Depth 20 -AsHashtable:$AsHashtable } }
 
 function Test-HasCaller {
   param($Full)
-  $files = @(Get-Json @('api', "repos/$Full/contents/.github/workflows") | Where-Object { $_.name -match '\.ya?ml$' })
+  try { $dir = Get-Json @('api', "repos/$Full/contents/.github/workflows") }
+  catch { if ($_.Exception.Message -match 'HTTP 404|Not Found') { return $false } else { throw } }
+  $files = @($dir | Where-Object { $_.name -match '\.ya?ml$' })
   foreach ($f in $files) {
     $text = Invoke-Gh @('api', "repos/$Full/contents/$($f.path)", '-H', 'Accept: application/vnd.github.raw')
     if ($text -match '(?m)^\s*(-\s*)?uses:\s*[''"]?GravionLabs/ci/\.github/workflows/pr-checks\.yml(@|[''"\s]|$)') { return $true }
   }
   $false
+}
+
+# A rule hashtable; the key 'parameters' is omitted when there are none (deletion, non_fast_forward).
+function New-Rule {
+  param([string]$Type, $Parameters)
+  $r = @{ type = $Type }
+  if ($null -ne $Parameters) { $r.parameters = $Parameters }
+  $r
 }
 
 function Get-RuleParams {
@@ -66,14 +79,14 @@ function Get-RulesetPlan {
   param($Existing, [string]$Name, [string]$Include, [string[]]$ExtraRules)
   $changed = -not $Existing
   $rules = [System.Collections.Generic.List[object]]::new()
-  if ($Existing) { foreach ($r in $Existing.rules) { $rules.Add(@{ type = $r.type; parameters = $r.parameters }) } }
-  else { foreach ($t in $ExtraRules) { $rules.Add(@{ type = $t; parameters = (Get-RuleParams $t) }) } }
+  if ($Existing) { foreach ($r in $Existing.rules) { $rules.Add((New-Rule $r.type $r.parameters)) } }
+  else { foreach ($t in $ExtraRules) { $rules.Add((New-Rule $t (Get-RuleParams $t))) } }
   if ($Existing -and $Name -eq 'release' -and -not ($rules | Where-Object { $_.type -eq 'pull_request' })) {
-    $rules.Add(@{ type = 'pull_request'; parameters = (Get-RuleParams 'pull_request') }); $changed = $true
+    $rules.Add((New-Rule 'pull_request' (Get-RuleParams 'pull_request'))); $changed = $true
   }
   $rsc = $rules | Where-Object { $_.type -eq 'required_status_checks' } | Select-Object -First 1
   if (-not $rsc) {
-    $rsc = @{ type = 'required_status_checks'; parameters = (Get-RuleParams 'required_status_checks') }
+    $rsc = New-Rule 'required_status_checks' (Get-RuleParams 'required_status_checks')
     $rules.Add($rsc); $changed = $true
   }
   if (-not $rsc.parameters) { $rsc.parameters = Get-RuleParams 'required_status_checks' }
@@ -125,7 +138,8 @@ foreach ($full in $targets) {
       $verb = if ($existing) { 'update' } else { 'create' }
       if (-not $plan.Changed) { Write-Host "OK   $full : ruleset '$($s.Name)' already requires '$Context'"; continue }
       $checks = (($plan.Body.rules | Where-Object { $_.type -eq 'required_status_checks' }).parameters.required_status_checks | ForEach-Object { $_.context }) -join ', '
-      Write-Host "PLAN $full : $verb ruleset '$($s.Name)' ($(($plan.Body.rules | ForEach-Object { $_.type }) -join ', ')); required checks: $checks [$mode]"
+      $idText = if ($existing) { " (id $($hit.id))" } else { '' }
+      Write-Host "PLAN $full : $verb ruleset '$($s.Name)'$idText ($(($plan.Body.rules | ForEach-Object { $_.type }) -join ', ')); required checks: $checks [$mode]"
       if ($Apply) {
         if ($existing) { Invoke-Gh @('api', '--method', 'PUT', "repos/$full/rulesets/$($hit.id)") $plan.Body | Out-Null }
         else { Invoke-Gh @('api', '--method', 'POST', "repos/$full/rulesets") $plan.Body | Out-Null }

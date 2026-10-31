@@ -1515,7 +1515,7 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 - Skipped with a warning: a repository without a caller of `GravionLabs/ci/.github/workflows/pr-checks.yml` under `.github/workflows` (a required check that never runs would block every PR); archived repositories are skipped.
 - Token: `gh` with a classic PAT with scope `repo` (administration of the repository, needed to write rulesets) or a fine-grained token with `Administration: write`.
-- Rollback: delete the ruleset (Settings > Rules > Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`) and recreate it from the dry run output without the check.
+- Rollback: delete the ruleset (the dry run prints the id of each ruleset it would change; Settings > Rules > Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`) and recreate it from the dry run output without the check.
 - Tests: `npm test` (`tests/project/set-repo-rulesets.test.ts`, stubbed `gh`, needs pwsh).
 
 ## Releasing ci
