@@ -136,6 +136,37 @@ jobs:
         shell: bash
         run: node --test "issues/conventions/*.test.mjs"
 
+  test-pr-checks:
+    name: 'Test: pr-checks'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'   # node --test with a quoted glob needs Node 21+
+
+      - name: Unit tests (readiness rules and run with a stubbed github client)
+        shell: bash
+        run: node --test "tests/pr-checks/*.test.mjs"
+
+      - name: Test pr-checks.yml invariants
+        shell: bash
+        # inputs, permissions, no checkout, aggregate job "PR checks" against sample needs results
+        run: bash tests/pr-checks-workflow.test.sh
+
+      # The reusable workflow references its actions at @main, which exist only once released, so the
+      # stub caller runs the action itself against this pull request (require-issue off: unrelated PRs stay green).
+      - name: Run pr-checks/readiness against this pull request
+        if: github.event_name == 'pull_request'
+        uses: ./pr-checks/readiness
+        with:
+          require-issue: 'false'
+
   test-project-needs:
     name: 'Test: project/needs'
     runs-on: ubuntu-latest
@@ -171,7 +202,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test-determine-version, actionlint, test-issue-conventions, test-project-needs, test-github-project]
+    needs: [test-determine-version, actionlint, test-issue-conventions, test-pr-checks, test-project-needs, test-github-project]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write

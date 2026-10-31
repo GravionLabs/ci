@@ -1,0 +1,41 @@
+name: PR readiness
+description: >-
+  Fails when a pull request closes no issue (release PRs exempt) or closes an issue that is not ready:
+  it carries a not-ready label or is blocked by an issue that is still open.
+  Run it on `pull_request`; the token needs `issues: read` and `pull-requests: read`.
+
+inputs:
+  not-ready-labels:
+    description: Comma-separated labels that make an issue not ready
+    required: false
+    default: needs-refinement,needs-decision
+  require-issue:
+    description: 'Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false)'
+    required: false
+    default: 'true'
+  token:
+    description: Token with issues and pull-requests read access
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        NOT_READY_LABELS: ${{ inputs.not-ready-labels }}
+        REQUIRE_ISSUE: ${{ inputs.require-issue }}
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const { default: run } = await import(`${process.env.ACTION_PATH}/run.mjs`);
+          await run({
+            github,
+            context,
+            core,
+            inputs: {
+              notReadyLabels: process.env.NOT_READY_LABELS,
+              requireIssue: process.env.REQUIRE_ISSUE !== 'false',
+            },
+          });
