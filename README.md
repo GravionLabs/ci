@@ -53,7 +53,7 @@ node/
 ├── node-package.yml        # Reusable Node.js Package CI/CD workflow
 ├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
 ├── tauri-app.yml           # Reusable Rust CLI and Tauri 2 app workflow (version → checks → binaries ‖ installers → publish → changelog)
-├── pr-checks.yml           # Reusable PR checks workflow (readiness of the closed issues, aggregate "PR checks")
+├── pr-checks.yml           # Reusable PR checks workflow (readiness and ADR checks, aggregate "PR checks")
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 ├── project-needs.yml       # This repository's hourly full Needs sync (workflow "Project needs")
@@ -535,6 +535,7 @@ steps:
 Reusable workflow with the pull request checks of a repository. Call it from a workflow on `pull_request`; it checks out no code and runs with `permissions: {}` at the top and the least per job.
 
 - **`readiness`** (input `readiness`): runs [`pr-checks/readiness`](#pr-checksreadiness). The PR body must close at least one issue (`Closes|Fixes|Resolves #n`; PRs from `release/**` are exempt, input `require-issue`), and each closed issue must have none of the `not-ready-labels` and no open "blocked by" issue. The job summary lists every problem.
+- **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
 | Input | Default | Description |
@@ -545,7 +546,13 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 | `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
 | `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
 
-`adr` and `spec` are accepted now so callers need no change when those jobs arrive.
+`spec` is accepted now so callers need no change when that job arrives.
+
+The `governance` keys of `.agents/config.json` (names fixed here; GravionLabs/skills#65 that documents them in the skills is pending):
+
+```json
+{ "governance": { "adrPaths": ["src/**", "**/*.proto"], "adrDir": "docs/adr", "skipLabels": ["skip-adr"] } }
+```
 
 ```yaml
 name: PR checks
@@ -557,6 +564,7 @@ permissions: {}
 jobs:
   pr-checks:
     permissions:
+      contents: read
       issues: read
       pull-requests: read
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
@@ -576,6 +584,18 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 | `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
 | `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
 | `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/adr`
+
+Fails when a pull request touches `governance.adrPaths` (or closes an issue labelled `needs-decision`) without an added or changed ADR in `governance.adrDir`, or adds an ADR without a valid `Status:` line or with a number already used on the base branch. A renamed file counts by its new name; a deleted ADR does not count. Config is read from the base branch through the API; without `governance.adrPaths` the action is skipped green. Needs `contents: read`, `issues: read`, `pull-requests: read`.
+
+Limits: glob patterns support `**`, `*` and `?` but not `{a,b}` or `[...]` (such a pattern never matches). `governance.adrDir` is required once `governance.adrPaths` is set. The Status rule needs a `Status:` line; a `## Status` heading does not count.
+
+<!-- action-docs:inputs source="pr-checks/adr/action.yml" -->
+| Name    | Description                                               | Required | Default             |
+|---------|-----------------------------------------------------------|----------|---------------------|
+| `token` | Token with contents, issues and pull-requests read access | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 ### `issues/conventions`

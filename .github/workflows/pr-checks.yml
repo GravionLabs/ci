@@ -1,6 +1,8 @@
 # Reusable pull request checks. Call it from a workflow on `pull_request` (see README, "pr-checks.yml").
 # - readiness: the PR body closes an issue (Closes|Fixes|Resolves #n; release PRs from release/** are exempt) and each
 #   closed issue is ready: none of the not-ready labels, no open "blocked by" issue.
+# - adr: a PR that touches governance.adrPaths (.agents/config.json of the base branch) or closes a needs-decision issue
+#   adds or changes an ADR in governance.adrDir; new ADRs have a Status line and a free number.
 # - result ("PR checks"): needs every job above, runs always, fails when one failed or was cancelled, passes on skipped.
 #   This is the only name a ruleset requires; job names may change, this one must not.
 # No job checks out caller or PR code; titles and bodies are read through the API only, never through ${{ }}.
@@ -53,10 +55,24 @@ jobs:
           require-issue: ${{ inputs.require-issue }}
           token: ${{ github.token }}
 
+  adr:
+    name: ADR
+    if: inputs.adr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check the ADR of the pull request
+        uses: GravionLabs/ci/pr-checks/adr@main
+        with:
+          token: ${{ github.token }}
+
   result:
     name: PR checks
     if: always()
-    needs: [readiness]
+    needs: [readiness, adr]
     runs-on: ubuntu-latest
     permissions: {}
     steps:

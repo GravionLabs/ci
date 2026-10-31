@@ -28,6 +28,7 @@ eq "no secrets" 'null' "$(q '.on.workflow_call.secrets')"
 # --- permissions ---
 eq "top-level permissions empty" '{}' "$(qj '.permissions')"
 eq "readiness permissions" '{"issues":"read","pull-requests":"read"}' "$(qj '.jobs.readiness.permissions')"
+eq "adr permissions" '{"contents":"read","issues":"read","pull-requests":"read"}' "$(qj '.jobs.adr.permissions')"
 eq "result permissions empty" '{}' "$(qj '.jobs.result.permissions')"
 eq "every job sets permissions" 0 "$(q '[.jobs[] | select(has("permissions") | not)] | length')"
 
@@ -41,7 +42,8 @@ eq "result job name is PR checks" 'PR checks' "$(q '.jobs.result.name')"
 eq "result runs always" 'always()' "$(q '.jobs.result.if')"
 needs=$(q '.jobs | to_entries | map(select(.key != "result") | .key) | sort | join(",")')
 eq "result needs every other job" "$needs" "$(q '.jobs.result.needs | sort | join(",")')"
-eq "jobs are skipped by their input" 'inputs.readiness' "$(q '.jobs.readiness.if')"
+eq "readiness is skipped by its input" 'inputs.readiness' "$(q '.jobs.readiness.if')"
+eq "adr is skipped by its input" 'inputs.adr' "$(q '.jobs.adr.if')"
 
 script=$(q '.jobs.result.steps[0].run')
 aggregate() { NEEDS="$1" bash -c "$script" >/dev/null 2>&1; echo $?; }

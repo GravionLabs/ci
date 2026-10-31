@@ -1,0 +1,24 @@
+name: PR ADR
+description: >-
+  Fails when a pull request touches governance.adrPaths (or closes an issue labelled needs-decision) without an added or
+  changed ADR in governance.adrDir, or adds an ADR without a valid Status line or with a number already in use.
+  Reads .agents/config.json of the base branch; without governance.adrPaths it is skipped green.
+  Run it on `pull_request`; the token needs `contents: read`, `issues: read` and `pull-requests: read`.
+
+inputs:
+  token:
+    description: Token with contents, issues and pull-requests read access
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const { default: run } = await import(`${process.env.ACTION_PATH}/run.mjs`);
+          await run({ github, context, core });
