@@ -1,0 +1,73 @@
+# Reusable pull request checks. Call it from a workflow on `pull_request` (see README, "pr-checks.yml").
+# - readiness: the PR body closes an issue (Closes|Fixes|Resolves #n; release PRs from release/** are exempt) and each
+#   closed issue is ready: none of the not-ready labels, no open "blocked by" issue.
+# - result ("PR checks"): needs every job above, runs always, fails when one failed or was cancelled, passes on skipped.
+#   This is the only name a ruleset requires; job names may change, this one must not.
+# No job checks out caller or PR code; titles and bodies are read through the API only, never through ${{ }}.
+name: PR checks
+
+on:
+  workflow_call:
+    inputs:
+      readiness:
+        description: 'Run the readiness job'
+        type: boolean
+        required: false
+        default: true
+      adr:
+        description: 'Run the adr job'
+        type: boolean
+        required: false
+        default: true
+      spec:
+        description: 'Run the spec job'
+        type: boolean
+        required: false
+        default: true
+      not-ready-labels:
+        description: 'Comma-separated labels that make a closed issue not ready'
+        type: string
+        required: false
+        default: 'needs-refinement,needs-decision'
+      require-issue:
+        description: 'Fail a PR that closes no issue; PRs from release/** branches are exempt'
+        type: boolean
+        required: false
+        default: true
+
+permissions: {}
+
+jobs:
+  readiness:
+    name: Readiness
+    if: inputs.readiness
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check readiness of the closed issues
+        uses: GravionLabs/ci/pr-checks/readiness@main
+        with:
+          not-ready-labels: ${{ inputs.not-ready-labels }}
+          require-issue: ${{ inputs.require-issue }}
+          token: ${{ github.token }}
+
+  result:
+    name: PR checks
+    if: always()
+    needs: [readiness]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Aggregate the results
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::Failed checks:"$'\n'"$bad"
+            exit 1
+          fi
+          echo "All checks passed or were skipped."
