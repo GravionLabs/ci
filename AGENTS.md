@@ -15,6 +15,10 @@ versioning/
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)
 
+pr-checks/
+  readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
+  adr/                  — Fails a PR that touches `governance.adrPaths` or closes a `needs-decision` issue without an added/changed ADR in `governance.adrDir`; new ADRs need a `Status:` line and a free number; config from the base branch, `governance.skipLabels` (default `skip-adr`) skips
+
 issues/
   conventions/          — Sets the `[Level] ` title prefix from the level label (legacy `Epic:`/`Feature:`/`Bug:` prefixes replaced) and flags missing required sections with `needs-refinement`
 
@@ -55,6 +59,9 @@ node/
 
 .apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new|sprints|sprint`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, Set-Sprint, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
+scripts/
+  Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
+
 .github/workflows/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)
   python-package.yml    — Full Python CI/CD: determine-version → build-test → publish (main only)
@@ -62,6 +69,7 @@ node/
   node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
   angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
   tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`)
+  pr-checks.yml         — Reusable PR checks: `readiness` and `adr` jobs and the aggregate job `PR checks` (the only name a ruleset requires); inputs `readiness`, `adr`, `spec`, `not-ready-labels`, `require-issue`
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
   project-needs.yml     — This repository's hourly full Needs sync (schedule + workflow_dispatch, issues.yml with `needs: true`, `mode: full`)
@@ -231,6 +239,10 @@ jobs:
 ```
 
 Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; a bare directory fails on Node 24) and `bash tests/issues-workflow.test.sh` (needs `yq` and `jq`); `project/needs`: `bash tests/project-needs.test.sh`; the scripts of the skill: `npm ci && npm test` (Vitest, `tests/project/`, needs pwsh). The `actionlint` job of `ci.yml` lints `.github/workflows/` (actionlint via `go install`, shellcheck pass off); `release` needs it, `test-issue-conventions` and `test-project-needs`; `bash tests/release-branch-workflow.test.sh` (in the `actionlint` job) covers `release-branch.yml`.
+
+## Reusable Workflow: `pr-checks.yml`
+
+Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
 
 ## Reusable Workflow: `release-branch.yml`
 

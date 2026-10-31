@@ -53,6 +53,7 @@ node/
 ├── node-package.yml        # Reusable Node.js Package CI/CD workflow
 ├── angular-package.yml     # Reusable Angular Package CI/CD workflow (Angular CLI defaults)
 ├── tauri-app.yml           # Reusable Rust CLI and Tauri 2 app workflow (version → checks → binaries ‖ installers → publish → changelog)
+├── pr-checks.yml           # Reusable PR checks workflow (readiness and ADR checks, aggregate "PR checks")
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 ├── project-needs.yml       # This repository's hourly full Needs sync (workflow "Project needs")
@@ -528,6 +529,74 @@ steps:
 <!-- /action-docs:outputs -->
 
 ---
+
+### `pr-checks.yml`
+
+Reusable workflow with the pull request checks of a repository. Call it from a workflow on `pull_request`; it checks out no code and runs with `permissions: {}` at the top and the least per job.
+
+- **`readiness`** (input `readiness`): runs [`pr-checks/readiness`](#pr-checksreadiness). The PR body must close at least one issue (`Closes|Fixes|Resolves #n`; PRs from `release/**` are exempt, input `require-issue`), and each closed issue must have none of the `not-ready-labels` and no open "blocked by" issue. The job summary lists every problem.
+- **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
+- **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
+
+| Input | Default | Description |
+|---|---|---|
+| `readiness` | `true` | Run the readiness job |
+| `adr` | `true` | Run the adr job |
+| `spec` | `true` | Run the spec job |
+| `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
+| `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
+
+`spec` is accepted now so callers need no change when that job arrives.
+
+The `governance` keys of `.agents/config.json` (names fixed here; GravionLabs/skills#65 that documents them in the skills is pending):
+
+```json
+{ "governance": { "adrPaths": ["src/**", "**/*.proto"], "adrDir": "docs/adr", "skipLabels": ["skip-adr"] } }
+```
+
+```yaml
+name: PR checks
+on:
+  pull_request:
+    branches: [main, 'release/**']
+    types: [opened, edited, synchronize, reopened]
+permissions: {}
+jobs:
+  pr-checks:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
+```
+
+> The check name that reaches the ruleset is `<caller job id or name> / PR checks`; keep the caller job id `pr-checks` in every repository so the name is the same everywhere.
+
+Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh` (needs `yq` and `jq`); the `test-pr-checks` job of `ci.yml` runs both and runs the action against the pull request.
+
+### `pr-checks/readiness`
+
+Fails when a pull request closes no issue (release PRs exempt) or closes an issue that is not ready: it carries a not-ready label or is blocked by an issue that is still open. Run it on `pull_request`; needs `issues: read` and `pull-requests: read`. The PR body is read through the API, so an edit after the event is seen.
+
+<!-- action-docs:inputs source="pr-checks/readiness/action.yml" -->
+| Name               | Description                                                                                    | Required | Default                         |
+|--------------------|------------------------------------------------------------------------------------------------|----------|---------------------------------|
+| `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
+| `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
+| `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/adr`
+
+Fails when a pull request touches `governance.adrPaths` (or closes an issue labelled `needs-decision`) without an added or changed ADR in `governance.adrDir`, or adds an ADR without a valid `Status:` line or with a number already used on the base branch. A renamed file counts by its new name; a deleted ADR does not count. Config is read from the base branch through the API; without `governance.adrPaths` the action is skipped green. Needs `contents: read`, `issues: read`, `pull-requests: read`.
+
+Limits: glob patterns support `**`, `*` and `?` but not `{a,b}` or `[...]` (such a pattern never matches). `governance.adrDir` is required once `governance.adrPaths` is set. The Status rule needs a `Status:` line; a `## Status` heading does not count.
+
+<!-- action-docs:inputs source="pr-checks/adr/action.yml" -->
+| Name    | Description                                               | Required | Default             |
+|---------|-----------------------------------------------------------|----------|---------------------|
+| `token` | Token with contents, issues and pull-requests read access | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
 
 ### `issues/conventions`
 
@@ -1495,6 +1564,28 @@ pages:
 
 ---
 
+
+## `scripts/Set-RepoRulesets.ps1`
+
+Requires the check of the reusable workflow `pr-checks.yml` in every repository: it adds the context to the `required_status_checks` rule of the existing rulesets `main` (default branch) and `release` (`release/**`), creating the rule, or the ruleset, when missing. `release` also gets the `pull_request` rule so the check applies to PRs into release branches. Other rules and other required checks stay.
+
+```powershell
+pwsh scripts/Set-RepoRulesets.ps1 -Repo ci,py-common                # dry run: prints the plan per repository
+pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repository; removes the superseded check `ready`
+```
+
+| Parameter | Description |
+|---|---|
+| `-Repo` | Repository names (`name` or `owner/name`) |
+| `-All` | Every non-archived repository of `-Owner` (default `GravionLabs`) |
+| `-Context` | Required check context, default `PR checks`. GitHub names the check of a reusable-workflow job `<caller job id> / <job name>`; the callers use the job id `pr-checks`, so the check list shows `pr-checks / PR checks`: pass `-Context 'pr-checks / PR checks'` when that is the name that appears |
+| `-Replace` | Contexts removed in the same update (e.g. `ready`) |
+| `-Apply` | Write the changes; without it the script is a dry run and makes no write call |
+
+- Skipped with a warning: a repository without a caller of `GravionLabs/ci/.github/workflows/pr-checks.yml` under `.github/workflows` (a required check that never runs would block every PR); archived repositories are skipped.
+- Token: `gh` with a classic PAT with scope `repo` (administration of the repository, needed to write rulesets) or a fine-grained token with `Administration: write`.
+- Rollback: delete the ruleset (the dry run prints the id of each ruleset it would change; Settings > Rules > Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`) and recreate it from the dry run output without the check.
+- Tests: `npm test` (`tests/project/set-repo-rulesets.test.ts`, stubbed `gh`, needs pwsh).
 
 ## Releasing ci
 
