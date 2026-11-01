@@ -79,6 +79,23 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     expect(checksOf(rel.body)).toEqual(['PR checks']);
   });
 
+  it('sends bypass_actors as an array with exactly one actor, several and none', () => {
+    const actor = { actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' };
+    const other = { actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'always' };
+    const one = { ...mainRuleset([rsc('lint')]), bypass_actors: [actor] };
+    const two = { ...releaseRuleset(), bypass_actors: [actor, other] };
+    const r = run({ a: { workflow: CALLER, rulesets: [one, two] } }, '-Repo', 'a', '-Apply');
+    const n = run({ a: { workflow: CALLER, rulesets: [mainRuleset(), releaseRuleset()] } }, '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
+    expect(n.status).toBe(0);
+    const bodies = [...r.writes, ...n.writes.slice(r.writes.length)].map((w) => w.body);
+    expect(bodies[0].bypass_actors).toEqual([actor]);
+    expect(bodies[1].bypass_actors).toEqual([actor, other]);
+    expect(bodies[2].bypass_actors).toEqual([]);
+    expect(bodies[3].bypass_actors).toEqual([]);
+    for (const b of bodies) expect(Array.isArray(b.conditions.ref_name.include)).toBe(true);
+  });
+
   it('creates the rulesets when missing', () => {
     const r = run({ a: { workflow: CALLER, rulesets: [] } }, '-Repo', 'a', '-Apply');
     expect(r.writes).toHaveLength(2);

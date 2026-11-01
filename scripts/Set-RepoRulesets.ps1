@@ -103,7 +103,7 @@ function Get-RulesetPlan {
     name = $Name; target = 'branch'
     enforcement = $(if ($Existing) { $Existing.enforcement } else { 'active' })
     conditions = $(if ($Existing) { $Existing.conditions } else { @{ ref_name = @{ include = @($Include); exclude = @() } } })
-    bypass_actors = $(if ($Existing -and $Existing.bypass_actors) { @($Existing.bypass_actors) } else { @() })
+    bypass_actors = $(if ($Existing -and $Existing.bypass_actors) { , @($Existing.bypass_actors) } else { , @() })
     rules = @($rules)
   }
   [pscustomobject]@{ Body = $body; Changed = $changed }
