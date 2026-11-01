@@ -119,6 +119,22 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     expect(r.stdout + r.stderr).toContain('no caller');
   });
 
+  const LOCAL = 'jobs:\n  pr-checks:\n    uses: ./.github/workflows/pr-checks.yml\n';
+
+  it('recognises the local caller in GravionLabs/ci', () => {
+    const r = run({ ci: { workflow: LOCAL, rulesets: [mainRuleset(), releaseRuleset()] } }, '-Repo', 'ci', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(2);
+    expect(checksOf(r.writes[0].body)).toEqual(['PR checks']);
+  });
+
+  it('still skips another repository whose only caller is a local path', () => {
+    const r = run({ a: { workflow: LOCAL, rulesets: [mainRuleset()] } }, '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(0);
+    expect(r.stdout + r.stderr).toContain('no caller');
+  });
+
   it('skips a repository without a workflows directory', () => {
     const r = run({ a: { workflow: null, rulesets: [] } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
