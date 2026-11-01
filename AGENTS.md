@@ -19,6 +19,7 @@ versioning/
 pr-checks/
   readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
   adr/                  — Fails a PR that touches `governance.adrPaths` or closes a `needs-decision` issue without an added/changed ADR in `governance.adrDir`; new ADRs need a `Status:` line and a free number; config from the base branch, `governance.skipLabels` (default `skip-adr`) skips
+  spec/                 — Warns (`specMode: warn`, default) or fails (`require`) when a PR changes files under a `governance.specMap` glob without the mapped spec; tests and `.md` not counted; PR body line `no spec change needed` turns a failure into a warning
   title/                — Fails a PR whose title is not a Conventional Commit or contradicts its commits (breaking → `!`, feat commit → feat title); hotfix PRs into the default branch need Conventional Commits; same-repository release and merge-back PRs exempt
 
 issues/
@@ -252,7 +253,7 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ## Reusable Workflow: `pr-checks.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. This repository's caller is `.github/workflows/pr-checks-caller.yml` (`title` and `readiness` on, `adr`/`spec` off). Details: README, "pr-checks.yml".
+Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `spec` (`pr-checks/spec`, `governance.specMap|specMode`: warn or fail when mapped files change without their spec; PR body line `no spec change needed` downgrades), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. This repository's caller is `.github/workflows/pr-checks-caller.yml` (`title` and `readiness` on, `adr`/`spec` off). Details: README, "pr-checks.yml".
 
 ## Reusable Workflow: `release-branch.yml`
 

@@ -1,0 +1,25 @@
+name: PR spec
+description: >-
+  Warns (specMode warn, default) or fails (specMode require) when a pull request changes files under a glob of
+  governance.specMap without changing the mapped spec. A line "no spec change needed" in the PR body turns a failure
+  into a warning. Tests and .md files under the globs are not counted. Reads .agents/config.json of the base branch;
+  without governance.specMap it is skipped green.
+  Run it on `pull_request`; the token needs `contents: read` and `pull-requests: read`.
+
+inputs:
+  token:
+    description: Token with contents and pull-requests read access
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const { default: run } = await import(`${process.env.ACTION_PATH}/run.mjs`);
+          await run({ github, context, core });

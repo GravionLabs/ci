@@ -3,6 +3,8 @@
 #   closed issue is ready: none of the not-ready labels, no open "blocked by" issue.
 # - adr: a PR that touches governance.adrPaths (.agents/config.json of the base branch) or closes a needs-decision issue
 #   adds or changes an ADR in governance.adrDir; new ADRs have a Status line and a free number.
+# - spec: a PR that changes files under a glob of governance.specMap (base branch) also changes the mapped spec; specMode
+#   warn (default) warns, require fails; a PR body line "no spec change needed" turns a failure into a warning.
 # - title: the PR title is a Conventional Commit and agrees with the commits (breaking -> "!", feat commit -> feat title);
 #   a PR into the default branch from a non-release branch (hotfix) needs Conventional Commits only. Release and merge-back PRs are exempt.
 # - result ("PR checks"): needs every job above, runs always, fails when one failed or was cancelled, passes on skipped.
@@ -76,6 +78,19 @@ jobs:
         with:
           token: ${{ github.token }}
 
+  spec:
+    name: Spec
+    if: inputs.spec
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check the spec of the pull request
+        uses: GravionLabs/ci/pr-checks/spec@v1
+        with:
+          token: ${{ github.token }}
+
   title:
     name: Title
     if: inputs.title
@@ -91,7 +106,7 @@ jobs:
   result:
     name: PR checks
     if: always()
-    needs: [readiness, adr, title]
+    needs: [readiness, adr, spec, title]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
