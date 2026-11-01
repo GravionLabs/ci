@@ -146,84 +146,107 @@ mark_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_labels.fail"; run_mark
 [ "$code" = 0 ] && ok "label write failure exits 0" || fail "exit $code"
 has "label write failure warns" "::warning::Cannot label #10" "$out"
 
-echo "# mark: project status"
+echo "# mark: project status (REST only)"
 # #10 and #20 get labelled; #11 is already labelled (also in MARKED)
 status_fixture() {
   mark_fixture
   export PROJECT_STATUS="In release"
-  items() { fix "graphql_ItemStatus_$1" "{\"data\":{\"repository\":{\"issue\":{\"projectItems\":{\"nodes\":[$2]}}}}}"; }
-  # node <itemId> <projectId> <title> <current status or ""> <with option true|false>
-  node() {
-    local cur=null opts='[{"id":"o1","name":"Todo"},{"id":"o2","name":"In release"}]'
-    [ -n "$4" ] && cur="{\"name\":\"$4\"}"
-    [ "$5" = false ] && opts='[{"id":"o1","name":"Todo"}]'
-    printf '{"id":"%s","databaseId":%s,"project":{"id":"%s","title":"%s","number":%s,"owner":{"__typename":"%s","login":"o"},"field":{"id":"f1","databaseId":77,"options":%s}},"fieldValueByName":%s}' \
-      "$1" "${1//[!0-9]/}" "$2" "$3" "${2//[!0-9]/}" "${OWNER_TYPE:-User}" "$opts" "$cur"
-  }
+  PSEG=users; [ "${OWNER_TYPE:-User}" = Organization ] && PSEG=orgs
+  fix GET_users_o "{\"login\":\"o\",\"type\":\"${OWNER_TYPE:-User}\"}"
+  PLIST=(); declare -gA PITEMS=()
+  fix "GET_${PSEG}_o_projectsV2" "[]"
+}
+# proj <number> <title> <with option true|false> [closed]: registers a project of the owner (list + Status field)
+proj() {
+  local opts='[{"id":"o1","name":{"raw":"Todo"}},{"id":"o2","name":{"raw":"In release"}}]' closed=null
+  [ "$3" = false ] && opts='[{"id":"o1","name":{"raw":"Todo"}}]'
+  [ -n "${4:-}" ] && closed='"2026-01-01T00:00:00Z"'
+  PLIST+=("{\"number\":$1,\"title\":\"$2\",\"closed_at\":$closed}")
+  fix "GET_${PSEG}_o_projectsV2" "[$(IFS=,; echo "${PLIST[*]}")]"
+  fix "GET_${PSEG}_o_projectsV2_$1_fields" "[{\"id\":76,\"name\":\"Title\",\"data_type\":\"title\"},{\"id\":77,\"name\":\"Status\",\"data_type\":\"single_select\",\"options\":$opts}]"
+  PITEMS[$1]=""
+  fix "GET_${PSEG}_o_projectsV2_$1_items" "[]"
+}
+# pitem <project> <issue> <status or ""> [repo]: a project item of an issue (item id = issue number)
+pitem() {
+  local cur=null
+  [ -n "$3" ] && cur="{\"name\":{\"raw\":\"$3\"}}"
+  PITEMS[$1]="${PITEMS[$1]:+${PITEMS[$1]},}{\"id\":$2,\"content_type\":\"Issue\",\"content\":{\"number\":$2,\"repository\":{\"full_name\":\"${4:-o/r}\"}},\"fields\":[{\"id\":77,\"value\":$cur}]}"
+  fix "GET_${PSEG}_o_projectsV2_$1_items" "[${PITEMS[$1]}]"
 }
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
-items 11 "$(node I11 P1 Board Done true)"
-items 20 "$(node I20 P1 Board 'In release' true)"
+proj 1 Board true
+pitem 1 10 Todo; pitem 1 11 Done; pitem 1 20 "In release"
 run_mark
 [ "$code" = 0 ] && ok "exit 0" || fail "exit $code: $out"
 has "sets #10 via the REST projectsV2 endpoint" "gh api -X PATCH users/o/projectsV2/1/items/10 --input -" "$log"
-hasnt "no GraphQL mutation" "mutation" "$log"
+hasnt "no GraphQL call at all" "graphql" "$log"
+has "reads the items of the repository only" "projectsV2/1/items?per_page=100&fields[]=77&q=repo:o/r" "$log"
 has "body carries the numeric field id and the option id" 'body={"fields":[{"id":77,"value":"o2"}]}' "$log"
 count_is "only #10 mutated" "-X PATCH" 1 "$log"
-hasnt "Done item skipped" "itemId=I11" "$log"
+hasnt "Done item skipped" "items/11" "$log"
 hasnt "item already at the status skipped" "items/20" "$log"
+has "reports the unchanged item" "#20 is already In release in Board" "$out"
 
 status_fixture
-items 10 ""
+proj 1 Board true
 run_mark
 [ "$code" = 0 ] && ok "exit 0 without project items" || fail "exit $code"
 hasnt "issue without project item not written" "-X PATCH" "$log"
 hasnt "no warning" "::warning::" "$out"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo false)"
-items 11 "$(node I11 P1 Board Todo false)"
-items 20 "$(node I20 P2 Other Todo false),$(node J20 P1 Board Todo false)"
+proj 1 Board true; pitem 1 10 Todo "o/x"
+run_mark
+hasnt "item of another repository ignored" "-X PATCH" "$log"
+
+status_fixture
+proj 1 Board true; proj 2 Old true closed
+pitem 1 10 Todo
+run_mark
+hasnt "closed project not read" "projectsV2/2" "$log"
+count_is "open project still written" "-X PATCH" 1 "$log"
+
+status_fixture
+proj 1 Board false; proj 2 Other false
+pitem 1 10 Todo; pitem 1 11 Todo; pitem 2 20 Todo; pitem 1 20 Todo
 run_mark
 count_is "option warning once per project" "has no Status option" 2 "$out"
 hasnt "no write without the option" "-X PATCH" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
-echo "Resource not accessible by personal access token" > "$GH_FIX/graphql_ItemStatus_10.fail"
+proj 1 Board true; pitem 1 10 Todo
+echo "Resource not accessible by personal access token" > "$GH_FIX/GET_users_o_projectsV2_1_items.fail"
 run_mark
 [ "$code" = 0 ] && ok "scope failure exits 0" || fail "exit $code"
 count_is "scope warning once" "::warning::The token cannot access the project" 1 "$out"
 has "warning names the classic PAT" "classic PAT" "$out"
-count_is "no further graphql after the scope failure" "gh api graphql" 1 "$log"
+count_is "no further project call after the scope failure" "projectsV2/1/items" 1 "$log"
+hasnt "nothing written after the scope failure" "-X PATCH" "$log"
 has "labels still written" "issues/10/labels" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
-echo "Your token has not been granted the required scopes: INSUFFICIENT_SCOPES" > "$GH_FIX/graphql_ItemStatus_10.fail"
+proj 1 Board true; pitem 1 10 Todo
+echo "Your token has not been granted the required scopes: INSUFFICIENT_SCOPES" > "$GH_FIX/GET_users_o_projectsV2.fail"
 run_mark
 count_is "INSUFFICIENT_SCOPES warns once" "::warning::The token cannot access the project" 1 "$out"
-count_is "INSUFFICIENT_SCOPES stops further graphql" "gh api graphql" 1 "$log"
+count_is "INSUFFICIENT_SCOPES stops further project calls" "projectsV2" 1 "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
 echo "Resource not accessible by personal access token" > "$GH_FIX/PATCH_users_o_projectsV2_1_items_10.fail"
 run_mark
 count_is "mutation scope warning once" "::warning::The token cannot access the project" 1 "$out"
 [ "$code" = 0 ] && ok "mutation scope failure exits 0" || fail "exit $code"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
-items 20 "$(node I20 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo; pitem 1 20 Todo
 echo "Resource not accessible by personal access token" > "$GH_FIX/PATCH_users_o_projectsV2_1_items_10.fail"
 run_mark
 count_is "no further mutation after a mutation scope failure" "-X PATCH" 1 "$log"
-count_is "no item query for #20 after the scope failure" "gh api graphql" 1 "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
-items 20 "$(node I20 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo; pitem 1 20 Todo
 echo "boom" > "$GH_FIX/PATCH_users_o_projectsV2_1_items_10.fail"
 run_mark
 [ "$code" = 0 ] && ok "mutation failure exits 0" || fail "exit $code"
@@ -231,50 +254,55 @@ has "mutation failure warns" "::warning::Cannot set the status of #10 in Board" 
 has "continues with the next issue after a mutation failure" "items/20" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true),$(node J10 P2 Other Todo false)"
+proj 1 Board true; proj 2 Other false
+pitem 1 10 Todo; pitem 2 10 Todo
 run_mark
 count_is "mutates only the project with the option" "-X PATCH" 1 "$log"
 count_is "warns for the project without the option" "has no Status option" 1 "$out"
 has "names the project without the option" "Project Other has no Status option" "$out"
+count_is "projects read once for all issues" "gh api --paginate users/o/projectsV2?per_page=100" 1 "$log"
 
 status_fixture
-items 20 "$(node I20 P1 Board Todo true)"
+proj 1 Board true; pitem 1 20 Todo
 run_mark
 has "labelled parent #20 gets the status" "items/20" "$log"
 
-status_fixture
-OWNER_TYPE=Organization
-items 10 "$(node I10 P1 Board Todo true)"
-run_mark
-unset OWNER_TYPE
+OWNER_TYPE=Organization status_fixture
+OWNER_TYPE=Organization proj 1 Board true
+OWNER_TYPE=Organization pitem 1 10 Todo
+OWNER_TYPE=Organization run_mark
+has "organization project is read under /orgs/" "gh api --paginate orgs/o/projectsV2?per_page=100" "$log"
 has "organization project is written under /orgs/" "gh api -X PATCH orgs/o/projectsV2/1/items/10 --input -" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
 GH_TOKEN=base-tok PROJECT_TOKEN=pat-tok run_mark
-has "graphql uses PROJECT_TOKEN" "token=pat-tok" "$log"
+has "the REST reads use PROJECT_TOKEN" "token=pat-tok" "$(grep -F -A1 -- 'gh api --paginate users/o/projectsV2/1/items' <<<"$log")"
 has "the REST write uses PROJECT_TOKEN too" "token=pat-tok" "$(grep -F -A1 -- '-X PATCH users/o' <<<"$log")"
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
 GH_TOKEN=base-tok run_mark
-has "PROJECT_TOKEN falls back to GH_TOKEN" "token=base-tok" "$log"
+has "PROJECT_TOKEN falls back to GH_TOKEN" "token=base-tok" "$(grep -F -A1 -- '-X PATCH users/o' <<<"$log")"
 
 status_fixture
-echo "boom" > "$GH_FIX/graphql_ItemStatus_10.fail"
-items 20 "$(node I20 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
+echo "boom" > "$GH_FIX/GET_users_o_projectsV2_1_items.fail"
 run_mark
-has "other failure warns per issue" "::warning::Cannot read the project items of #10" "$out"
-has "continues with the next issue" "items/20" "$log"
+[ "$code" = 0 ] && ok "other read failure exits 0" || fail "exit $code"
+count_is "other failure warns once" "::warning::Cannot read the projects of o" 1 "$out"
+hasnt "nothing written after a read failure" "-X PATCH" "$log"
+has "labels still written after a read failure" "issues/10/labels" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
 DRY_RUN=true run_mark
 has "dry run prints would set" "would set #10 to In release in Board" "$out"
 hasnt "dry run makes no write" "-X PATCH" "$log"
 
 status_fixture
-items 10 "$(node I10 P1 Board Todo true)"
+proj 1 Board true; pitem 1 10 Todo
 PROJECT_STATUS="" run_mark
+hasnt "no project call without PROJECT_STATUS" "projectsV2" "$log"
 hasnt "no graphql without PROJECT_STATUS" "graphql" "$log"
 unset PROJECT_STATUS
 
