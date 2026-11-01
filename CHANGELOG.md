@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.5.1] — 2026-11-01
+
+### Bug Fixes
+- **scripts**: Set-RepoRulesets.ps1 sends bypass_actors as an array
+
+
+### Documentation
+- Update CHANGELOG.md for v1.5.0 [skip ci]
+
+
 ## [1.5.0] — 2026-11-01
 
 ### Bug Fixes
