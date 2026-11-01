@@ -110,6 +110,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main`.
 |---|---|---|
 | `publish-api-key` | **Yes** | NuGet API key or PAT |
 | `feed-token` | No | Token for private restore feed |
+| `GH_PAT` | No | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
 
 ### Behavior
 
@@ -167,6 +168,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/docker-package.yml@main`.
 |---|---|---|
 | `registry-username` | **Yes** | Registry username |
 | `registry-token` | **Yes** | Registry token (e.g. `GITHUB_TOKEN` for GHCR) |
+| `GH_PAT` | No | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
 
 ### Tag Strategy
 
