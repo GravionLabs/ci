@@ -14,7 +14,7 @@
 # Secret names match issues.yml, so `secrets: inherit` works.
 # The actions are referenced at @v1, the moving major tag the release job of ci.yml moves to every release.
 # The Needs sync covers only the issues newly labelled in this run (decision): a failed sync is not retried by a rerun,
-# because those issues are then already labelled; the hourly full sync (project-needs.yml style) catches up.
+# because those issues are then already labelled; the central nightly sync (project-needs.yml, mode project) catches up.
 # Never checks out caller code; event data reaches scripts through env only.
 name: Release branch
 

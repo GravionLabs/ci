@@ -8,7 +8,7 @@
 # - needs (opt-in, input needs): keeps the project field Needs current via project/needs, which runs Sync-ProjectNeeds.ps1
 #   of the github-project skill of this repository. Event mode syncs the issue of the event (issues: labeled,
 #   unlabeled, closed, reopened; pull_request_target: opened, closed, ready_for_review, issue number from the head branch);
-#   mode full or a schedule/workflow_dispatch caller syncs every item. Token: PROJECT_TOKEN (classic PAT, scope project,
+#   mode full syncs every item of the repository, mode project every item of the project (any repository; central nightly sync). Token: PROJECT_TOKEN (classic PAT, scope project,
 #   plus repo for a private repository), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
 # Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
 name: Issues
