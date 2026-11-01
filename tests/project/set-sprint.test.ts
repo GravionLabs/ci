@@ -3,10 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const SCRIPT = path.resolve(
-  __dirname,
-  '../../.apm/skills/github-project/scripts/Set-Sprint.ps1'
-);
+const SCRIPT = path.resolve(__dirname, '../../.apm/skills/github-project/scripts/Set-Sprint.ps1');
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;
 
 it('pwsh is installed in CI (the Set-Sprint cases must not be skipped there)', () => {
@@ -14,7 +11,10 @@ it('pwsh is installed in CI (the Set-Sprint cases must not be skipped there)', (
 });
 
 const W43 = '2026-W43';
-const ITERATIONS = ['2026-W42', W43, '2026-W44'].map((title) => ({ id: `it-${title}`, title }));
+const ITERATIONS = ['2026-W42', W43, '2026-W44'].map((title) => ({
+  id: `it-${title}`,
+  title,
+}));
 interface Item {
   id: string;
   repo: string;
@@ -73,8 +73,127 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
       ],
       { cwd: dir, encoding: 'utf8' }
     );
-    return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, err: r.stderr };
+    return {
+      status: r.status,
+      out: r.stdout.trim() ? JSON.parse(r.stdout) : null,
+      err: r.stderr,
+    };
   };
+  const runRaw = (state: object, targets: string[]) => {
+    const file = path.join(dir, 'raw.json');
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        projectId: 'P',
+        sprintField: { id: 'F', iterations: ITERATIONS },
+        ...state,
+      })
+    );
+    const r = spawnSync(
+      'pwsh',
+      [
+        '-NoProfile',
+        '-File',
+        SCRIPT,
+        '-StateFile',
+        file,
+        '-Today',
+        '2026-10-22',
+        '-Json',
+        '-Issue',
+        targets.join(','),
+      ],
+      { cwd: dir, encoding: 'utf8' }
+    );
+    return {
+      status: r.status,
+      out: r.stdout.trim() ? JSON.parse(r.stdout) : null,
+      err: r.stderr + r.stdout,
+    };
+  };
+  const node = (num: number) => ({
+    id: `N-${num}`,
+    content: {
+      __typename: 'Issue',
+      number: num,
+      state: 'OPEN',
+      repository: { nameWithOwner: 'o/a' },
+    },
+    status: { name: 'Todo' },
+    level: { name: 'PBI' },
+    sprint: null,
+  });
+
+  describe('item walk', () => {
+    it('fails clearly on a short page (no nodes, hasNextPage false, totalCount higher)', () => {
+      const r = runRaw(
+        {
+          itemPages: [
+            {
+              totalCount: 3,
+              pageInfo: { hasNextPage: true, endCursor: 'c' },
+              nodes: [node(1)],
+            },
+            { totalCount: 3, pageInfo: { hasNextPage: false }, nodes: [] },
+          ],
+        },
+        ['o/a#1']
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.err).toContain('ended early: read 1 of 3');
+    });
+
+    it('retries a short page and goes on when the retry delivers the rest', () => {
+      const r = runRaw(
+        {
+          itemPages: [
+            {
+              totalCount: 2,
+              pageInfo: { hasNextPage: true, endCursor: 'c' },
+              nodes: [node(1)],
+            },
+            { totalCount: 2, pageInfo: { hasNextPage: false }, nodes: [] },
+            {
+              totalCount: 2,
+              pageInfo: { hasNextPage: false },
+              nodes: [node(2)],
+            },
+          ],
+        },
+        ['o/a#2']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign).toHaveLength(1);
+    });
+
+    it('finds a target from the issue side although the walk is complete without it', () => {
+      const r = runRaw(
+        {
+          itemPages: [
+            {
+              totalCount: 1,
+              pageInfo: { hasNextPage: false },
+              nodes: [node(1)],
+            },
+          ],
+          issueSide: [
+            {
+              id: 'N-9',
+              repo: 'o/a',
+              number: 9,
+              state: 'OPEN',
+              level: 'PBI',
+              status: 'Todo',
+            },
+          ],
+        },
+        ['o/a#9']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign[0]).toMatchObject({ item: 'N-9', issue: 'o/a#9' });
+    });
+  });
+
   const types = (r: ReturnType<typeof run>) => r.out.violations.map((v: any) => v.type);
 
   it('assigns to the current ISO week by default and reports the iteration id', () => {
@@ -83,7 +202,13 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
     expect(r.status, r.err).toBe(0);
     expect(r.out.sprint).toBe(W43);
     expect(r.out.assign).toEqual([
-      { item: a.id, issue: ref(a), iteration: `it-${W43}`, sprint: W43, previous: null },
+      {
+        item: a.id,
+        issue: ref(a),
+        iteration: `it-${W43}`,
+        sprint: W43,
+        previous: null,
+      },
     ]);
   });
 
@@ -186,7 +311,10 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
       const r = run([blocker, a], [ref(a)]);
       expect(r.status).toBe(1);
       expect(types(r)).toEqual(['Blocked']);
-      expect(r.out.violations[0]).toMatchObject({ issue: ref(a), blocker: ref(blocker) });
+      expect(r.out.violations[0]).toMatchObject({
+        issue: ref(a),
+        blocker: ref(blocker),
+      });
       expect(r.out.violations[0].message).toContain('no sprint');
     });
 
@@ -204,14 +332,18 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
       const together = item('o/a');
       const closed = item('o/a', { state: 'CLOSED' });
       const foreign = item('o/b', { sprint: W43 });
-      const a = item('o/a', { blockedBy: blockedBy(same, earlier, together, closed, foreign) });
+      const a = item('o/a', {
+        blockedBy: blockedBy(same, earlier, together, closed, foreign),
+      });
       const r = run([same, earlier, together, closed, foreign, a], [ref(a), ref(together)]);
       expect(r.status, r.err).toBe(0);
       expect(r.out.assign.map((x: any) => x.issue)).toEqual([ref(a), ref(together)]);
     });
 
     it('a blocker that is no project item still blocks (REST state is lower case)', () => {
-      const a = item('o/a', { blockedBy: [{ repo: 'o/a', number: 999, state: 'open' }] });
+      const a = item('o/a', {
+        blockedBy: [{ repo: 'o/a', number: 999, state: 'open' }],
+      });
       expect(types(run([a], [ref(a)]))).toEqual(['Blocked']);
     });
   });
@@ -248,10 +380,7 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
 });
 
 describe('GraphQL here-strings in the project scripts', () => {
-  const dir = path.resolve(
-    __dirname,
-    '../../.apm/skills/github-project/scripts'
-  );
+  const dir = path.resolve(__dirname, '../../.apm/skills/github-project/scripts');
   const queries = ['Set-Sprint.ps1', 'Set-ProjectStandard.ps1'].flatMap((file) => {
     const text = fs.readFileSync(path.join(dir, file), 'utf8');
     return [...text.matchAll(/\$(\w+) = @'\r?\n([\s\S]*?)\r?\n'@/g)].map(
