@@ -631,6 +631,8 @@ jobs:
 
 > The check name that reaches the ruleset is `<caller job id or name> / PR checks`; keep the caller job id `pr-checks` in every repository so the name is the same everywhere.
 
+This repository's own caller is `.github/workflows/pr-checks-caller.yml`: `title` and `readiness` run, `adr` and `spec` are off.
+
 Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh` (needs `yq` and `jq`); the `test-pr-checks` job of `ci.yml` runs both and runs the action against the pull request.
 
 ### `pr-checks/readiness`

@@ -1,6 +1,7 @@
 # This repository's caller of the reusable pr-checks.yml (the file pr-checks.yml itself is workflow_call only).
-# Only the title job runs: the PR title is a Conventional Commit (it becomes the squash commit) and agrees with the commits.
-# Turn further checks on here by setting readiness / adr / spec to true (readiness: GravionLabs/ci#97).
+# Jobs that run: title (the PR title is a Conventional Commit and agrees with the commits) and readiness
+# (the PR closes an issue that is ready; release PRs exempt). adr and spec stay off: this repository has no docs/adr/.
+# Turn further checks on here by setting adr / spec to true.
 # The job id `pr-checks` makes the required status check "pr-checks / PR checks".
 name: PR checks caller
 
@@ -18,6 +19,6 @@ jobs:
       pull-requests: read
     uses: ./.github/workflows/pr-checks.yml
     with:
-      readiness: false
+      readiness: true
       adr: false
       spec: false

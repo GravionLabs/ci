@@ -246,7 +246,7 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ## Reusable Workflow: `pr-checks.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
+Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. This repository's caller is `.github/workflows/pr-checks-caller.yml` (`title` and `readiness` on, `adr`/`spec` off). Details: README, "pr-checks.yml".
 
 ## Reusable Workflow: `release-branch.yml`
 
