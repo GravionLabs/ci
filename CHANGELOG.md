@@ -6,10 +6,21 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [1.6.0] — 2026-11-01
+## [1.7.0] — 2026-11-01
+
+### Bug Fixes
+- **versioning/gh-release**: Retry on rate limit and finish a half-done release (#119) (#142)
+- **github**: Set-Sprint.ps1 and Set-ProjectStandard.ps1 miss project items when the items walk ends early on a large project (#89) (#143)
+
 
 ### Documentation
 - Update CHANGELOG.md for v1.6.0 [skip ci]
+- Update CHANGELOG.md for v1.6.0 [skip ci]
+
+
+### Features
+- **gh-release**: Commit caller version files with the changelog (#134) (#139)
+- **pr-checks**: Spec job in pr-checks.yml (#95) (#140)
 
 
 ## [1.6.0] — 2026-11-01
