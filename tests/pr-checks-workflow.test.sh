@@ -49,6 +49,15 @@ eq "adr is skipped by its input" 'inputs.adr' "$(q '.jobs.adr.if')"
 eq "title is skipped by its input" 'inputs.title' "$(q '.jobs.title.if')"
 eq "title job uses the title action" 'GravionLabs/ci/pr-checks/title@v1' "$(q '.jobs.title.steps[0].uses')"
 
+CALLER="$(dirname "$WF")/pr-checks-caller.yml"
+cq() { yq -r "$1" "$CALLER"; }
+eq "caller runs on pull_request edited" 'true' "$(cq '.on.pull_request.types | contains(["opened","edited","synchronize","reopened"])')"
+eq "caller job id is pr-checks" 'pr-checks' "$(cq '.jobs | keys | .[0]')"
+eq "caller uses the local workflow" './.github/workflows/pr-checks.yml' "$(cq '.jobs.pr-checks.uses')"
+eq "caller turns readiness on" 'true' "$(cq '.jobs.pr-checks.with.readiness')"
+eq "caller keeps adr off" 'false' "$(cq '.jobs.pr-checks.with.adr')"
+eq "caller keeps spec off" 'false' "$(cq '.jobs.pr-checks.with.spec')"
+
 script=$(q '.jobs.result.steps[0].run')
 aggregate() { NEEDS="$1" bash -c "$script" >/dev/null 2>&1; echo $?; }
 eq "aggregate passes on success"  0 "$(aggregate '{"readiness":{"result":"success"}}')"
