@@ -107,6 +107,13 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
     sprint: null,
   });
 
+  // pwsh wraps error text, prefixes continuation lines with '|' and colors it
+  const plain = (t: string) =>
+    t
+      .replace(/\x1b\[[0-9;]*m/g, '')
+      .replace(/^\s*\|/gm, '')
+      .replace(/\s+/g, ' ');
+
   describe('item walk', () => {
     it('fails on a short walk and says the target was found via the issue side', () => {
       const r = runRaw(
@@ -117,14 +124,14 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
         ['o/a#9']
       );
       expect(r.status).not.toBe(0);
-      expect(r.err).toContain('ended early: read 1 of 3');
-      expect(r.err).toContain('targets found, limits need a complete walk');
+      expect(plain(r.err)).toContain('ended early: read 1 of 3');
+      expect(plain(r.err)).toContain('targets found, limits need a complete walk');
     });
 
     it('fails on a short walk and says the target was not found', () => {
       const r = runRaw({ itemPages: shortPages([node(1)]) }, ['o/a#9']);
       expect(r.status).not.toBe(0);
-      expect(r.err).toContain('targets not found (o/a#9)');
+      expect(plain(r.err)).toContain('targets not found (o/a#9)');
     });
 
     it('retries a short page and goes on when the retry delivers the rest', () => {
