@@ -26,6 +26,7 @@ docker/
 versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 ├── create-version-tag/     # Create and push a git tag
+├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
 └── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
@@ -75,7 +76,7 @@ Supports GitHub Packages, Azure Artifacts, and JFrog Artifactory.
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/dotnet/setup@main
+- uses: GravionLabs/ci/dotnet/setup@v1
   with:
     dotnet-version: '10.x'
     feed-url: https://pkgs.dev.azure.com/myorg/_packaging/myfeed/nuget/v3/index.json
@@ -104,7 +105,7 @@ Checks out the repository, sets up .NET, restores, builds, and optionally publis
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/dotnet/build@main
+- uses: GravionLabs/ci/dotnet/build@v1
   with:
     dotnet-project: 'MyApp.sln'
     configuration: Release
@@ -141,7 +142,7 @@ Runs unit tests with Coverlet code coverage via the XPlat collector (`--collect:
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/dotnet/test@main
+- uses: GravionLabs/ci/dotnet/test@v1
   with:
     test-project: 'test/**/*.Test.csproj'
     coverage-format: cobertura
@@ -173,7 +174,7 @@ Packs a .NET project as a NuGet package and uploads the `.nupkg` files as the `n
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/dotnet/nuget/pack@main
+- uses: GravionLabs/ci/dotnet/nuget/pack@v1
   with:
     dotnet-project: 'MyLib.sln'
     version: ${{ steps.version.outputs.nuget-version }}
@@ -199,13 +200,13 @@ Publishes `.nupkg` files to a NuGet feed. Supports GitHub Packages, Azure Artifa
 
 ```yaml
 # Same job as pack:
-- uses: GravionLabs/ci/dotnet/nuget/publish@main
+- uses: GravionLabs/ci/dotnet/nuget/publish@v1
   with:
     feed-url: https://nuget.pkg.github.com/GravionLabs/index.json
     api-key: ${{ secrets.GITHUB_TOKEN }}
 
 # Separate job (downloads artifact first):
-- uses: GravionLabs/ci/dotnet/nuget/publish@main
+- uses: GravionLabs/ci/dotnet/nuget/publish@v1
   with:
     feed-url: https://pkgs.dev.azure.com/myorg/_packaging/myfeed/nuget/v3/index.json
     api-key: ${{ secrets.AZURE_DEVOPS_PAT }}
@@ -238,12 +239,12 @@ must already be populated.
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/dotnet/nuget/pack@main
+- uses: GravionLabs/ci/dotnet/nuget/pack@v1
   with:
     dotnet-project: 'MyLib.sln'
     version: ${{ steps.version.outputs.nuget-version }}
 
-- uses: GravionLabs/ci/dotnet/nuget/verify-package@main
+- uses: GravionLabs/ci/dotnet/nuget/verify-package@v1
   with:
     files: |
       lib/net8.0/MyLib.dll
@@ -275,7 +276,7 @@ Installs [uv](https://docs.astral.sh/uv/) and the specified Python version with 
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/python/setup@main
+- uses: GravionLabs/ci/python/setup@v1
   with:
     python-version: '3.14'
 ```
@@ -298,7 +299,7 @@ Checks out the repository, sets the package version in `pyproject.toml`, install
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/python/build@main
+- uses: GravionLabs/ci/python/build@v1
   with:
     version: ${{ steps.version.outputs.python-version }}
     working-directory: 'src/mypackage'
@@ -330,7 +331,7 @@ Runs pytest with optional code coverage and uploads test results and coverage re
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/python/test@main
+- uses: GravionLabs/ci/python/test@v1
   with:
     pytest-args: 'tests/ -k "not slow"'
     coverage-report: xml
@@ -360,12 +361,12 @@ Supports [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (n
 
 ```yaml
 # PyPI via Trusted Publishing (requires id-token: write permission):
-- uses: GravionLabs/ci/python/pypi/publish@main
+- uses: GravionLabs/ci/python/pypi/publish@v1
   with:
     download-artifact: 'true'
 
 # Private feed:
-- uses: GravionLabs/ci/python/pypi/publish@main
+- uses: GravionLabs/ci/python/pypi/publish@v1
   with:
     feed-url: https://pkgs.dev.azure.com/myorg/_packaging/myfeed/pypi/upload/
     api-key: ${{ secrets.AZURE_DEVOPS_PAT }}
@@ -408,7 +409,7 @@ jobs:
 
       - name: Determine version
         id: version
-        uses: GravionLabs/ci/versioning/determine-version@main
+        uses: GravionLabs/ci/versioning/determine-version@v1
 ```
 
 **Inputs**
@@ -471,10 +472,10 @@ steps:
 
   - name: Determine version
     id: version
-    uses: GravionLabs/ci/versioning/determine-version@main
+    uses: GravionLabs/ci/versioning/determine-version@v1
 
   - name: Tag release
-    uses: GravionLabs/ci/versioning/create-version-tag@main
+    uses: GravionLabs/ci/versioning/create-version-tag@v1
     with:
       version: ${{ steps.version.outputs.semver }}
 ```
@@ -487,6 +488,40 @@ steps:
 | `version`    | Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4) | **Yes**  | —       |
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
 <!-- /action-docs:inputs -->
+
+### `versioning/move-major-tag`
+
+Moves the major tag (`v1`) to the commit of a release tag (`v1.4.0`) and force-pushes it, so callers on `@v1` get
+every 1.x release. A pre-release (`1.5.0-beta.1`) is skipped; a new major creates `v2` and leaves `v1` where it is.
+Idempotent. Run it after `create-version-tag`; the `release` job of this repository's `ci.yml` does.
+
+> **Prerequisite:** The calling workflow must grant `permissions: contents: write`, and no tag ruleset may block
+> force-pushing `v*` tags for the workflow token.
+
+**Usage:**
+
+```yaml
+  - name: Tag release
+    uses: GravionLabs/ci/versioning/create-version-tag@v1
+    with:
+      version: ${{ steps.version.outputs.semver }}
+
+  - name: Move major tag
+    uses: GravionLabs/ci/versioning/move-major-tag@v1
+    with:
+      version: ${{ steps.version.outputs.semver }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/move-major-tag/action.yml" -->
+| Name         | Description                                                                                                         | Required | Default |
+|--------------|---------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped | **Yes**  | —       |
+| `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                              | No       | v       |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/move-major-tag.test.sh`.
 
 ### `versioning/mark-merged-issues`
 
@@ -508,7 +543,7 @@ permissions:
   pull-requests: read
 
 steps:
-  - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+  - uses: GravionLabs/ci/versioning/mark-merged-issues@v1
     with:
       project-status: In release
       project-token: ${{ secrets.GH_PAT }}
@@ -577,7 +612,7 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
-    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
+    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
 ```
 
 A repository that wants only the title check turns the others off:
@@ -587,7 +622,7 @@ jobs:
   pr-checks:
     permissions:
       pull-requests: read
-    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
+    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
     with:
       readiness: false
       adr: false
@@ -651,7 +686,7 @@ permissions:
   issues: write
 
 steps:
-  - uses: GravionLabs/ci/issues/conventions@main
+  - uses: GravionLabs/ci/issues/conventions@v1
     with:
       required-sections: '{"task":["Files","Done when"]}'
 ```
@@ -686,7 +721,7 @@ on:
 permissions: {}
 
 steps:
-  - uses: GravionLabs/ci/project/needs@main
+  - uses: GravionLabs/ci/project/needs@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       mode: full
@@ -717,7 +752,7 @@ Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an expli
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/rust/setup@main
+- uses: GravionLabs/ci/rust/setup@v1
   with:
     tauri-linux-deps: 'true'
 ```
@@ -746,7 +781,7 @@ Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and 
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/rust/ci@main
+- uses: GravionLabs/ci/rust/ci@v1
   with:
     exclude: 'myapp-tauri'
 ```
@@ -778,7 +813,7 @@ Builds one binary for one target with a given version: writes the version into t
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/rust/release-binary@main
+- uses: GravionLabs/ci/rust/release-binary@v1
   with:
     version: ${{ needs.determine-version.outputs.semver }}
     package: myapp-cli
@@ -818,7 +853,7 @@ jobs:
       release-id: ${{ steps.draft.outputs.release-id }}
     steps:
       - id: draft
-        uses: GravionLabs/ci/tauri/draft-release@main
+        uses: GravionLabs/ci/tauri/draft-release@v1
         with:
           version: ${{ needs.determine-version.outputs.semver }}
 
@@ -834,7 +869,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions: { contents: write }
     steps:
-      - uses: GravionLabs/ci/tauri/installers@main
+      - uses: GravionLabs/ci/tauri/installers@v1
         with:
           version: ${{ needs.determine-version.outputs.semver }}
           target: ${{ matrix.target }}
@@ -881,7 +916,7 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 **Sidecar binaries (`bundle.externalBin`).** Tauri ships extra binaries (a CLI, an MCP server) with the installers when they are listed in `bundle.externalBin` of `tauri.conf.json`. Every entry `<path>/<name>` needs a file `<path>/<name>-<target-triple>[.exe]` before `tauri build`, and ends up as `<name>[.exe]` next to the application executable (Windows install directory, `Contents/MacOS` on macOS) or in `/usr/bin` (`.deb`, `.rpm`). Set `sidecar-package` and `sidecar-binary` and the action builds the crates for `target` after the version was set, copies each binary to `<sidecar-dir>/<name>-<target>[.exe]` and runs `<binary> --version` as a smoke test. `sidecar-dir` must match the `externalBin` path (default `src-tauri/binaries`). Without the inputs nothing changes.
 
 ```yaml
-- uses: GravionLabs/ci/tauri/installers@main
+- uses: GravionLabs/ci/tauri/installers@v1
   with:
     version: ${{ needs.determine-version.outputs.build-version }}
     target: x86_64-unknown-linux-gnu
@@ -914,7 +949,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    uses: GravionLabs/ci/.github/workflows/tauri-app.yml@main
+    uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1
     permissions:
       contents: write
     with:
@@ -943,7 +978,7 @@ Sets up Node.js with `actions/setup-node`, enables the package manager globally 
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/setup@main
+- uses: GravionLabs/ci/node/setup@v1
   with:
     node-version: '26'
     package-manager: 'pnpm'
@@ -968,7 +1003,7 @@ Installs dependencies and builds a Node.js project. Calls `node/setup` internall
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/build@main
+- uses: GravionLabs/ci/node/build@v1
   with:
     package-manager: 'pnpm'
 ```
@@ -994,7 +1029,7 @@ Runs lint, build, and test with a single setup and dependency installation. Wrap
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/ci@main
+- uses: GravionLabs/ci/node/ci@v1
   with:
     package-manager: 'pnpm'
     run-lint: true
@@ -1028,7 +1063,7 @@ Runs Node.js unit tests with code coverage collection and result publishing. Cal
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/test@main
+- uses: GravionLabs/ci/node/test@v1
   with:
     package-manager: 'pnpm'
 ```
@@ -1061,7 +1096,7 @@ Supports both same-job and cross-job publish patterns:
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/publish@main
+- uses: GravionLabs/ci/node/publish@v1
   with:
     package-manager: 'pnpm'
     registry-url: 'https://npm.pkg.github.com/'
@@ -1098,7 +1133,7 @@ Lints a Dockerfile using [hadolint](https://github.com/hadolint/hadolint). Inclu
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/docker/lint@main
+- uses: GravionLabs/ci/docker/lint@v1
   with:
     dockerfile: Dockerfile
 ```
@@ -1119,7 +1154,7 @@ Builds a multi-architecture Docker image (ARM64 + AMD64) without pushing. Valida
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/docker/build@main
+- uses: GravionLabs/ci/docker/build@v1
   with:
     image-name: ghcr.io/org/myapp
 ```
@@ -1148,7 +1183,7 @@ Builds and pushes a multi-arch Docker image to a container registry with version
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/docker/publish@main
+- uses: GravionLabs/ci/docker/publish@v1
   with:
     image-name: org/myapp
     registry-username: ${{ github.actor }}
@@ -1204,7 +1239,7 @@ on:
 
 jobs:
   ci:
-    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@v1
     with:
       dotnet-project: 'MyLib.sln'
       test-project: 'test/**/*.Test.csproj'
@@ -1272,7 +1307,7 @@ on:
 
 jobs:
   ci:
-    uses: GravionLabs/ci/.github/workflows/python-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/python-package.yml@v1
     with:
       working-directory: 'src/mypackage'
     permissions:
@@ -1324,7 +1359,7 @@ on:
 
 jobs:
   docker:
-    uses: GravionLabs/ci/.github/workflows/docker-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/docker-package.yml@v1
     with:
       image-name: ${{ github.repository }}
     secrets:
@@ -1374,7 +1409,7 @@ permissions:
   issues: write
 jobs:
   issues:
-    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    uses: GravionLabs/ci/.github/workflows/issues.yml@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true
@@ -1397,7 +1432,7 @@ jobs:
   needs:
     permissions:
       issues: write   # GitHub validates the permissions of every job of issues.yml at startup
-    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    uses: GravionLabs/ci/.github/workflows/issues.yml@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true
@@ -1457,7 +1492,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    uses: GravionLabs/ci/.github/workflows/release-branch.yml@main
+    uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
     secrets: inherit
@@ -1487,7 +1522,7 @@ jobs:
 - A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass `GH_PAT`. Without it the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
 - The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
 - The secret names match `issues.yml`, so `secrets: inherit` works.
-- The actions are referenced at `@main`: the workflow works for callers once those versions are released.
+- The actions are referenced at `@v1`, the moving major tag (see "Pinning to a Specific Version").
 - Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow.
 
 ---
@@ -1499,7 +1534,7 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 **Usage:**
 
 ```yaml
-- uses: GravionLabs/ci/node/ci@main
+- uses: GravionLabs/ci/node/ci@v1
   with:
     node-version: '26'
     working-directory: '.'
@@ -1537,7 +1572,7 @@ Builds a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) site an
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: GravionLabs/ci/pages/deploy@main
+- uses: GravionLabs/ci/pages/deploy@v1
   with:
     mkdocs-config-file: mkdocs.yml
 ```
@@ -1561,7 +1596,7 @@ Builds a [DocFX](https://dotnet.github.io/docfx/) site from a .NET solution (inc
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: GravionLabs/ci/pages/docfx@main
+- uses: GravionLabs/ci/pages/docfx@v1
   with:
     solution: MyLib.slnx
 ```
@@ -1580,7 +1615,7 @@ pages:
     url: ${{ steps.deploy.outputs.page_url }}
   steps:
     - uses: actions/checkout@v4
-    - uses: GravionLabs/ci/pages/docfx@main
+    - uses: GravionLabs/ci/pages/docfx@v1
       with:
         solution: MyLib.slnx
     - uses: actions/deploy-pages@v4
@@ -1625,7 +1660,8 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
-- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
+- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1`, never `@main` or a commit SHA.
+- **Self-references follow the major tag.** Every `uses: GravionLabs/ci/...` inside this repository (reusable workflows, composite actions) is `@v<major>` of the next release, so a caller on `@v1` runs the actions of the same line. `tests/self-references.test.sh` fails on `@main`, a SHA or another major; a breaking change (`feat!:`) raises them to `@v2` in the same pull request. A caller pinned to an exact `@v1.x.y` still gets the nested actions of `@v1`.
 - **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
 
@@ -1633,21 +1669,17 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 ## Pinning to a Specific Version
 
-> **Recommendation:** Pin to a major version tag (e.g. `@v1`) in production workflows.
-> Using `@main` will always track the latest code, which may include breaking changes.
+> **Use the moving major tag `@v1`.** The `release` job moves `v1` to every 1.x release: fixes and features arrive
+> without a pull request, a breaking change becomes `v2` and is taken over deliberately. Do not use `@main` (every
+> merge reaches you, breaking or not) or a commit SHA (nobody moves it; the reusable workflows call their actions at
+> `@v1` anyway). Renovate: keep `GravionLabs/ci` out of `helpers:pinGitHubActionDigests` (`pinDigests: false`).
 
 ```yaml
 # Recommended — follows latest v1.x.y patches and features, no breaking changes
 uses: GravionLabs/ci/dotnet/build@v1
 
-# Pinned to exact release — maximum stability
+# Exact release — only to hold back a single release while it is being fixed; nested actions still follow @v1
 uses: GravionLabs/ci/dotnet/build@v1.2.3
-
-# Pinned to commit SHA — maximum reproducibility
-uses: GravionLabs/ci/dotnet/build@<commit-sha>
-
-# Tracks latest (may include breaking changes)
-uses: GravionLabs/ci/dotnet/build@main
 ```
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed between versions.
@@ -1681,14 +1713,14 @@ permissions:
 
 jobs:
   sync-wiki:
-    uses: GravionLabs/ci/.github/workflows/sync-wiki.yml@main
+    uses: GravionLabs/ci/.github/workflows/sync-wiki.yml@v1
     secrets: inherit
 ```
 
 **Usage (composite action directly):**
 
 ```yaml
-- uses: GravionLabs/ci/wiki/sync@main
+- uses: GravionLabs/ci/wiki/sync@v1
   with:
     token: ${{ secrets.GITHUB_TOKEN }}
     docs-path: docs          # optional, default: docs

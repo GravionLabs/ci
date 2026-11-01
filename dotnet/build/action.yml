@@ -52,7 +52,7 @@ runs:
           token: ${{ github.token }}
 
       - name: Setup .NET
-        uses: GravionLabs/ci/dotnet/setup@main
+        uses: GravionLabs/ci/dotnet/setup@v1
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
           feed-url: ${{ inputs.feed-url }}

@@ -42,7 +42,7 @@ runs:
       uses: actions/checkout@v4
 
     - name: Set up Node.js
-      uses: GravionLabs/ci/node/setup@main
+      uses: GravionLabs/ci/node/setup@v1
       with:
         node-version: ${{ inputs.node-version }}
         package-manager: ${{ inputs.package-manager }}
