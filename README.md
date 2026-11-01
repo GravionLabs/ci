@@ -614,6 +614,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 
 - **`readiness`** (input `readiness`): runs [`pr-checks/readiness`](#pr-checksreadiness). The PR body must close at least one issue (`Closes|Fixes|Resolves #n`; PRs from `release/**` are exempt, input `require-issue`), and each closed issue must have none of the `not-ready-labels` and no open "blocked by" issue. The job summary lists every problem.
 - **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
+- **`spec`** (input `spec`): runs [`pr-checks/spec`](#pr-checksspec). It reads `governance.specMap` and `governance.specMode` from `.agents/config.json` of the **base** branch; without a map it is skipped green with a notice. For each map entry (glob to spec path or list of spec paths) with a changed file under the glob but none of its specs changed, `specMode: warn` (default) writes a warning annotation and the summary and passes, `require` fails. A line `no spec change needed` in the PR body turns the failure into a warning, named in the summary. Tests and `.md` files under the globs are not counted. Needs `contents: read`, `pull-requests: read`.
 - **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored; the API lists at most 250 commits). Release PRs from `release/**` and merge-back PRs (head is the default branch) of the same repository are exempt; a fork branch with such a name is checked. Needs `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
@@ -626,12 +627,10 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 | `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
 | `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
 
-`spec` is accepted now so callers need no change when that job arrives.
-
 The `governance` keys of `.agents/config.json` (names fixed here; GravionLabs/skills#65 that documents them in the skills is pending):
 
 ```json
-{ "governance": { "adrPaths": ["src/**", "**/*.proto"], "adrDir": "docs/adr", "skipLabels": ["skip-adr"] } }
+{ "governance": { "adrPaths": ["src/**", "**/*.proto"], "adrDir": "docs/adr", "skipLabels": ["skip-adr"], "specMap": { "src/api/**": "docs/spec/api.md" }, "specMode": "warn" } }
 ```
 
 ```yaml
@@ -702,6 +701,16 @@ Limits: glob patterns support `**`, `*` and `?` but not `{a,b}` or `[...]` (such
 | Name    | Description                                               | Required | Default             |
 |---------|-----------------------------------------------------------|----------|---------------------|
 | `token` | Token with contents, issues and pull-requests read access | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/spec`
+
+Warns (`governance.specMode: warn`, default) or fails (`require`) when a pull request changes files under a glob of `governance.specMap` (glob to spec path, or to a list of spec paths) without changing any mapped spec. A line `no spec change needed` in the PR body (plain, as list item or ticked checkbox) turns a failure into a warning and the summary names it. Tests (`tests/`, `*.test.*`, `*_test.*`, `*.Tests/`) and `.md` files are not counted. Config is read from the base branch through the API; without `governance.specMap` the action is skipped green. Needs `contents: read`, `pull-requests: read`. Same glob limits as `pr-checks/adr`.
+
+<!-- action-docs:inputs source="pr-checks/spec/action.yml" -->
+| Name    | Description                                       | Required | Default             |
+|---------|---------------------------------------------------|----------|---------------------|
+| `token` | Token with contents and pull-requests read access | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 ### `issues/conventions`
