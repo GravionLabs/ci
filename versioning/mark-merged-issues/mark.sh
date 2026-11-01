@@ -137,16 +137,15 @@ for n in $refs; do
   mark_parents "$n"
 done
 
+# The read is GraphQL (the issue's project items); the write is REST (PATCH /{users|orgs}/{login}/projectsV2/{number}/items/{id}),
+# which needs the numeric databaseIds.
 ITEM_QUERY='query ItemStatus($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { issue(number: $number) { projectItems(first: 20) { nodes {
-    id
-    project { id title field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } }
+    id databaseId
+    project { id title number owner { __typename ... on User { login } ... on Organization { login } }
+      field(name: "Status") { ... on ProjectV2SingleSelectField { id databaseId options { id name } } } }
     fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
   } } } }
-}'
-SET_MUTATION='mutation SetStatus($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-  updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
-    value: {singleSelectOptionId: $optionId}}) { projectV2Item { id } }
 }'
 
 # true (and one warning, then no more project calls) when the token cannot reach the projects
@@ -161,7 +160,7 @@ scope_error() {
 }
 
 set_status() {
-  local n=$1 resp rows item project title current field option errf
+  local n=$1 resp rows item project title current field option errf itemdb fielddb pnum login kind body
   errf=$(mktemp)
   if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api graphql -f query="$ITEM_QUERY" \
       -f owner="${REPO%%/*}" -f name="${REPO#*/}" -F number="$n" 2>"$errf"); then
@@ -172,8 +171,10 @@ set_status() {
   rm -f "$errf"
   rows=$(jq -r --arg s "$PROJECT_STATUS" '.data.repository.issue.projectItems.nodes[]?
     | [.id, .project.id, .project.title, (.fieldValueByName.name // "-"), (.project.field.id // "-"),
-       ([.project.field.options[]? | select(.name == $s) | .id][0] // "-")] | @tsv' <<<"$resp") || rows=""
-  while IFS=$'\t' read -r item project title current field option; do
+       ([.project.field.options[]? | select(.name == $s) | .id][0] // "-"),
+       (.databaseId // "-"), (.project.field.databaseId // "-"), (.project.number // "-"), (.project.owner.login // "-"),
+       (if .project.owner.__typename == "Organization" then "orgs" else "users" end)] | @tsv' <<<"$resp") || rows=""
+  while IFS=$'\t' read -r item project title current field option itemdb fielddb pnum login kind; do
     [ -z "$item" ] && continue
     if [ "$current" = Done ] || [ "$current" = "$PROJECT_STATUS" ]; then
       echo "#$n is already $current in $title; status unchanged."
@@ -191,8 +192,12 @@ set_status() {
       continue
     fi
     echo "setting #$n to $PROJECT_STATUS in $title"
-    if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api graphql -f query="$SET_MUTATION" -f projectId="$project" \
-        -f itemId="$item" -f fieldId="$field" -f optionId="$option" 2>&1); then
+    if [ "$itemdb" = "-" ] || [ "$fielddb" = "-" ] || [ "$pnum" = "-" ] || [ "$login" = "-" ]; then
+      echo "::warning::Cannot set the status of #$n in $title: the project item has no databaseId."
+      continue
+    fi
+    body=$(jq -nc --argjson f "$fielddb" --arg o "$option" '{fields: [{id: $f, value: $o}]}')
+    if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api -X PATCH "$kind/$login/projectsV2/$pnum/items/$itemdb" --input - <<<"$body" 2>&1); then
       scope_error "$resp" && return 0
       echo "::warning::Cannot set the status of #$n in $title: $resp"
     fi

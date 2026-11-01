@@ -5,6 +5,7 @@ import * as path from 'path';
 import { createFakeGh } from '../helpers/fake-gh';
 import { PwshWorker } from '../helpers/pwsh-worker';
 
+const itemNr = (c: { args: string[] }) => Number(c.args[3].split('/').pop());
 const SCRIPT = path.resolve(
   __dirname,
   '../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1',
@@ -22,6 +23,10 @@ const INNER = `(call, ctx) => {
   const fs = require('fs');
   const d = JSON.parse(fs.readFileSync(process.env.FAKE_DATA, 'utf8'));
   const q = call.query || '';
+  if (call.args.includes('PATCH')) {
+    if (d.failMutation && ctx.count('mut') <= d.failMutation) throw new Error('secondary rate limit');
+    return { rest: {} };
+  }
   if (call.args[0] === 'api' && call.args[1] !== 'graphql' && String(call.args[1]).includes('/dependencies/blocking')) {
     return { rest: (d.restBlocking || {})[call.args[1].split('/dependencies')[0]] || [] };
   }
@@ -30,16 +35,12 @@ const INNER = `(call, ctx) => {
   }
   if (q.includes('blocking(') && d.noBlocking) throw new Error("Field 'blocking' doesn't exist on type 'Issue'");
   if (q.includes('blockedBy') && d.noBlockedBy) throw new Error("Field 'blockedBy' doesn't exist on type 'Issue'");
-  if (q.includes('mutation')) {
-    if (d.failMutation && ctx.count('mut') <= d.failMutation) throw new Error('secondary rate limit');
-    return {};
-  }
   if (q.includes('projectV2(number')) {
-    const status = { __typename: 'ProjectV2SingleSelectField', id: 'F-status', name: 'Status',
+    const status = { __typename: 'ProjectV2SingleSelectField', id: 'F-status', databaseId: 51, name: 'Status',
       options: d.noStatusOption ? [{ id: 'O-todo', name: 'Todo' }] : [{ id: 'O-todo', name: 'Todo' }, { id: 'O-ip', name: 'In Progress' }] };
-    const nodes = d.noNeeds ? [status] : [status, { __typename: 'ProjectV2SingleSelectField', id: 'F-needs', name: 'Needs',
+    const nodes = d.noNeeds ? [status] : [status, { __typename: 'ProjectV2SingleSelectField', id: 'F-needs', databaseId: 52, name: 'Needs',
       options: ['Planning','Ready','In progress','Blocked','Review','Decision','Release review'].map((n) => ({ id: 'O-' + n, name: n })) }];
-    return { repositoryOwner: { projectV2: { id: 'P1', fields: { nodes } } } };
+    return { repositoryOwner: { __typename: d.ownerType || 'User', projectV2: { id: 'P1', fields: { nodes } } } };
   }
   if (q.includes('issues(first: 100')) {
     const all = (d.repoIssues || {})[call.variables.o + '/' + call.variables.r] || [];
@@ -123,7 +124,15 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     ) => {
       const gh = createFakeGh(tmp, HANDLER);
       const dataFile = path.join(tmp, 'data.json');
-      fs.writeFileSync(dataFile, JSON.stringify({ prs: {}, issues: {}, items: [], ...data }));
+      // project items 'I<n>' carry the numeric databaseId <n>, which the REST update addresses
+      fs.writeFileSync(
+        dataFile,
+        JSON.stringify({ prs: {}, issues: {}, items: [], ...data }, (k, v) =>
+          v && typeof v.id === 'string' && /^I\d+$/.test(v.id)
+            ? { ...v, databaseId: Number(v.id.slice(1)) }
+            : v,
+        ),
+      );
       const r = await worker.run(['-Owner', 'o', '-Number', '1', ...args], {
         cwd: tmp,
         env: {
@@ -138,7 +147,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         r,
         calls,
         itemQueries: calls.filter((c) => c.query?.includes('items(first: 100')),
-        mutations: calls.filter((c) => c.query?.includes('mutation')),
+        mutations: calls.filter((c) => c.args.includes('PATCH')),
       };
     };
 
@@ -147,35 +156,39 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       const items = Array.from({ length: 150 }, (_, i) =>
         projectItem(i + 1, i < 10 ? 'Ready' : null),
       );
-      const { r, itemQueries, mutations } = await run({ items });
+      const { r, calls, itemQueries, mutations } = await run({ items });
       expect(r.stdout).toContain('#11: (none) -> Ready');
       expect(r.stdout).toContain('Needs: 140 changed, 10 unchanged');
       expect(r.status).toBe(0);
       expect(itemQueries).toHaveLength(2);
       expect(itemQueries[1].variables!.cursor).toBe('100');
       expect(mutations).toHaveLength(140);
-      const first = mutations[0].variables!.i;
-      expect(first).toEqual({
-        projectId: 'P1',
-        itemId: 'I11',
-        fieldId: 'F-needs',
-        value: { singleSelectOptionId: 'O-Ready' },
-      });
-      expect(mutations[0].query).toContain('updateProjectV2ItemFieldValue');
+      expect(mutations[0].args).toEqual(['api', '-X', 'PATCH', 'users/o/projectsV2/1/items/11', '--input', '-']);
+      expect(mutations[0].body).toEqual({ fields: [{ id: 52, value: 'O-Ready' }] });
+      expect(calls.some((c) => c.query?.includes('mutation'))).toBe(false);
     });
 
-    it('clears the field of a closed item with clearProjectV2ItemFieldValue', async () => {
+    it('clears the field of a closed item with a null value', async () => {
       const { r, mutations } = await run({
         items: [projectItem(5, 'Ready', { state: 'CLOSED' })],
       });
       expect(r.stdout).toContain('#5: Ready -> (clear)');
       expect(mutations).toHaveLength(1);
-      expect(mutations[0].query).toContain('clearProjectV2ItemFieldValue');
-      expect(mutations[0].variables!.i).toEqual({
-        projectId: 'P1',
-        itemId: 'I5',
-        fieldId: 'F-needs',
-      });
+      expect(mutations[0].args[3]).toBe('users/o/projectsV2/1/items/5');
+      expect(mutations[0].body).toEqual({ fields: [{ id: 52, value: null }] });
+    });
+
+    it('writes to /orgs/ for an organization project', async () => {
+      const { r, mutations } = await run({ items: [projectItem(3, null)], ownerType: 'Organization' });
+      expect(r.status).toBe(0);
+      expect(mutations[0].args[3]).toBe('orgs/o/projectsV2/1/items/3');
+    });
+
+    it('fails with a clear message when the item has no databaseId', async () => {
+      const { r } = await run({ items: [{ ...projectItem(4, null), id: 'X4' }] });
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain('Needs sync failed');
+      expect(r.stdout).toContain('has no databaseId');
     });
 
     it('-DryRun prints the changes and sends no mutation', async () => {
@@ -225,7 +238,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(itemQueries).toHaveLength(0);
       expect(calls.filter((c) => c.variables?.n0 !== undefined)).toHaveLength(1);
       expect(mutations).toHaveLength(1);
-      expect(mutations[0].variables!.i.itemId).toBe('I7');
+      expect(itemNr(mutations[0])).toBe(7);
       expect(r.stdout).toContain('Needs: 1 changed, 0 unchanged');
     });
 
@@ -261,7 +274,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#7: (none) -> Ready');
       expect(mutations).toHaveLength(1);
-      expect(mutations[0].variables!.i.itemId).toBe('I7');
+      expect(itemNr(mutations[0])).toBe(7);
     });
 
     it('reads every page of open PR heads', async () => {
@@ -304,12 +317,8 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         expect(r.status).toBe(0);
         expect(r.stdout).toContain('#7: Status -> In Progress');
         expect(mutations).toHaveLength(1);
-        expect(mutations[0].variables!.i).toEqual({
-          projectId: 'P1',
-          itemId: 'I7',
-          fieldId: 'F-status',
-          value: { singleSelectOptionId: 'O-ip' },
-        });
+        expect(mutations[0].args[3]).toBe('users/o/projectsV2/1/items/7');
+        expect(mutations[0].body).toEqual({ fields: [{ id: 51, value: 'O-ip' }] });
       });
 
       it('-DryRun sends no mutation', async () => {
@@ -385,7 +394,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       issues['o/r#3'].projectItems.nodes[0].level = { name: 'Feature' };
       const { r, mutations } = await run({ issues }, ['-Issue', 'o/r#7', '-IncludeParents']);
       expect(r.status).toBe(0);
-      expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I3', 'I7']);
+      expect(mutations.map(itemNr).sort((a, b) => a - b)).toEqual([3, 7]);
       expect(r.stdout).toContain('#3: (none) -> Planning');
     });
 
@@ -425,14 +434,14 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
           '-IncludeDependents',
         ]);
         expect(r.status).toBe(0);
-        expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I10', 'I7', 'I8']);
+        expect(mutations.map(itemNr).sort((a, b) => a - b)).toEqual([7, 8, 10]);
         const first = calls.find((c) => c.query?.includes('repository(owner'))!;
         expect(first.query).toContain('blocking(first: 50)');
       });
       it('does not ask for blocking without the switch', async () => {
         const { calls, mutations } = await run({ issues: issues() }, ['-Issue', 'o/r#7']);
         expect(calls.some((c) => c.query?.includes('blocking('))).toBe(false);
-        expect(mutations.map((m) => m.variables!.i.itemId)).toEqual(['I7']);
+        expect(mutations.map(itemNr)).toEqual([7]);
       });
       it('falls back to the REST blocking endpoint when GraphQL has no blocking field', async () => {
         const restBlocking = {
@@ -446,7 +455,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
           ['-Issue', 'o/r#7', '-IncludeDependents'],
         );
         expect(r.status).toBe(0);
-        expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I7', 'I8']);
+        expect(mutations.map(itemNr).sort((a, b) => a - b)).toEqual([7, 8]);
         expect(calls.some((c) => c.args.join(' ').includes('/dependencies/blocking'))).toBe(true);
       });
     });
@@ -483,7 +492,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         expect(itemQueries).toHaveLength(0);
         expect(calls.filter((c) => c.query?.includes('issues(first: 100'))).toHaveLength(1);
         expect(r.stdout).toContain('Needs: 2 changed, 1 unchanged');
-        expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I1', 'I3']);
+        expect(mutations.map(itemNr).sort((a, b) => a - b)).toEqual([1, 3]);
       });
       it('pages through the issues of the repository', async () => {
         const repoIssues = {
@@ -520,15 +529,14 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         expect(itemQueries).toHaveLength(1);
         expect(mutations).toHaveLength(0);
       });
-      it('stops before the first write when remaining does not cover the updates', async () => {
-        const items = [projectItem(1, null), projectItem(2, null), projectItem(3, null)];
-        const { r, mutations } = await run({
-          items,
-          rateLimit: { cost: 1, remaining: 4 },
+      it('updates cost no GraphQL points: no mutation query is sent', async () => {
+        const { r, calls, mutations } = await run({
+          items: [projectItem(1, null), projectItem(2, null)],
+          rateLimit: { cost: 1, remaining: 4000 },
         });
-        expect(r.status).toBe(1);
-        expect(r.stdout).toContain('GraphQL budget too low');
-        expect(mutations).toHaveLength(0);
+        expect(r.status).toBe(0);
+        expect(mutations).toHaveLength(2);
+        expect(calls.some((c) => c.query?.includes('mutation'))).toBe(false);
       });
     });
 
