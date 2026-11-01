@@ -83,3 +83,15 @@ The script prints them; the API cannot do them:
 | `merged` | n/a | Merged into a release branch | CI (`mark-merged-issues`); removed by `close-release-issues` on release. |
 
 With `-Sync` the script ensures `planned` and `needs-review` (colour and description as above) in every repository linked to the project via `gh label create --force`. `merged` is managed by CI and the release skill, not by this script.
+
+## Versioning and merge methods
+
+`versioning/determine-version` derives the version from Conventional Commits (`fix:`/`perf:`/`revert:` patch, `feat:` minor, `<type>!:` or `BREAKING CHANGE:` major; `+semver:` is the escape hatch). This only works with these merge methods, set per ruleset:
+
+| Target | Merge method | Why |
+|:--|:--|:--|
+| `release/**` | squash only | PR title = squash commit = bump; the title is the one checked place, discarded intermediate commits do not count |
+| default branch | merge commit only | `release/next` into `main` keeps the `feat:`/`fix:` commits visible to GitVersion and git-cliff |
+| hotfix into `main` | merge commit | same reason |
+
+Limit in 0.x: a breaking change jumps to 1.0.0; avoid `!` there or use `+semver: minor` deliberately.

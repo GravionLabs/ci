@@ -414,11 +414,19 @@ jobs:
 **Inputs**
 
 <!-- action-docs:inputs source="versioning/determine-version/action.yml" -->
-| Name                      | Description                                                                                   | Required | Default |
-|---------------------------|-----------------------------------------------------------------------------------------------|----------|---------|
-| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                             | No       | 6.x     |
-| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set) | No       |         |
+| Name                      | Description                                                                                                                                                                                        | Required | Default |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                  | No       | 6.x     |
+| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                      | No       |         |
+| `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults. | No       | true    |
 <!-- /action-docs:inputs -->
+
+**Versioning model (Conventional Commits).** With `conventional-commits: true` (default) the bump comes from the commit messages that reach the branch: `fix:`, `perf:`, `revert:` (and any other type, e.g. `docs:`) give a patch, `feat:` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major. `+semver: major|minor|patch` stays as an escape hatch (for example the jump to 1.0.0). `conventional-commits: false` keeps the plain GitVersion defaults. The caller's `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`.
+
+- The PR title is the squash commit and carries the bump: feature PRs into `release/**` are squash merged, so the title is the one checked place and discarded intermediate commits do not count (a `feat!:` line in the squash body is no major).
+- `release/next` into the default branch stays a merge commit (no squash), otherwise the `feat:`/`fix:` commits are invisible to GitVersion and git-cliff. Merge methods per ruleset: `release/**`: squash only; default branch: merge only; hotfixes into `main` with a merge commit.
+- Limit in 0.x: a breaking change jumps to 1.0.0 (GitVersion has no "bump minor pre major"). Avoid `!` in 0.x repositories or use `+semver: minor` deliberately.
+- The reusable `*-package.yml` workflows and `tauri-app.yml` pass the input `conventional-commits` through. Test: `bash tests/conventional-commits.test.sh`.
 
 **Outputs**
 

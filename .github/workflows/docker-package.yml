@@ -41,6 +41,11 @@ on:
         type: string
         required: false
         default: ''
+      conventional-commits:
+        description: 'Bump the version from Conventional Commits (false = plain GitVersion defaults)'
+        type: boolean
+        required: false
+        default: true
       main-branch:
         description: 'Name of the main branch; semantic version tags are only published from this branch'
         type: string
@@ -99,6 +104,7 @@ jobs:
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
+          conventional-commits: ${{ inputs.conventional-commits }}
 
   lint:
     name: Lint
