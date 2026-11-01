@@ -1,0 +1,23 @@
+# This repository's caller of the reusable pr-checks.yml (the file pr-checks.yml itself is workflow_call only).
+# Only the title job runs: the PR title is a Conventional Commit (it becomes the squash commit) and agrees with the commits.
+# Turn further checks on here by setting readiness / adr / spec to true (readiness: GravionLabs/ci#97).
+# The job id `pr-checks` makes the required status check "pr-checks / PR checks".
+name: PR checks caller
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  pr-checks:
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    uses: ./.github/workflows/pr-checks.yml
+    with:
+      readiness: false
+      adr: false
+      spec: false
