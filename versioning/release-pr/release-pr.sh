@@ -7,8 +7,8 @@ BRANCH="${RELEASE_BRANCH:?}"
 BASE="${BASE:-}"
 DRY_RUN="${DRY_RUN:-false}"
 
-if ! [[ "$BRANCH" =~ ^release/[0-9]+\.[0-9]+$ ]]; then
-  echo "$BRANCH is not a release/<x.y> branch; nothing to do."
+if ! [[ "$BRANCH" =~ ^release/([0-9]+\.[0-9]+|next)$ ]]; then
+  echo "$BRANCH is not a release/<x.y> or release/next branch; nothing to do."
   exit 0
 fi
 version="${BRANCH#release/}"

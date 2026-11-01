@@ -297,7 +297,7 @@ Runs GitVersion on the full git history (`fetch-depth: 0` required in caller). I
 
 ### `versioning/release-pr`
 
-Run it on every push to `release/**`. It creates the PR `release: <x.y>` from the release branch to the default branch when none is open, and refreshes title and body otherwise: the PRs merged into the release branch since it left the base (a reused branch name does not pull in the PRs of its earlier life) and one `Closes #n` line per issue they reference. Does nothing for branches that are not `release/<x.y>` or are not ahead of the base. Never merges, never closes; idempotent (an unchanged PR is left alone).
+Run it on every push to `release/**`. It creates the PR `release: <x.y>` (`release: next` for `release/next`) from the release branch to the default branch when none is open, and refreshes title and body otherwise: the PRs merged into the release branch since it left the base (a reused branch name does not pull in the PRs of its earlier life) and one `Closes #n` line per issue they reference. Also accepts the rolling `release/next` (title `release: next`). Does nothing for other branches or branches that are not ahead of the base. Never merges, never closes; idempotent (an unchanged PR is left alone).
 Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `token`, `dry-run`. Needs `contents: read`, `pull-requests: write`.
 
 Pass a PAT as `token`: a PR created with the default `GITHUB_TOKEN` does not trigger `pull_request` workflows, so required checks on the release PR would never run and the PR stays blocked.
