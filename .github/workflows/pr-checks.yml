@@ -3,6 +3,8 @@
 #   closed issue is ready: none of the not-ready labels, no open "blocked by" issue.
 # - adr: a PR that touches governance.adrPaths (.agents/config.json of the base branch) or closes a needs-decision issue
 #   adds or changes an ADR in governance.adrDir; new ADRs have a Status line and a free number.
+# - title: the PR title is a Conventional Commit and agrees with the commits (breaking -> "!", feat commit -> feat title);
+#   a PR into the default branch from a non-release branch (hotfix) needs Conventional Commits only. Release and merge-back PRs are exempt.
 # - result ("PR checks"): needs every job above, runs always, fails when one failed or was cancelled, passes on skipped.
 #   This is the only name a ruleset requires; job names may change, this one must not.
 # No job checks out caller or PR code; titles and bodies are read through the API only, never through ${{ }}.
@@ -23,6 +25,11 @@ on:
         default: true
       spec:
         description: 'Run the spec job'
+        type: boolean
+        required: false
+        default: true
+      title:
+        description: 'Run the title job (Conventional Commit title and commits)'
         type: boolean
         required: false
         default: true
@@ -69,10 +76,22 @@ jobs:
         with:
           token: ${{ github.token }}
 
+  title:
+    name: Title
+    if: inputs.title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check the title and commits of the pull request
+        uses: GravionLabs/ci/pr-checks/title@main
+        with:
+          token: ${{ github.token }}
+
   result:
     name: PR checks
     if: always()
-    needs: [readiness, adr]
+    needs: [readiness, adr, title]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
