@@ -253,7 +253,7 @@ query($id: ID!, $cursor: String) { node(id: $id) { ... on Repository { labels(fi
 '@
 $ItemsQuery = @'
 query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 { items(first: 100, after: $cursor) {
-  pageInfo { hasNextPage endCursor }
+  totalCount pageInfo { hasNextPage endCursor }
   nodes { id content { __typename ... on Issue { id number title state labels(first: 50) { pageInfo { hasNextPage endCursor } nodes { name } } } }
     status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     level: fieldValueByName(name: "Level") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }
@@ -275,6 +275,32 @@ function Get-AllNodes($Page, $Query, [hashtable]$Variables, [scriptblock]$Connec
   , @($nodes)
 }
 
+# Walks the project items. GitHub sometimes ends the walk early without an error (nodes empty, hasNextPage false,
+# fewer nodes than items.totalCount): such a page is retried with backoff. $script:ItemsRead / $script:ItemsTotal tell
+# the caller whether the list is complete. $Fetch takes a cursor and returns the items connection.
+function Read-ItemNodes([scriptblock]$Fetch, [int]$BackoffSeconds = 5) {
+  $nodes = [System.Collections.Generic.List[object]]::new(); $cursor = $null; $total = 0
+  while ($true) {
+    foreach ($try in 1..4) {
+      $page = & $Fetch $cursor
+      $total = [int]$page.totalCount
+      $short = @($page.nodes).Count -eq 0 -and -not $page.pageInfo.hasNextPage -and $nodes.Count -lt $total
+      if (-not $short) { break }
+      if ($try -lt 4 -and $BackoffSeconds -gt 0) { Start-Sleep -Seconds ($BackoffSeconds * $try) }
+    }
+    foreach ($n in @($page.nodes)) { if ($null -ne $n) { $nodes.Add($n) } }
+    if (-not $page.pageInfo.hasNextPage) { break }
+    $cursor = $page.pageInfo.endCursor
+  }
+  $script:ItemsRead = $nodes.Count; $script:ItemsTotal = $total
+  , @($nodes)
+}
+# Offline (-StateFile): 'itemPages' is a queue of item connections; the last one repeats once the queue is used up.
+function New-PageFetcher($Pages) {
+  $st = @{ q = [System.Collections.Generic.Queue[object]]::new(@($Pages)); last = $null }
+  { param($cursor) if ($st.q.Count -gt 0) { $st.last = $st.q.Dequeue() }; $st.last }.GetNewClosure()
+}
+
 function Get-ProjectState {
   param([bool]$WithItems)
   $d = Invoke-Graphql $FieldsQuery @{ login = $Owner; n = $Number }
@@ -285,17 +311,14 @@ function Get-ProjectState {
   $state = [ordered]@{ owner = $Owner; number = $Number; projectId = $p.id; ownerType = $d.repositoryOwner.__typename
     fields = @($fields); views = @($views); items = @(); repositories = @() }
   if ($WithItems) {
-    $items = [System.Collections.Generic.List[object]]::new(); $cursor = $null
-    do {
-      $page = (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $cursor }).node.items
-      foreach ($n in $page.nodes) {
-        if ($n.content.__typename -ne 'Issue') { continue }
-        $labels = Get-AllNodes $n.content.labels $IssueLabelsQuery @{ id = $n.content.id } { param($r) $r.node.labels }
-        $items.Add([ordered]@{ id = $n.id; number = $n.content.number; title = $n.content.title; state = $n.content.state
-            labels = @($labels | ForEach-Object { $_.name }); status = $n.status.name; level = $n.level.name })
-      }
-      $cursor = $page.pageInfo.endCursor
-    } while ($page.pageInfo.hasNextPage)
+    $items = [System.Collections.Generic.List[object]]::new()
+    $raw = Read-ItemNodes { param($c) (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $c }).node.items }
+    foreach ($n in $raw) {
+      if ($n.content.__typename -ne 'Issue') { continue }
+      $labels = Get-AllNodes $n.content.labels $IssueLabelsQuery @{ id = $n.content.id } { param($r) $r.node.labels }
+      $items.Add([ordered]@{ id = $n.id; number = $n.content.number; title = $n.content.title; state = $n.content.state
+          labels = @($labels | ForEach-Object { $_.name }); status = $n.status.name; level = $n.level.name })
+    }
     $state.items = @($items)
     $first = (Invoke-Graphql $ReposQuery @{ id = $p.id; cursor = $null }).node.repositories
     $repos = Get-AllNodes $first $ReposQuery @{ id = $p.id } { param($r) $r.node.repositories }
@@ -367,12 +390,27 @@ function Invoke-Plan($Actions, $State) {
 
 if ($StateFile) {
   $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json -Depth 20
+  # Optional: 'itemPages' (item connections of the walk) replace 'items'.
+  if ($state.itemPages) {
+    $raw = Read-ItemNodes (New-PageFetcher $state.itemPages) 0
+    $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' } | ForEach-Object {
+        [ordered]@{ id = $_.id; number = $_.content.number; title = $_.content.title; state = $_.content.state
+          labels = @($_.content.labels.nodes | ForEach-Object { $_.name }); status = $_.status.name; level = $_.level.name } })
+    $state | Add-Member -NotePropertyName items -NotePropertyValue $walked -Force
+  }
   $DryRun = $true  # a state file never reaches GitHub
 } else {
   if (-not $Owner -or $Number -lt 1) { throw 'Usage: Set-ProjectStandard.ps1 -Owner <login> -Number <n> [-Sync] [-RemoveDefaultViews] [-Sprints] [-DryRun] [-StateFile <json>] [-Json]' }
   $state = Get-ProjectState $Sync.IsPresent
 }
+# -Sync: the plan is only as good as the item list. Log both counts; an incomplete list fails the run (never 'No changes.', never a partial apply).
+$incomplete = $Sync -and $null -ne $script:ItemsTotal -and $script:ItemsRead -lt $script:ItemsTotal
+if ($Sync -and $null -ne $script:ItemsTotal -and -not $Json) { "Read $($script:ItemsRead) of $($script:ItemsTotal) project items." }
 $actions = Get-ProjectPlan -State $state -Sync $Sync.IsPresent -RemoveDefaultViews $RemoveDefaultViews.IsPresent -Sprints $Sprints.IsPresent -Today $Today
+if ($incomplete) {
+  [Console]::Error.WriteLine("Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items; nothing applied and no 'No changes.' reported. Run again later.")
+  exit 1
+}
 if (-not $DryRun -and $actions.Count -gt 0) { Invoke-Plan $actions $state }
 
 # -Sync also sets the field Needs. Offline (-StateFile) the call is only listed; a failing Needs sync is one warning, never a failed run.
@@ -394,7 +432,7 @@ if ($Sync) {
 }
 
 if ($Json) {
-  [ordered]@{ dryRun = $DryRun.IsPresent; actions = @($actions); needs = @($needsOutput); manualSteps = $script:ManualSteps } | ConvertTo-Json -Depth 20
+  [ordered]@{ dryRun = $DryRun.IsPresent; itemsRead = $script:ItemsRead; itemsTotal = $script:ItemsTotal; actions = @($actions); needs = @($needsOutput); manualSteps = $script:ManualSteps } | ConvertTo-Json -Depth 20
 } else {
   $verb = if ($DryRun) { 'Planned' } else { 'Applied' }
   if ($actions.Count -eq 0) { 'No changes.' } else { "$verb $($actions.Count) action(s):"; $actions | ForEach-Object { "  - $(Format-Action $_)" } }

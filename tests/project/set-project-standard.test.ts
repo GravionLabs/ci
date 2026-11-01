@@ -130,6 +130,39 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
     expect(r.status, r.stderr + r.stdout).toBe(0);
     return JSON.parse(r.stdout).actions;
   };
+  describe('item walk', () => {
+    const node = (num: number) => ({
+      id: `N-${num}`,
+      content: { __typename: 'Issue', number: num, title: `t${num}`, state: 'OPEN' },
+      status: { name: 'Todo' },
+      level: null,
+    });
+    const sync = (itemPages: unknown[]) => {
+      const file = path.join(dir, 'walk.json');
+      fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state(), itemPages }));
+      return spawnSync(
+        'pwsh',
+        ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-DryRun', '-Sync', '-Json'],
+        { cwd: dir, encoding: 'utf8' }
+      );
+    };
+
+    it('reports the counts of a complete walk', () => {
+      const r = sync([{ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [node(1)] }]);
+      expect(r.status, r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout)).toMatchObject({ itemsRead: 1, itemsTotal: 1 });
+    });
+
+    it('refuses to report No changes on a short page (nodes empty, hasNextPage false, totalCount higher)', () => {
+      const r = sync([
+        { totalCount: 3, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node(1)] },
+        { totalCount: 3, pageInfo: { hasNextPage: false }, nodes: [] },
+      ]);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('read 1 of 3');
+    });
+  });
+
   const ofType = (a: Action[], t: string) => a.filter((x) => x.type === t);
 
   describe('Status', () => {

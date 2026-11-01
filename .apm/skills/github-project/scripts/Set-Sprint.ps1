@@ -119,12 +119,69 @@ query($login: String!, $n: Int!) { repositoryOwner(login: $login) { ... on Proje
 '@
 $ItemsQuery = @'
 query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 { items(first: 100, after: $cursor) {
-  pageInfo { hasNextPage endCursor }
+  totalCount pageInfo { hasNextPage endCursor }
   nodes { id content { __typename ... on Issue { number state repository { nameWithOwner } } }
     status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     level: fieldValueByName(name: "Level") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     sprint: fieldValueByName(name: "Sprint") { ... on ProjectV2ItemFieldIterationValue { title } } } } } } }
 '@
+
+# Walks the project items. GitHub sometimes ends the walk early without an error (nodes empty, hasNextPage false,
+# fewer nodes than items.totalCount): such a page is retried with backoff. $script:ItemsRead / $script:ItemsTotal tell
+# the caller whether the list is complete. $Fetch takes a cursor and returns the items connection.
+function Read-ItemNodes([scriptblock]$Fetch, [int]$BackoffSeconds = 5) {
+  $nodes = [System.Collections.Generic.List[object]]::new(); $cursor = $null; $total = 0
+  while ($true) {
+    foreach ($try in 1..4) {
+      $page = & $Fetch $cursor
+      $total = [int]$page.totalCount
+      $short = @($page.nodes).Count -eq 0 -and -not $page.pageInfo.hasNextPage -and $nodes.Count -lt $total
+      if (-not $short) { break }
+      if ($try -lt 4 -and $BackoffSeconds -gt 0) { Start-Sleep -Seconds ($BackoffSeconds * $try) }
+    }
+    foreach ($n in @($page.nodes)) { if ($null -ne $n) { $nodes.Add($n) } }
+    if (-not $page.pageInfo.hasNextPage) { break }
+    $cursor = $page.pageInfo.endCursor
+  }
+  $script:ItemsRead = $nodes.Count; $script:ItemsTotal = $total
+  , @($nodes)
+}
+# Offline (-StateFile): 'itemPages' is a queue of item connections; the last one repeats once the queue is used up.
+function New-PageFetcher($Pages) {
+  $st = @{ q = [System.Collections.Generic.Queue[object]]::new(@($Pages)); last = $null }
+  { param($cursor) if ($st.q.Count -gt 0) { $st.last = $st.q.Dequeue() }; $st.last }.GetNewClosure()
+}
+
+$IssueSideQuery = @'
+query($o: String!, $r: String!, $n: Int!) { repository(owner: $o, name: $r) { issue(number: $n) { id state
+  projectItems(first: 20) { nodes { id project { number owner { ... on User { login } ... on Organization { login } } }
+    status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+    level: fieldValueByName(name: "Level") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+    sprint: fieldValueByName(name: "Sprint") { ... on ProjectV2ItemFieldIterationValue { title } } } } } } }
+'@
+
+# The target as an item of this project, read from the issue side: found even when the project walk is incomplete.
+function ConvertTo-IssueSideItem($Issue, $Repo, $Num, $Nodes) {
+  $m = @($Nodes) | Where-Object { $_.project.number -eq $Number -and $_.project.owner.login -ieq $Owner } | Select-Object -First 1
+  if (-not $m) { return $null }
+  [ordered]@{ id = $m.id; repo = $Repo; number = $Num; state = $Issue.state; status = $m.status.name; level = $m.level.name; sprint = $m.sprint.title }
+}
+
+function Merge-IssueSideItems($Items, $IssueSide) {
+  $list = [System.Collections.Generic.List[object]]::new()
+  foreach ($i in @($Items)) { if (-not (@($IssueSide) | Where-Object { $_.repo -eq $i.repo -and $_.number -eq $i.number })) { $list.Add($i) } }
+  foreach ($i in @($IssueSide)) { if ($i) { $list.Add($i) } }
+  @($list)
+}
+
+# Called after the targets were resolved from the issue side: says whether they were found.
+function Assert-CompleteWalk($Items, $Targets) {
+  if ($script:ItemsRead -lt $script:ItemsTotal) {
+    $missing = @($Targets | Where-Object { $t = $_; -not (@($Items) | Where-Object { $_.repo -eq $t.repo -and $_.number -eq $t.number }) })
+    $found = if ($missing.Count -eq 0) { 'targets found' } else { "targets not found ($(($missing | ForEach-Object { "$($_.repo)#$($_.number)" }) -join ', '))" }
+    throw "Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items; $found, limits need a complete walk. Run again later."
+  }
+}
 
 function Get-SprintState {
   param($Targets)
@@ -132,16 +189,20 @@ function Get-SprintState {
   if (-not $p) { throw "Project $Owner/$Number not found (or scope 'project' missing: gh auth refresh -s project)." }
   $f = @($p.fields.nodes) | Where-Object { $_.name -eq 'Sprint' -and $_.configuration } | Select-Object -First 1
   if (-not $f) { throw "Project has no iteration field 'Sprint': run Set-ProjectStandard.ps1 -Sprints first." }
-  $items = [System.Collections.Generic.List[object]]::new(); $cursor = $null
-  do {
-    $page = (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $cursor }).node.items
-    foreach ($n in $page.nodes) {
-      if ($n.content.__typename -ne 'Issue') { continue }
-      $items.Add([ordered]@{ id = $n.id; repo = $n.content.repository.nameWithOwner; number = $n.content.number; state = $n.content.state
-          status = $n.status.name; level = $n.level.name; sprint = $n.sprint.title })
-    }
-    $cursor = $page.pageInfo.endCursor
-  } while ($page.pageInfo.hasNextPage)
+  $items = [System.Collections.Generic.List[object]]::new()
+  $raw = Read-ItemNodes { param($c) (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $c }).node.items }
+  foreach ($n in $raw) {
+    if ($n.content.__typename -ne 'Issue') { continue }
+    $items.Add([ordered]@{ id = $n.id; repo = $n.content.repository.nameWithOwner; number = $n.content.number; state = $n.content.state
+        status = $n.status.name; level = $n.level.name; sprint = $n.sprint.title })
+  }
+  $side = foreach ($t in $Targets) {
+    $o, $r = $t.repo -split '/', 2
+    $iss = (Invoke-Graphql $IssueSideQuery @{ o = $o; r = $r; n = $t.number }).repository.issue
+    if ($iss) { ConvertTo-IssueSideItem $iss $t.repo $t.number $iss.projectItems.nodes }
+  }
+  $items = [System.Collections.Generic.List[object]]::new((Merge-IssueSideItems $items $side))
+  Assert-CompleteWalk $items $Targets
   # Native blocked-by links of the targets only (one REST call each); a blocker may live in another repository.
   foreach ($t in $Targets) {
     $item = $items | Where-Object { $_.repo -eq $t.repo -and $_.number -eq $t.number } | Select-Object -First 1
@@ -161,6 +222,21 @@ if ($Sprint -notmatch '^\d{4}-W\d{2}$') { throw "Sprint '$Sprint' does not match
 $targets = @($Issue | ForEach-Object { $_ -split '\s*,\s*' } | Where-Object { $_ } | ForEach-Object { ConvertTo-Target $_ $Repo })
 if ($StateFile) {
   $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json -Depth 20
+  # Optional: 'itemPages' (item connections of the walk) and 'issueSide' (targets as the issue side reports them).
+  if ($state.itemPages) {
+    $raw = Read-ItemNodes (New-PageFetcher $state.itemPages) 0
+    $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' } | ForEach-Object {
+        [ordered]@{ id = $_.id; repo = $_.content.repository.nameWithOwner; number = $_.content.number; state = $_.content.state
+          status = $_.status.name; level = $_.level.name; sprint = $_.sprint.title } })
+    $state | Add-Member -NotePropertyName items -NotePropertyValue $walked -Force
+  }
+  # Optional: 'issueNodes' (raw issue-side answers) go through the same conversion as the live lookup.
+  if ($state.issueNodes) {
+    $conv = @($state.issueNodes | ForEach-Object { ConvertTo-IssueSideItem $_ $_.repo $_.number $_.projectItems })
+    $state | Add-Member -NotePropertyName items -NotePropertyValue (Merge-IssueSideItems $state.items $conv) -Force
+  }
+  if ($state.issueSide) { $state | Add-Member -NotePropertyName items -NotePropertyValue (Merge-IssueSideItems $state.items $state.issueSide) -Force }
+  if ($state.itemPages) { Assert-CompleteWalk $state.items $targets }
   $DryRun = $true  # a state file never reaches GitHub
 } else {
   if (-not $Owner -or $Number -lt 1 -or $targets.Count -eq 0) { throw 'Usage: Set-Sprint.ps1 -Owner <login> -Number <n> -Issue <owner/repo#n>... [-Repo <owner/repo>] [-Sprint 2026-W43] [-MaxPerSprint 30] [-MaxPerRepo 10] [-MaxInRelease 10] [-Force] [-DryRun] [-StateFile <json>] [-Json]' }
