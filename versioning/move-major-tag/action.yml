@@ -1,0 +1,30 @@
+name: 'Move Major Tag'
+description: >
+  Moves the major tag (e.g. v1) to the commit of a release tag (e.g. v1.4.0) and force-pushes it, so callers on
+  @v1 get every 1.x release. Skips pre-releases. Run it after create-version-tag.
+  Requires contents: write permission in the calling workflow.
+
+inputs:
+  version:
+    description: 'Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped'
+    required: true
+  tag-prefix:
+    description: 'Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)'
+    required: false
+    default: 'v'
+
+outputs:
+  major-tag:
+    description: 'The moved major tag (e.g. v1), empty when skipped'
+    value: ${{ steps.move.outputs.major-tag }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Move major tag
+      id: move
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+      run: bash "$GITHUB_ACTION_PATH/move.sh"

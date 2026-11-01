@@ -1,7 +1,7 @@
 name: 'Release PR'
 description: >
   Keeps one pull request from a release/<x.y> branch to the default branch open and current: creates
-  it when missing (title "release: <x.y>"), refreshes title and body on every run. The body lists the
+  it when missing (title "release: <x.y>", "release: next" for release/next), refreshes title and body on every run. The body lists the
   PRs merged into the release branch and a "Closes #n" line per issue they reference. Never merges
   and never closes. Does nothing for other branches or when the branch is not ahead of the base.
   Pass a PAT as token: PRs created with the default GITHUB_TOKEN do not trigger pull_request
@@ -10,7 +10,7 @@ description: >
 
 inputs:
   release-branch:
-    description: 'Release branch (release/<x.y>); defaults to the ref that triggered the workflow'
+    description: 'Release branch (release/<x.y> or release/next); defaults to the ref that triggered the workflow'
     required: false
     default: ''
   base:

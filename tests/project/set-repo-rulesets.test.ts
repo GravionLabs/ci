@@ -11,7 +11,7 @@ it('pwsh is installed in CI (the Set-RepoRulesets cases must not be skipped ther
   if (process.env.CI) expect(hasPwsh).toBe(true);
 });
 
-const CALLER = 'jobs:\n  pr-checks:\n    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main\n';
+const CALLER = 'jobs:\n  pr-checks:\n    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1\n';
 const rsc = (...contexts: string[]) => ({
   type: 'required_status_checks',
   parameters: {
@@ -112,8 +112,24 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
   });
 
   it('skips a repository without a pr-checks.yml caller with a warning', () => {
-    const r = run({ a: { workflow: 'jobs:\n  x:\n    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main\n', rulesets: [mainRuleset()] } },
+    const r = run({ a: { workflow: 'jobs:\n  x:\n    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@v1\n', rulesets: [mainRuleset()] } },
       '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(0);
+    expect(r.stdout + r.stderr).toContain('no caller');
+  });
+
+  const LOCAL = 'jobs:\n  pr-checks:\n    uses: ./.github/workflows/pr-checks.yml\n';
+
+  it('recognises the local caller in GravionLabs/ci', () => {
+    const r = run({ ci: { workflow: LOCAL, rulesets: [mainRuleset(), releaseRuleset()] } }, '-Repo', 'ci', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(2);
+    expect(checksOf(r.writes[0].body)).toEqual(['PR checks']);
+  });
+
+  it('still skips another repository whose only caller is a local path', () => {
+    const r = run({ a: { workflow: LOCAL, rulesets: [mainRuleset()] } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
     expect(r.stdout + r.stderr).toContain('no caller');

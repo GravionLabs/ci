@@ -4,7 +4,7 @@ name: Tauri app CI/CD
 #   determine-version → ci ‖ draft → build (CLI binaries) ‖ installers → publish → update-changelog
 # `determine-version` runs first and every later job reads the version from its outputs. Only a push to the
 # default branch publishes; every other run builds with the throw-away version 0.0.<run number>.
-# Call with `uses: GravionLabs/ci/.github/workflows/tauri-app.yml@main`.
+# Call with `uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1`.
 
 on:
   workflow_call:
@@ -87,7 +87,7 @@ jobs:
           fetch-depth: 0
       - name: Determine version
         id: version
-        uses: GravionLabs/ci/versioning/determine-version@main
+        uses: GravionLabs/ci/versioning/determine-version@v1
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
           conventional-commits: ${{ inputs.conventional-commits }}
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: GravionLabs/ci/rust/ci@main
+      - uses: GravionLabs/ci/rust/ci@v1
         with:
           exclude: ${{ inputs.ci-exclude }}
 
@@ -123,7 +123,7 @@ jobs:
       release-id: ${{ steps.draft.outputs.release-id }}
     steps:
       - id: draft
-        uses: GravionLabs/ci/tauri/draft-release@main
+        uses: GravionLabs/ci/tauri/draft-release@v1
         with:
           version: ${{ needs.determine-version.outputs.build-version }}
 
@@ -137,7 +137,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.cli-matrix) }}
     steps:
-      - uses: GravionLabs/ci/rust/release-binary@main
+      - uses: GravionLabs/ci/rust/release-binary@v1
         with:
           version: ${{ needs.determine-version.outputs.build-version }}
           package: ${{ inputs.cli-package }}
@@ -157,7 +157,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.installer-matrix) }}
     steps:
-      - uses: GravionLabs/ci/tauri/installers@main
+      - uses: GravionLabs/ci/tauri/installers@v1
         with:
           version: ${{ needs.determine-version.outputs.build-version }}
           target: ${{ matrix.target }}
@@ -248,7 +248,7 @@ jobs:
           fi
           gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
       # After a merged release/<x.y> PR: closes the issues it delivered ("Shipped in v...").
-      - uses: GravionLabs/ci/versioning/close-release-issues@main
+      - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
         with:
           version: ${{ needs.determine-version.outputs.semver }}

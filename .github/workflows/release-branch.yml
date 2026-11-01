@@ -9,7 +9,7 @@
 # required checks would never run). Without it the GITHUB_TOKEN is used with a warning, or the job fails when require-pat is true.
 # PROJECT_TOKEN is a classic PAT with the scope project (plus repo for a private repository) for the project Status and Needs
 # calls; it falls back to GH_PAT. Secret names match issues.yml, so `secrets: inherit` works.
-# The actions are referenced at @main: this workflow works for callers once those versions are released.
+# The actions are referenced at @v1, the moving major tag the release job of ci.yml moves to every release.
 # The Needs sync covers only the issues newly labelled in this run (decision): a failed sync is not retried by a rerun,
 # because those issues are then already labelled; the hourly full sync (project-needs.yml style) catches up.
 # Never checks out caller code; event data reaches scripts through env only.
@@ -92,7 +92,7 @@ jobs:
           echo "::warning::Secret GH_PAT is not set; a release PR created with the GITHUB_TOKEN triggers no pull_request workflows, so its required checks never run."
 
       - name: Release PR
-        uses: GravionLabs/ci/versioning/release-pr@main
+        uses: GravionLabs/ci/versioning/release-pr@v1
         with:
           release-branch: ${{ inputs.release-branch }}
           base: ${{ inputs.base }}
@@ -101,7 +101,7 @@ jobs:
 
       - name: Mark merged issues
         id: mark
-        uses: GravionLabs/ci/versioning/mark-merged-issues@main
+        uses: GravionLabs/ci/versioning/mark-merged-issues@v1
         with:
           release-branch: ${{ inputs.release-branch }}
           base: ${{ inputs.base }}
@@ -121,7 +121,7 @@ jobs:
 
       - name: Sync Needs of the labelled issues
         if: '!inputs.dry-run && inputs.project-url != '''' && steps.mark.outputs.labelled != '''''
-        uses: GravionLabs/ci/project/needs@main
+        uses: GravionLabs/ci/project/needs@v1
         with:
           project-url: ${{ inputs.project-url }}
           token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}

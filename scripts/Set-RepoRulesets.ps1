@@ -5,7 +5,8 @@
   Requires the check 'PR checks' (reusable workflow pr-checks.yml) in the rulesets 'main' and 'release' of GravionLabs repositories.
 .DESCRIPTION
   Per repository: skips archived repositories and repositories without a caller of
-  GravionLabs/ci/.github/workflows/pr-checks.yml under .github/workflows (a required check that never runs blocks every PR; warning).
+  GravionLabs/ci/.github/workflows/pr-checks.yml under .github/workflows (in GravionLabs/ci itself also the local
+  './.github/workflows/pr-checks.yml'; a required check that never runs blocks every PR; warning).
   Otherwise adds -Context to the required_status_checks rule of the rulesets 'main' (default branch) and 'release' (release/**),
   creating the rule, or the ruleset, when missing. 'release' also gets the pull_request rule so the check applies to PRs into release
   branches. Other rules and other required checks stay; -Replace removes superseded checks in the same update.
@@ -52,6 +53,8 @@ function Test-HasCaller {
   foreach ($f in $files) {
     $text = Invoke-Gh @('api', "repos/$Full/contents/$($f.path)", '-H', 'Accept: application/vnd.github.raw')
     if ($text -match '(?m)^\s*(-\s*)?uses:\s*[''"]?GravionLabs/ci/\.github/workflows/pr-checks\.yml(@|[''"\s]|$)') { return $true }
+    # GravionLabs/ci calls its own workflow locally; a local path counts only there (in another repository it names a different file).
+    if ($Full -eq 'GravionLabs/ci' -and $text -match '(?m)^\s*(-\s*)?uses:\s*[''"]?\./\.github/workflows/pr-checks\.yml([''"\s]|$)') { return $true }
   }
   $false
 }

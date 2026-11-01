@@ -56,7 +56,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Check readiness of the closed issues
-        uses: GravionLabs/ci/pr-checks/readiness@main
+        uses: GravionLabs/ci/pr-checks/readiness@v1
         with:
           not-ready-labels: ${{ inputs.not-ready-labels }}
           require-issue: ${{ inputs.require-issue }}
@@ -72,7 +72,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Check the ADR of the pull request
-        uses: GravionLabs/ci/pr-checks/adr@main
+        uses: GravionLabs/ci/pr-checks/adr@v1
         with:
           token: ${{ github.token }}
 
@@ -84,7 +84,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Check the title and commits of the pull request
-        uses: GravionLabs/ci/pr-checks/title@main
+        uses: GravionLabs/ci/pr-checks/title@v1
         with:
           token: ${{ github.token }}
 

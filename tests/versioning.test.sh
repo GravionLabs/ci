@@ -297,6 +297,38 @@ out=$(GITHUB_SHA=abc DRY_RUN=true bash "$CLOSE" 2>&1); log=$(cat "$GH_LOG")
 has "prints the removal" "would remove merged from #11" "$out"
 hasnt "no delete" "-X DELETE" "$log"
 
+echo "# release-pr: recreated branch without commits ahead opens no PR"
+RELEASE_PR="$ROOT/versioning/release-pr/release-pr.sh"
+setup; fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+fix "GET_repos_o_r_compare_main...release_1.5" '{"ahead_by":0,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},"commits":[]}'
+out=$(RELEASE_BRANCH=release/1.5 bash "$RELEASE_PR" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code"
+has "says nothing to do" "no commits ahead" "$out"
+hasnt "no PR created" "pr create" "$log"
+setup; fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+fix "GET_repos_o_r_compare_main...release_next" '{"ahead_by":0,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},"commits":[]}'
+out=$(RELEASE_BRANCH=release/next DRY_RUN=true bash "$RELEASE_PR" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "release/next without commits: exit 0" || fail "exit $code"
+has "release/next without commits: nothing to do" "no commits ahead" "$out"
+hasnt "release/next without commits: no PR" "pr create" "$log"
+setup
+out=$(RELEASE_BRANCH=feature/x bash "$RELEASE_PR" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "other branch: exit 0" || fail "exit $code"
+has "other branch: nothing to do" "nothing to do" "$out"
+[ -z "$log" ] && ok "other branch: no gh call" || fail "gh called: $log"
+
+echo "# release-pr: dry run for release/next and release/<x.y>"
+for b in next 1.5; do
+  setup; fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+  fix "GET_repos_o_r_compare_main...release_$b" '{"ahead_by":2,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}}}'
+  fix pr-list '[{"number":7,"title":"fix: a","author":{"login":"al"},"body":"Closes #42","mergedAt":"2026-02-01T00:00:00Z"}]'
+  out=$(RELEASE_BRANCH=release/$b DRY_RUN=true bash "$RELEASE_PR" 2>&1); code=$?
+  [ "$code" = 0 ] && ok "release/$b: exit 0" || fail "release/$b exit $code"
+  has "release/$b: title" "title: release: $b" "$out"
+  has "release/$b: lists the PR" "- #7 fix: a (@al)" "$out"
+  has "release/$b: Closes line" "Closes #42" "$out"
+done
+
 echo
 echo "$((total - failures))/$total passed"
 [ "$failures" = 0 ]

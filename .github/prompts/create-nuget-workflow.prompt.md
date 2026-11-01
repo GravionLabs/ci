@@ -6,7 +6,7 @@ Create a `.github/workflows/ci.yml` file for a .NET NuGet library using the `Gra
 
 ## Requirements
 
-Use `GravionLabs/ci/.github/workflows/nuget-package.yml@main` as the reusable workflow.
+Use `GravionLabs/ci/.github/workflows/nuget-package.yml@v1` as the reusable workflow.
 
 Ask the user for the following information if not already provided:
 
@@ -32,7 +32,7 @@ on:
 jobs:
   package:
     name: Package
-    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@v1
     with:
       dotnet-project: <project-path>
       gitversion-config-file: GitVersion.yml      # omit if no GitVersion.yml

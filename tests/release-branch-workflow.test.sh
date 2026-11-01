@@ -41,13 +41,13 @@ eq "GH_PAT optional" false "$(q '.on.workflow_call.secrets.GH_PAT.required')"
 eq "PROJECT_TOKEN optional" false "$(q '.on.workflow_call.secrets.PROJECT_TOKEN.required')"
 
 # --- step order and wiring ---
-eq "action order" 'GravionLabs/ci/versioning/release-pr@main,GravionLabs/ci/versioning/mark-merged-issues@main,GravionLabs/ci/project/needs@main' \
+eq "action order" 'GravionLabs/ci/versioning/release-pr@v1,GravionLabs/ci/versioning/mark-merged-issues@v1,GravionLabs/ci/project/needs@v1' \
   "$(q "[$S[].uses | select(. != null)] | join(\",\")")"
-eq "release-pr token GH_PAT, else GITHUB_TOKEN" '${{ secrets.GH_PAT || github.token }}' "$(q "$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@main\") | .with.token")"
+eq "release-pr token GH_PAT, else GITHUB_TOKEN" '${{ secrets.GH_PAT || github.token }}' "$(q "$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .with.token")"
 MARK="$S[] | select(.id == \"mark\")"
 eq "mark passes project-status" '${{ inputs.project-status }}' "$(q "$MARK | .with[\"project-status\"]")"
 eq "mark project-token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$MARK | .with[\"project-token\"]")"
-NEEDS="$S[] | select(.uses == \"GravionLabs/ci/project/needs@main\")"
+NEEDS="$S[] | select(.uses == \"GravionLabs/ci/project/needs@v1\")"
 eq "needs token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$NEEDS | .with.token")"
 eq "needs syncs the labelled issues" '${{ steps.mark.outputs.labelled }}' "$(q "$NEEDS | .with.issues")"
 needs_if=$(q "$NEEDS | .if")
@@ -56,7 +56,7 @@ case "$needs_if" in *"steps.mark.outputs.labelled != ''"*) ok "needs skipped wit
 case "$needs_if" in "!inputs.dry-run"*) ok "needs skipped on dry run" ;; *) fail "needs skipped on dry run" ;; esac
 
 # --- complete wiring ---
-RP="$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@main\") | .with"
+RP="$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .with"
 eq "release-pr wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},release-branch=${{ inputs.release-branch }},token=${{ secrets.GH_PAT || github.token }}' \
   "$(q "$RP | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "mark wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},label=${{ inputs.label }},project-status=${{ inputs.project-status }},project-token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }},release-branch=${{ inputs.release-branch }},token=${{ github.token }}' \

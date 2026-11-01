@@ -44,6 +44,14 @@ inputs:
       them the step only prints a warning. A no-op for commits that are not a merged release PR.
     required: false
     default: 'true'
+  recreate-branch:
+    description: >
+      Branch to recreate after the release, normally release/next. When set and the branch does not
+      exist on origin, it is pushed from the released commit; an existing branch is never moved or
+      force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN
+      triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml).
+    required: false
+    default: ''
   token:
     description: >
       GitHub token used for checkout and git push operations.
@@ -96,7 +104,7 @@ runs:
         fi
 
     - name: Create version tag
-      uses: GravionLabs/ci/versioning/create-version-tag@main
+      uses: GravionLabs/ci/versioning/create-version-tag@v1
       with:
         version: ${{ inputs.version }}
         tag-prefix: ${{ inputs.tag-prefix }}
@@ -173,7 +181,14 @@ runs:
     - name: Close issues delivered by the release
       if: ${{ inputs.close-issues == 'true' }}
       continue-on-error: true
-      uses: GravionLabs/ci/versioning/close-release-issues@main
+      uses: GravionLabs/ci/versioning/close-release-issues@v1
       with:
         version: ${{ inputs.version }}
         token: ${{ inputs.token }}
+
+    - name: Recreate the release branch
+      if: ${{ inputs.recreate-branch != '' }}
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.recreate-branch }}
+      run: bash "${{ github.action_path }}/recreate-branch.sh"

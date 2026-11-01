@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture test for GitVersion.yml: release/next increments the minor, main stays patch.
+# Fixture test for GitVersion.yml: release/next has no increment rule, the commits decide; main stays patch.
 # Run: bash tests/determine-version.test.sh (needs gitversion or dotnet-gitversion on PATH)
 set -uo pipefail
 
@@ -36,7 +36,7 @@ eq "main after tag is a patch" "1.0.61" "$(var MajorMinorPatch)"
 
 git checkout -q -b release/next
 git commit -q --allow-empty -m "feat: new thing"
-eq "release/next increments minor" "1.1.0" "$(var MajorMinorPatch)"
+eq "release/next with a feat commit is a minor pre-release" "1.1.0" "$(var MajorMinorPatch)"
 pre=$(var PreReleaseTag)
 if [ -n "$pre" ]; then ok "release/next is a pre-release ($pre)"; else fail "release/next has empty pre-release tag"; fi
 

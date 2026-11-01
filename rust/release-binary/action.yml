@@ -48,7 +48,7 @@ runs:
       uses: actions/checkout@v4
 
     - name: Set up Rust
-      uses: GravionLabs/ci/rust/setup@main
+      uses: GravionLabs/ci/rust/setup@v1
       with:
         targets: ${{ inputs.target }}
         cache-key: ${{ inputs.target }}

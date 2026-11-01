@@ -51,7 +51,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Rust
-      uses: GravionLabs/ci/rust/setup@main
+      uses: GravionLabs/ci/rust/setup@v1
       with:
         toolchain: ${{ inputs.toolchain }}
         tauri-linux-deps: ${{ inputs.tauri-linux-deps }}
