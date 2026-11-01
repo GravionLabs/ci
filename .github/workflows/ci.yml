@@ -81,6 +81,10 @@ jobs:
         shell: bash
         run: bash tests/recreate-branch.test.sh
 
+      - name: Unit tests gh-release version-command (local bare origin)
+        shell: bash
+        run: bash tests/version-command.test.sh
+
   test-versioning-scripts:
     name: 'Test: mark-merged-issues / close-release-issues'
     runs-on: ubuntu-latest
