@@ -62,8 +62,14 @@ on:
         required: false
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
         required: false
+      CI_APP_ID:
+        description: 'ID of the GitHub App GravionLabs CI; with CI_APP_PRIVATE_KEY the workflow mints an installation token (own rate limit, not the user PAT)'
+        required: false
+      CI_APP_PRIVATE_KEY:
+        description: 'Private key (PEM) of the GitHub App GravionLabs CI'
+        required: false
       GH_PAT:
-        description: 'PAT of an admin of the repository: the changelog commit goes straight to the default branch, which a ruleset only lets admins update without a pull request'
+        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY (fallback when no app is configured). PAT of an admin of the repository: the changelog commit goes straight to the default branch, which a ruleset only lets admins update without a pull request'
         required: false
 
 permissions:
@@ -255,20 +261,35 @@ jobs:
 
   update-changelog:
     name: update changelog
-    # After the release is published, so the new tag is part of the history. The commit is pushed with GH_PAT
-    # when it is set (a token's push does start runs), so its message carries [skip ci].
+    # After the release is published, so the new tag is part of the history. The commit is pushed with the CI app token (or GH_PAT)
+    # when one is set (a token's push does start runs), so its message carries [skip ci].
     needs: [determine-version, publish]
     if: ${{ needs.determine-version.outputs.release == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Check CI app
+        id: app
+        shell: bash
+        env:
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+
+      - name: Create CI app token
+        id: app-token
+        if: steps.app.outputs.present == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           # The default branch requires a pull request; only an admin's token may push the changelog commit.
-          token: ${{ secrets.GH_PAT || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
       - name: Generate the changelog
         uses: orhun/git-cliff-action@v4
         with:

@@ -1,7 +1,7 @@
 # Hourly full sync of the project field Needs, a caller of the reusable workflow issues.yml of GravionLabs/ci (mode full).
 # Copy to .github/workflows/project-needs.yml together with issue-events.yml and replace <owner> and <n> in project-url.
 # Inputs and token requirements: see the GravionLabs/ci README (issues.yml, project/needs).
-# PROJECT_TOKEN (optional, classic PAT with scope `project`) wins; it falls back to GH_PAT. No token: a warning and a green job.
+# PROJECT_TOKEN (classic PAT with scope `project`; GH_PAT is the deprecated fallback). No token: a warning and a green job.
 name: Project needs
 
 on:
@@ -22,5 +22,4 @@ jobs:
       needs: true
       mode: full
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
