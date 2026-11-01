@@ -63,7 +63,7 @@ node/
 .apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new|sprints|sprint`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, Set-Sprint, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
 scripts/
-  Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
+  Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` squash only) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
 
 .github/workflows/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)

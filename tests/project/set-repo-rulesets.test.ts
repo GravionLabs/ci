@@ -120,9 +120,59 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     expect(checksOf(r.writes[0].body)).toEqual(['pr-checks / PR checks']);
   });
 
+  const prRule = (methods: string[], extra: any = {}) => ({
+    type: 'pull_request',
+    parameters: {
+      required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false,
+      require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: methods, ...extra,
+    },
+  });
+  const prOf = (body: any) => body.rules.find((x: any) => x.type === 'pull_request').parameters;
+  const withPr = (rs: any, pr: any) => ({ ...rs, rules: rs.rules.map((x: any) => (x.type === 'pull_request' ? pr : x)) });
+
+  it('creates rulesets with merge methods: main merge, release squash', () => {
+    const r = run({ a: { workflow: CALLER, rulesets: [] } }, '-Repo', 'a', '-Apply');
+    expect(prOf(r.writes[0].body).allowed_merge_methods).toEqual(['merge']);
+    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['squash']);
+  });
+
+  it('updates an existing ruleset that allows all three methods and keeps foreign rules', () => {
+    const all = ['merge', 'squash', 'rebase'];
+    const copilot = { type: 'copilot_code_review', parameters: { review_draft_pull_requests: true, review_on_push: true } };
+    const m = withPr(mainRuleset([rsc('PR checks'), copilot]), prRule(all));
+    const rel = withPr(releaseRuleset([prRule(all), rsc('PR checks')]), prRule(all));
+    const r = run({ a: { workflow: CALLER, rulesets: [m, rel] } }, '-Repo', 'a', '-Apply');
+    expect(r.writes).toHaveLength(2);
+    expect(prOf(r.writes[0].body).allowed_merge_methods).toEqual(['merge']);
+    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['squash']);
+    expect(r.writes[0].body.rules.map((x: any) => x.type)).toEqual(['deletion', 'non_fast_forward', 'pull_request', 'required_status_checks', 'copilot_code_review']);
+    expect(r.writes[0].body.rules[4]).toEqual(copilot);
+  });
+
+  it('does not send the parameters the API rejects on PUT', () => {
+    const pr = prRule(['merge', 'squash'], { required_reviewers: [], require_extra_approval_for_unattributed_changes: false });
+    const r = run({ a: { workflow: CALLER, rulesets: [withPr(mainRuleset([rsc('PR checks')]), pr), releaseRuleset()] } }, '-Repo', 'a', '-Apply');
+    expect(Object.keys(prOf(r.writes[0].body)).sort()).toEqual([
+      'allowed_merge_methods', 'dismiss_stale_reviews_on_push', 'require_code_owner_review', 'require_last_push_approval',
+      'required_approving_review_count', 'required_review_thread_resolution']);
+  });
+
+  it('is idempotent: nothing to change when the methods are right, and the dry run reports a change', () => {
+    const ok = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'], { required_reviewers: [] })),
+      releaseRuleset([prRule(['squash']), rsc('PR checks')])];
+    const r = run({ a: { workflow: CALLER, rulesets: ok } }, '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(0);
+    const wrong = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge', 'squash'])), ok[1]];
+    const d = run({ a: { workflow: CALLER, rulesets: wrong } }, '-Repo', 'a');
+    expect(d.writes).toHaveLength(0);
+    expect(d.stdout).toContain("PLAN GravionLabs/a : update ruleset 'main'");
+    expect(d.stdout).toContain('merge methods: merge');
+  });
+
   it('writes nothing when the check is already required', () => {
-    const r = run({ a: { workflow: CALLER, rulesets: [mainRuleset([rsc('PR checks')]),
-      releaseRuleset([{ type: 'pull_request', parameters: {} }, rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
+    const r = run({ a: { workflow: CALLER, rulesets: [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'])),
+      releaseRuleset([prRule(['squash']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
     expect(r.stdout).toContain('already requires');
