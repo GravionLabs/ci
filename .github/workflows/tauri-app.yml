@@ -13,6 +13,10 @@ on:
         description: 'Path to GitVersion.yml'
         type: string
         default: 'GitVersion.yml'
+      conventional-commits:
+        description: 'Bump the version from Conventional Commits (false = plain GitVersion defaults)'
+        type: boolean
+        default: true
       ci-exclude:
         description: 'Space-separated crates left out of clippy and test (the Tauri crate needs system libraries)'
         type: string
@@ -86,6 +90,7 @@ jobs:
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
+          conventional-commits: ${{ inputs.conventional-commits }}
       - name: Choose the build version
         id: build
         shell: bash

@@ -18,6 +18,7 @@ versioning/
 pr-checks/
   readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
   adr/                  — Fails a PR that touches `governance.adrPaths` or closes a `needs-decision` issue without an added/changed ADR in `governance.adrDir`; new ADRs need a `Status:` line and a free number; config from the base branch, `governance.skipLabels` (default `skip-adr`) skips
+  title/                — Fails a PR whose title is not a Conventional Commit or contradicts its commits (breaking → `!`, feat commit → feat title); hotfix PRs into the default branch need Conventional Commits; same-repository release and merge-back PRs exempt
 
 issues/
   conventions/          — Sets the `[Level] ` title prefix from the level label (legacy `Epic:`/`Feature:`/`Bug:` prefixes replaced) and flags missing required sections with `needs-refinement`
@@ -242,7 +243,7 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ## Reusable Workflow: `pr-checks.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
+Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
 
 ## Reusable Workflow: `release-branch.yml`
 
@@ -287,7 +288,7 @@ Inputs: `levels` (default `epic,feature,pbi,task,bug`), `required-sections` (JSO
 
 ### `versioning/determine-version`
 
-Runs GitVersion on the full git history (`fetch-depth: 0` required in caller).
+Runs GitVersion on the full git history (`fetch-depth: 0` required in caller). Input `conventional-commits` (default `true`) passes Conventional Commit bump rules as `overrideConfig` (fix/perf/revert patch, feat minor, `type!` or `BREAKING CHANGE`/`BREAKING-CHANGE` footer major, `+semver:` escape hatch; they replace the caller's bump messages); `false` keeps the GitVersion defaults. The `*-package.yml` workflows and `tauri-app.yml` pass it through. Test: `bash tests/conventional-commits.test.sh`.
 
 **Key outputs:** `semver`, `nuget-version`, `npm-version`, `python-version`, `docker-version`, `major`, `minor`, `patch`, `major-minor-patch`.
 
@@ -436,7 +437,7 @@ Requires `pages: write`, `id-token: write` permissions on the calling job — us
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
 - Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
-- **A plain merge is only a patch.** GitVersion on `main` ignores the branch rule after a `--no-ff` merge and yields `1.0.61`, not `1.1.0`. The minor bump needs a `+semver: minor` footer in a commit message that reaches `main`: put it in the merge commit message (or squash message) of the release PR, or in a commit on `release/next`. `versioning/release-pr` does not add it; it must be added by hand when merging. `tests/determine-version.test.sh` asserts both cases.
+- **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
 
 ## Safe Change Checklist

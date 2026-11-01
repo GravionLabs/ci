@@ -14,6 +14,12 @@ inputs:
     description: 'Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)'
     required: false
     default: ''
+  conventional-commits:
+    description: >
+      Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor,
+      type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.
+    required: false
+    default: 'true'
 
 outputs:
   semver:
@@ -70,10 +76,29 @@ runs:
       with:
         versionSpec: ${{ inputs.gitversion-version-spec }}
 
+    - name: Conventional Commits bump rules
+      id: bump-rules
+      shell: bash
+      env:
+        CONVENTIONAL_COMMITS: ${{ inputs.conventional-commits }}
+      run: |
+        if [ "$CONVENTIONAL_COMMITS" = "false" ]; then
+          echo "override-config=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        {
+          echo 'override-config<<GV_EOF'
+          echo 'major-version-bump-message=\+semver:\s?(breaking|major)|^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)\n]+\))?(!:|:.*\n\n((.+\n)+\n)?BREAKING[ -]CHANGE:\s.+)'
+          echo 'minor-version-bump-message=\+semver:\s?(feature|minor)|^(feat)(\([^)\n]+\))?:'
+          echo 'patch-version-bump-message=\+semver:\s?(fix|patch)|^(fix|perf|revert)(\([^)\n]+\))?:'
+          echo 'GV_EOF'
+        } >> "$GITHUB_OUTPUT"
+
     - name: Determine version
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4.5.0
       with:
+        overrideConfig: ${{ steps.bump-rules.outputs.override-config }}
         configFilePath: ${{ inputs.gitversion-config-file != '' && inputs.gitversion-config-file || '' }}
 
     - name: Convert to PEP 440 (Python version)

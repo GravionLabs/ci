@@ -27,6 +27,7 @@ jobs:
         uses: ./versioning/determine-version
         with:
           gitversion-config-file: GitVersion.yml
+          conventional-commits: 'true'
 
       - name: Validate outputs
         shell: bash
@@ -52,7 +53,9 @@ jobs:
 
       - name: Test GitVersion release/next increment
         shell: bash
-        run: bash tests/determine-version.test.sh
+        run: |
+          bash tests/determine-version.test.sh
+          bash tests/conventional-commits.test.sh
 
   test-versioning-scripts:
     name: 'Test: mark-merged-issues / close-release-issues'

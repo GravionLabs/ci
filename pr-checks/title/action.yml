@@ -1,0 +1,24 @@
+name: PR title
+description: >-
+  Fails when the pull request title is not a Conventional Commit, when it contradicts the commits (a breaking
+  commit needs `!` in the title, a feat commit needs a feat title) or, for a PR into the default branch from a
+  branch other than release/**, when a commit is not a Conventional Commit. Release and merge-back PRs are exempt.
+  Run it on `pull_request`; the token needs `pull-requests: read`.
+
+inputs:
+  token:
+    description: Token with pull-requests read access
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const { default: run } = await import(`${process.env.ACTION_PATH}/run.mjs`);
+          await run({ github, context, core });
