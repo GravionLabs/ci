@@ -1511,7 +1511,7 @@ jobs:
 
 Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
 
-1. `versioning/release-pr` keeps the PR `release: <x.y>` from the release branch to the default branch open and current (never merges).
+1. `versioning/release-pr` keeps the PR `release: <x.y>` (`release: next` for `release/next`) from the release branch to the default branch open and current (never merges).
 2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
 3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it only prints that it would sync (a dry run labels nothing). Only issues newly labelled in the run are synced: a failed sync is not retried by a rerun, because those issues are then already labelled.
 
