@@ -4,7 +4,9 @@ description: >
   Optionally uses git-cliff to auto-generate release notes from Conventional Commits.
   When cliff-config is set, git-cliff generates the notes and can also update CHANGELOG.md.
   Falls back to extracting a section from a CHANGELOG.md, then to GitHub auto-generated notes.
-  Skips silently if the release already exists. Marks pre-release automatically
+  Skips silently if the release already exists, so a re-run completes a tag without release.
+  Checks the API rate limit before the first write and retries rate-limit errors after the reset
+  (at most 15 minutes), then fails with a clear message. Marks pre-release automatically
   when the version contains a pre-release identifier (e.g. 1.2.3-alpha.4).
   Requires contents: write permission in the calling workflow.
 
@@ -76,6 +78,12 @@ runs:
         token: ${{ inputs.token }}
         fetch-depth: 0
         ref: ${{ github.ref_name }}
+
+    - name: Check API rate limit before the first write
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: bash "${{ github.action_path }}/rate-limit.sh" check
 
     - name: Run version command
       if: ${{ inputs.version-command != '' }}
@@ -161,30 +169,7 @@ runs:
         NOTES: ${{ steps.changelog.outputs.notes }}
         CLIFF_NOTES: ${{ steps.cliff.outputs.content }}
         GENERATE_NOTES: ${{ inputs.generate-release-notes }}
-      run: |
-        if gh release view "$TAG" &>/dev/null; then
-          echo "Release $TAG already exists — skipping."
-          exit 0
-        fi
-
-        # Mark as pre-release when version contains a pre-release identifier.
-        if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-'; then
-          PRERELEASE_FLAG="--prerelease"
-        else
-          PRERELEASE_FLAG=""
-        fi
-
-        # Prefer git-cliff notes, then CHANGELOG.md section, then GitHub auto-generated.
-        if [ -n "$CLIFF_NOTES" ]; then
-          echo "$CLIFF_NOTES" > /tmp/release_notes.md
-          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release_notes.md $PRERELEASE_FLAG
-        elif [ -n "$NOTES" ]; then
-          gh release create "$TAG" --title "$TAG" --notes "$NOTES" $PRERELEASE_FLAG
-        elif [ "$GENERATE_NOTES" = "true" ]; then
-          gh release create "$TAG" --title "$TAG" --generate-notes $PRERELEASE_FLAG
-        else
-          gh release create "$TAG" --title "$TAG" --notes "" $PRERELEASE_FLAG
-        fi
+      run: bash "${{ github.action_path }}/release.sh"
 
     - name: Close issues delivered by the release
       if: ${{ inputs.close-issues == 'true' }}
