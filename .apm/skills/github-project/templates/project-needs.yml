@@ -1,12 +1,13 @@
-# Hourly full sync of the project field Needs, a caller of the reusable workflow issues.yml of GravionLabs/ci (mode full).
-# Copy to .github/workflows/project-needs.yml together with issue-events.yml and replace <owner> and <n> in project-url.
+# Central nightly sync of the project field Needs for every item of the project, across all repositories, a caller of the
+# reusable workflow issues.yml of GravionLabs/ci (mode project). Run it in ONE repository per project (GravionLabs/ci does);
+# other repositories need only issue-events.yml. Replace <owner> and <n> in project-url.
 # Inputs and token requirements: see the GravionLabs/ci README (issues.yml, project/needs).
-# PROJECT_TOKEN (optional, classic PAT with scope `project`) wins; it falls back to GH_PAT. No token: a warning and a green job.
+# PROJECT_TOKEN (classic PAT with scope `project`; GH_PAT is the deprecated fallback). No token: a warning and a green job.
 name: Project needs
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -20,7 +21,6 @@ jobs:
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true
-      mode: full
+      mode: project
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}

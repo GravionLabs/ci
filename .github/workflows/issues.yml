@@ -1,13 +1,14 @@
 # Reusable workflow for issue and pull request events of a calling repository.
 # - add-to-project: adds new issues and pull requests to a project (input project-url; empty = off).
-#   GH_PAT is a classic PAT with the scopes `project` and `repo`; the GITHUB_TOKEN cannot write to a user-owned project.
+#   Token PROJECT_TOKEN || GH_PAT: a classic PAT with the scopes `project` and `repo`; neither the GITHUB_TOKEN nor a GitHub App can write to a
+#   user-owned project (an organization project can use the app; GravionLabs/ci#128).
 #   pull_request_target: Dependabot and fork PRs get the secret too; no job of this workflow checks out code.
 # - conventions: sets the "[Level] " title prefix from the level label and flags missing required sections,
 #   writing with the GITHUB_TOKEN (its edit triggers no further run). Needs `issues: write` from the caller.
 # - needs (opt-in, input needs): keeps the project field Needs current via project/needs, which runs Sync-ProjectNeeds.ps1
 #   of the github-project skill of this repository. Event mode syncs the issue of the event (issues: labeled,
 #   unlabeled, closed, reopened; pull_request_target: opened, closed, ready_for_review, issue number from the head branch);
-#   mode full or a schedule/workflow_dispatch caller syncs every item. Token: PROJECT_TOKEN (classic PAT, scope project,
+#   mode full syncs every item of the repository, mode project every item of the project (any repository; central nightly sync). Token: PROJECT_TOKEN (classic PAT, scope project,
 #   plus repo for a private repository), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
 # Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
 name: Issues
@@ -36,16 +37,16 @@ on:
         required: false
         default: false
       mode:
-        description: 'needs job: event (sync the issue of the event) or full (sync every item of the repository)'
+        description: 'needs job: event (sync the issue of the event), full (every item of the calling repository) or project (every item of the project, any repository)'
         type: string
         required: false
         default: event
     secrets:
       GH_PAT:
-        description: 'Classic PAT with the scopes project and repo, for add-to-project'
+        description: 'Deprecated, use PROJECT_TOKEN: classic PAT with the scopes project and repo, fallback of PROJECT_TOKEN'
         required: false
       PROJECT_TOKEN:
-        description: 'Classic PAT with the scope project (plus repo for a private repository), for the needs job; falls back to GH_PAT'
+        description: 'Classic PAT with the scope project (plus repo for a private repository), for add-to-project and the needs job; falls back to GH_PAT'
         required: false
 
 permissions: {}
@@ -60,16 +61,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - name: Check GH_PAT
+      - name: Check project token
         id: token
         shell: bash
         env:
-          HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+          HAS_TOKEN: ${{ secrets.PROJECT_TOKEN != '' || secrets.GH_PAT != '' }}
         run: |
           if [ "$HAS_TOKEN" = "true" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::Secret GH_PAT is not set (pass secrets: inherit or GH_PAT); skipping add-to-project."
+            echo "::warning::Secret PROJECT_TOKEN (or GH_PAT) is not set (pass secrets: inherit or PROJECT_TOKEN); skipping add-to-project."
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -82,7 +83,7 @@ jobs:
         uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         with:
           project-url: ${{ inputs.project-url }}
-          github-token: ${{ secrets.GH_PAT }}
+          github-token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
 
   conventions:
     name: Issue conventions
@@ -107,7 +108,7 @@ jobs:
     name: Project Needs
     if: >-
       inputs.needs && inputs.project-url != '' &&
-      (inputs.mode == 'full' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (inputs.mode == 'full' || inputs.mode == 'project' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issues' && contains(fromJSON('["labeled","unlabeled","closed","reopened"]'), github.event.action)) ||
       (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","closed","ready_for_review"]'), github.event.action)))
     runs-on: ubuntu-latest

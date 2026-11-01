@@ -147,6 +147,11 @@ jobs:
         # triggers, permissions, step order, token wiring, token check script
         run: bash tests/release-branch-workflow.test.sh
 
+      - name: Test the GitHub App token wiring
+        shell: bash
+        # app token step pinned, github.token fallbacks, no GH_PAT left in this repository's own workflows
+        run: bash tests/ci-app-token.test.sh
+
   test-issue-conventions:
     name: 'Test: issues/conventions'
     runs-on: ubuntu-latest
@@ -249,6 +254,21 @@ jobs:
         with:
           version: ${{ needs.test-determine-version.outputs.semver }}
 
+      - name: Check CI app
+        id: app
+        shell: bash
+        env:
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+
+      - name: Create CI app token
+        id: app-token
+        if: steps.app.outputs.present == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
       - name: Create GitHub Release
         uses: ./versioning/gh-release
         with:
@@ -257,5 +277,5 @@ jobs:
           cliff-config: cliff.toml
           update-changelog: 'true'
           recreate-branch: release/next
-          # main requires a pull request; only an admin's token (GH_PAT) may push the changelog commit.
-          token: ${{ secrets.GH_PAT || github.token }}
+          # main requires a pull request; only the CI app (ruleset bypass actor) may push the changelog commit.
+          token: ${{ steps.app-token.outputs.token || github.token }}

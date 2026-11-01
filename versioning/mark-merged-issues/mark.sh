@@ -137,18 +137,6 @@ for n in $refs; do
   mark_parents "$n"
 done
 
-ITEM_QUERY='query ItemStatus($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) { issue(number: $number) { projectItems(first: 20) { nodes {
-    id
-    project { id title field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } }
-    fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-  } } } }
-}'
-SET_MUTATION='mutation SetStatus($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-  updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
-    value: {singleSelectOptionId: $optionId}}) { projectV2Item { id } }
-}'
-
 # true (and one warning, then no more project calls) when the token cannot reach the projects
 scope_error() {
   case "$1" in
@@ -160,28 +148,73 @@ scope_error() {
   return 1
 }
 
-set_status() {
-  local n=$1 resp rows item project title current field option errf
-  errf=$(mktemp)
-  if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api graphql -f query="$ITEM_QUERY" \
-      -f owner="${REPO%%/*}" -f name="${REPO#*/}" -F number="$n" 2>"$errf"); then
-    resp="$resp$(cat "$errf")"; rm -f "$errf"
-    scope_error "$resp" || echo "::warning::Cannot read the project items of #$n: $resp"
-    return 0
+# Project reads and writes are REST (no GraphQL): GET /{users|orgs}/{owner}/projectsV2 lists the projects of the repository owner,
+# /fields gives the Status field and its options, /items?q=repo:{owner}/{repo} the project items of the repository's issues with their Status;
+# the write is PATCH /{users|orgs}/{owner}/projectsV2/{number}/items/{id}. GitHub has no REST endpoint from an issue to its project items, so the
+# owner's projects are read once per run (one request set per project). An issue is found in the projects of the repository owner only.
+projects_loaded=false
+PROJ_SEG=""
+PROJ_OWNER="${REPO%%/*}"
+PROJ_NUMBERS=()
+declare -A PROJ_TITLE=() PROJ_FIELD=() PROJ_OPT=() ITEM_ID=() ITEM_STATUS=()
+
+# true (and one warning, then no more project calls) when the projects cannot be read
+project_read_failed() {
+  scope_error "$1" || echo "::warning::Cannot read the projects of $PROJ_OWNER: $1"
+  project_blocked=true
+}
+
+load_projects() {
+  projects_loaded=true
+  local kind list num title fields fid opt items id status
+  if ! kind=$(GH_TOKEN=$PROJECT_TOKEN gh api "users/$PROJ_OWNER" --jq .type 2>&1); then
+    project_read_failed "$kind"; return 0
   fi
-  rm -f "$errf"
-  rows=$(jq -r --arg s "$PROJECT_STATUS" '.data.repository.issue.projectItems.nodes[]?
-    | [.id, .project.id, .project.title, (.fieldValueByName.name // "-"), (.project.field.id // "-"),
-       ([.project.field.options[]? | select(.name == $s) | .id][0] // "-")] | @tsv' <<<"$resp") || rows=""
-  while IFS=$'\t' read -r item project title current field option; do
-    [ -z "$item" ] && continue
+  if [ "$kind" = Organization ]; then PROJ_SEG=orgs; else PROJ_SEG=users; fi
+  if ! list=$(GH_TOKEN=$PROJECT_TOKEN gh api --paginate "$PROJ_SEG/$PROJ_OWNER/projectsV2?per_page=100" \
+      --jq '.[] | select(.closed_at == null) | "\(.number)\t\(.title)"' 2>&1); then
+    project_read_failed "$list"; return 0
+  fi
+  while IFS=$'\t' read -r num title; do
+    [ -z "$num" ] && continue
+    if ! fields=$(GH_TOKEN=$PROJECT_TOKEN gh api --paginate "$PROJ_SEG/$PROJ_OWNER/projectsV2/$num/fields?per_page=100" \
+        --jq '.[] | select(.name == "Status" and .data_type == "single_select")' 2>&1); then
+      project_read_failed "$fields"; return 0
+    fi
+    fid=$(jq -r '.id // empty' <<<"$fields" | head -n1)
+    opt=$(jq -r --arg s "$PROJECT_STATUS" '[.options[]? | select((.name.raw // .name) == $s) | .id][0] // empty' <<<"$fields")
+    PROJ_TITLE[$num]=$title
+    PROJ_FIELD[$num]=${fid:--}
+    PROJ_OPT[$num]=${opt:--}
+    if ! items=$(GH_TOKEN=$PROJECT_TOKEN gh api --paginate "$PROJ_SEG/$PROJ_OWNER/projectsV2/$num/items?per_page=100&fields[]=${fid:-0}&q=repo:$REPO" \
+        --jq '.[] | select(.content_type == "Issue" and (.content.repository.full_name // "") == "'"$REPO"'") | "\(.content.number)\t\(.id)\t\([.fields[]? | select(.id == '"${fid:-0}"') | .value.name.raw // .value.name][0] // "-")"' 2>&1); then
+      project_read_failed "$items"; return 0
+    fi
+    PROJ_NUMBERS+=("$num")
+    while IFS=$'\t' read -r id item status; do
+      [ -z "$id" ] && continue
+      ITEM_ID["$num#$id"]=$item
+      ITEM_STATUS["$num#$id"]=$status
+    done <<<"$items"
+  done <<<"$list"
+}
+
+set_status() {
+  local n=$1 resp p key item current option title body
+  [ "$projects_loaded" = true ] || load_projects
+  [ "$project_blocked" = true ] && return 0
+  for p in "${PROJ_NUMBERS[@]}"; do
+    key="$p#$n"
+    item=${ITEM_ID[$key]:-}
+    [ -n "$item" ] || continue
+    title=${PROJ_TITLE[$p]} current=${ITEM_STATUS[$key]} option=${PROJ_OPT[$p]}
     if [ "$current" = Done ] || [ "$current" = "$PROJECT_STATUS" ]; then
       echo "#$n is already $current in $title; status unchanged."
       continue
     fi
-    if [ "$option" = "-" ]; then
-      if [ -z "${NO_OPTION[$project]:-}" ]; then
-        NO_OPTION[$project]=1
+    if [ "$option" = "-" ] || [ "${PROJ_FIELD[$p]}" = "-" ]; then
+      if [ -z "${NO_OPTION[$p]:-}" ]; then
+        NO_OPTION[$p]=1
         echo "::warning::Project $title has no Status option '$PROJECT_STATUS'; status not set there."
       fi
       continue
@@ -191,12 +224,12 @@ set_status() {
       continue
     fi
     echo "setting #$n to $PROJECT_STATUS in $title"
-    if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api graphql -f query="$SET_MUTATION" -f projectId="$project" \
-        -f itemId="$item" -f fieldId="$field" -f optionId="$option" 2>&1); then
+    body=$(jq -nc --argjson f "${PROJ_FIELD[$p]}" --arg o "$option" '{fields: [{id: $f, value: $o}]}')
+    if ! resp=$(GH_TOKEN=$PROJECT_TOKEN gh api -X PATCH "$PROJ_SEG/$PROJ_OWNER/projectsV2/$p/items/$item" --input - <<<"$body" 2>&1); then
       scope_error "$resp" && return 0
       echo "::warning::Cannot set the status of #$n in $title: $resp"
     fi
-  done <<<"$rows"
+  done
 }
 
 if [ -n "$PROJECT_STATUS" ]; then

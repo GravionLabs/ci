@@ -58,7 +58,7 @@ node/
 ├── pr-checks.yml           # Reusable PR checks workflow (readiness and ADR checks, aggregate "PR checks")
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
-├── project-needs.yml       # This repository's hourly full Needs sync (workflow "Project needs")
+├── project-needs.yml       # Central nightly Needs sync of the whole project (workflow "Project needs")
 ├── release-branch.yml      # Reusable release-branch workflow (release PR, merged label, project Status, Needs sync)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
@@ -742,7 +742,8 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](.apm/skills/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
 - **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`; dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
-- **Full mode (`mode: full`):** syncs every item of the repository; `schedule` and `workflow_dispatch` events always do this.
+- **Full mode (`mode: full`):** syncs every item of the calling repository; `schedule` and `workflow_dispatch` events without a mode do this too.
+- **Project mode (`mode: project`):** syncs every item of the project regardless of repository (items are read without the `q=repo:` filter; sub-issue, blocker and pull request lookups use each item's own repository). Wins over `issues`.
 - **Security:** nothing is checked out; the script is read from the action's own repository ref, the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
 - **Token:** classic PAT with the scope `project`, plus `repo` for a private repository; a user-owned project is not writable with the `GITHUB_TOKEN`. The step works in a job with `permissions: {}`. No token: one warning, green step.
 
@@ -751,14 +752,14 @@ Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of th
 ```yaml
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '17 3 * * *'
 permissions: {}
 
 steps:
   - uses: GravionLabs/ci/project/needs@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
-      mode: full
+      mode: project
       token: ${{ secrets.PROJECT_TOKEN }}
 ```
 
@@ -769,8 +770,8 @@ steps:
 |---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
 | `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —       |
 | `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |         |
-| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the repository                                          | No       | event   |
-| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full still wins)                                  | No       |         |
+| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the calling repository; project: sync every item of the project, any repository                                       | No       | event   |
+| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full and project still win)                                  | No       |         |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
@@ -1312,7 +1313,8 @@ jobs:
 |-------------------|------------------------------------|----------|
 | `feed-token`      | Token for the private restore feed | No       |
 | `publish-api-key` | Token for the publish feed         | **Yes**  |
-| `GH_PAT` | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
+| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
 
 > The `publish` job uses `environment: nuget-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1366,7 +1368,8 @@ jobs:
 | Name                 | Description                                             | Required |
 |----------------------|---------------------------------------------------------|----------|
 | `publish-api-key`    | API token for private feeds; omit for PyPI Trusted Publishing | No |
-| `GH_PAT` | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
+| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
 
 > The `publish` job uses `environment: pypi-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1425,7 +1428,29 @@ jobs:
 |---------------------|----------|------------------------------------------------------|
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
-| `GH_PAT`            | No       | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
+| `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above); its token pushes the changelog commit of `update-changelog` |
+| `GH_PAT`            | No       | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
+
+### GitHub App `GravionLabs CI` (CI token)
+
+The CI automation runs as a GitHub App instead of the user PAT `GH_PAT`: an installation token has its own rate limit, so CI no longer competes with local agents for the 5000 GraphQL points per hour of one user. The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) and `ci.yml` mint the token with the SHA-pinned `actions/create-github-app-token` when both secrets are set, and pass it where `GH_PAT` was used (release PR, changelog commit). Without the app they fall back to `GH_PAT` (deprecated) and then to `github.token`.
+
+| Secret | Description |
+|---|---|
+| `CI_APP_ID` | ID of the GitHub App (the numeric App ID, passed as `app-id`) |
+| `CI_APP_PRIVATE_KEY` | Private key (PEM, whole file) of the app |
+
+Setup (maintainer, once):
+
+1. Create the app `GravionLabs CI` (Settings > Developer settings > GitHub Apps) with the repository permissions Contents (write), Issues (write), Pull requests (write), Workflows (write, Renovate updates workflow files), Checks (read), Commit statuses (read), Metadata (read). No webhook. Projects permissions do not help: an app cannot access a project owned by a user (see below).
+2. Generate a private key, install the app on all GravionLabs repositories.
+3. Store `CI_APP_ID` and `CI_APP_PRIVATE_KEY` as organization or per repository secrets (a caller without `secrets: inherit` passes both: `CI_APP_ID: ${{ secrets.CI_APP_ID }}`).
+4. Add the app as bypass actor to the rulesets `main` (changelog commit on the default branch requires a pull request) and, where release PRs are created, as needed.
+5. Delete the secret `GH_PAT` once every repository runs on the app (it stays supported as a fallback until then).
+
+Project steps keep a classic PAT: project 17 belongs to the user `GravionLabs`, and a GitHub App cannot access user-owned projects (only organization projects; moving to an organization is GravionLabs/ci#128). `PROJECT_TOKEN` is therefore used for `add-to-project`, the Needs sync and the project Status. The Needs sync and the project Status read and write through the REST `projectsV2` endpoints (`GET /users|orgs/<owner>/projectsV2/<n>/fields` and `/items?fields[]=<id>&q=repo:<o/r>`, `PATCH .../items/<id>`) plus the REST issue endpoints (`sub_issues`, `dependencies/blocked_by`, `dependencies/blocking`, `pulls`), so they draw on the REST budget only and make no GraphQL call. What stays on GraphQL: `actions/add-to-project` (external action) and the field/option/view administration of `Set-ProjectStandard.ps1` and the sprint reads of `Set-Sprint.ps1` (no REST update endpoint for single-select options; not part of the CI steps).
+
+Renovate (`renovate.yml`) runs as the app, not as the PAT: it has its own rate limit, its pull requests are authored by the bot (the maintainer can approve them) and, unlike with the `GITHUB_TOKEN`, they trigger the PR checks. It needs the Workflows permission.
 
 ### `issues.yml`
 
@@ -1433,7 +1458,7 @@ Reusable workflow for issue and pull request events, three independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
 - **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
-- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
+- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**
 
@@ -1457,13 +1482,13 @@ jobs:
 
 This repository calls it from `.github/workflows/issue-events.yml` (workflow "Issue events", formerly `add-to-project.yml`). The extra event types `closed` and `ready_for_review` only matter to the `needs` job; the other jobs ignore them.
 
-**Hourly full sync** (repairs missed events, e.g. a cancelled run); this repository's copy is `.github/workflows/project-needs.yml`:
+**Central nightly sync** (repairs missed events, e.g. a cancelled run): one run per night syncs every item of the project across all repositories (mode `project`). Other repositories of the project need no `project-needs.yml`, only the event caller above. This repository's copy is `.github/workflows/project-needs.yml`; run it in one repository per project:
 
 ```yaml
 name: Project needs
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '17 3 * * *'   # off the full hour
   workflow_dispatch:
 permissions: {}
 jobs:
@@ -1474,9 +1499,8 @@ jobs:
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true
-      mode: full
+      mode: project
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
 ```
 
@@ -1488,19 +1512,19 @@ jobs:
 | `required-sections` | No       | `{}`                       | JSON map of level label to required headings, e.g. `{"pbi":["Acceptance criteria"],"task":["Files","Done when"]}`; `{}` disables the section check |
 | `levels`            | No       | `epic,feature,pbi,task,bug` | Comma-separated level labels in precedence order                                                             |
 | `needs`             | No       | `false`                    | Run the `needs` job (requires `project-url`)                                                                 |
-| `mode`              | No       | `event`                    | `needs` job: `event` (sync the issue of the event) or `full` (sync every item of the repository)             |
+| `mode`              | No       | `event`                    | `needs` job: `event` (sync the issue of the event), `full` (every item of the calling repository) or `project` (every item of the project, any repository) |
 
 **Secrets**
 
 | Secret          | Required | Description                                                                                                   |
 |-----------------|----------|---------------------------------------------------------------------------------------------------------------|
-| `GH_PAT`        | No       | Classic PAT with the scopes `project` and `repo`, for `add-to-project` (and `needs` when `PROJECT_TOKEN` is unset) |
-| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project`, plus `repo` for a private repository, for the `needs` job; `PROJECT_TOKEN \|\| GH_PAT` is used |
+| `GH_PAT`        | No       | Deprecated, use `PROJECT_TOKEN`: fallback of `PROJECT_TOKEN` |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project`, plus `repo` for a private repository, for `add-to-project` and the `needs` job; `PROJECT_TOKEN \|\| GH_PAT` is used |
 
 **Token notes**
 
-- `GH_PAT` must be a classic PAT with the scopes `project` and `repo`: the `GITHUB_TOKEN` cannot write to a user-owned project. Without it the job logs one warning and stays green.
-- `needs` uses `secrets.PROJECT_TOKEN || secrets.GH_PAT`: a classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects). No token = one warning, job green. `cancel-in-progress` is on, so a `merged` label event can be cancelled by the next event on the same issue; the hourly full sync repairs it.
+- `PROJECT_TOKEN` (for `add-to-project`, else `GH_PAT`) must be a classic PAT with the scopes `project` and `repo`: neither the `GITHUB_TOKEN` nor a GitHub App can write to a user-owned project. Without it the job logs one warning and stays green.
+- `needs` uses `secrets.PROJECT_TOKEN || secrets.GH_PAT`: a classic PAT with scope `project`, plus `repo` for a private repository (fine-grained tokens cannot access user-owned projects). No token = one warning, job green. `cancel-in-progress` is on, so a `merged` label event can be cancelled by the next event on the same issue; the central nightly sync repairs it.
 - `conventions` writes with the `GITHUB_TOKEN`, so its own edits (title, label, comment) trigger no rerun. The calling job must grant `issues: write`; the workflow requests no more.
 - `pull_request_target` is safe here: no job checks out PR code and titles and bodies are only read through the API, never through `${{ }}` expressions. Dependabot and fork PRs receive the secret too.
 - Tests: `bash tests/issues-workflow.test.sh` (workflow invariants), `bash tests/project-needs.test.sh` (`project/needs`) and `node --test "issues/conventions/*.test.mjs"`; the `actionlint` job of `ci.yml` lints all workflows.
@@ -1545,19 +1569,20 @@ jobs:
 | `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
 | `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
 | `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
-| `require-pat`    | No       | `false`       | Fail instead of warning when the secret `GH_PAT` is missing                                              |
+| `require-pat`    | No       | `false`       | Fail instead of warning when neither the app secrets nor `GH_PAT` are set                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 
 **Secrets**
 
 | Secret          | Required | Description                                                                                                  |
 |-----------------|----------|--------------------------------------------------------------------------------------------------------------|
-| `GH_PAT`        | No       | Classic PAT with the scope `repo` (and `workflow` when the release PR changes workflow files) for the release PR |
+| `CI_APP_ID`, `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above): its installation token creates the release PR, so the required checks run |
+| `GH_PAT`        | No       | Deprecated, fallback without the app: classic PAT with the scope `repo` (and `workflow`) for the release PR |
 | `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs; falls back to `GH_PAT` |
 
 **Token requirements**
 
-- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass `GH_PAT`. Without it the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
+- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass the app secrets (or the deprecated `GH_PAT`). Without them the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
 - The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
 - The secret names match `issues.yml`, so `secrets: inherit` works.
 - The actions are referenced at `@v1`, the moving major tag (see "Pinning to a Specific Version").

@@ -5,13 +5,16 @@
 #    sets that project Status (empty = off).
 # 3. project/needs syncs the project field Needs of the issues labelled in this run, with parents and dependents
 #    (input project-url; empty = off; skipped on a dry run, which prints what it would sync).
-# Tokens: GH_PAT is a classic PAT (scope repo; a PR created with the GITHUB_TOKEN triggers no pull_request workflows, so
-# required checks would never run). Without it the GITHUB_TOKEN is used with a warning, or the job fails when require-pat is true.
+# Tokens: the release PR is created with an installation token of the GitHub App GravionLabs CI (secrets CI_APP_ID and
+# CI_APP_PRIVATE_KEY, minted with actions/create-github-app-token): a PR created with the GITHUB_TOKEN triggers no pull_request
+# workflows, so required checks would never run, and the app has its own rate limit. GH_PAT (classic PAT, scope repo) is the
+# deprecated fallback. Neither: the GITHUB_TOKEN with a warning, or a failure when require-pat is true.
 # PROJECT_TOKEN is a classic PAT with the scope project (plus repo for a private repository) for the project Status and Needs
-# calls; it falls back to GH_PAT. Secret names match issues.yml, so `secrets: inherit` works.
+# calls (a GitHub App cannot access a user-owned project; the calls use the REST projectsV2 endpoints); it falls back to GH_PAT.
+# Secret names match issues.yml, so `secrets: inherit` works.
 # The actions are referenced at @v1, the moving major tag the release job of ci.yml moves to every release.
 # The Needs sync covers only the issues newly labelled in this run (decision): a failed sync is not retried by a rerun,
-# because those issues are then already labelled; the hourly full sync (project-needs.yml style) catches up.
+# because those issues are then already labelled; the central nightly sync (project-needs.yml, mode project) catches up.
 # Never checks out caller code; event data reaches scripts through env only.
 name: Release branch
 
@@ -44,7 +47,7 @@ on:
         required: false
         default: ''
       require-pat:
-        description: 'Fail instead of warning when the secret GH_PAT is missing'
+        description: 'Fail instead of warning when neither the CI app secrets nor GH_PAT are set'
         type: boolean
         required: false
         default: false
@@ -54,8 +57,14 @@ on:
         required: false
         default: false
     secrets:
+      CI_APP_ID:
+        description: 'ID of the GitHub App GravionLabs CI; with CI_APP_PRIVATE_KEY the release PR is created with an installation token, so its required checks run'
+        required: false
+      CI_APP_PRIVATE_KEY:
+        description: 'Private key (PEM) of the GitHub App GravionLabs CI'
+        required: false
       GH_PAT:
-        description: 'Classic PAT with the scope repo for the release PR, so its required checks run'
+        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY: classic PAT with the scope repo for the release PR, used when no app is configured'
         required: false
       PROJECT_TOKEN:
         description: 'Classic PAT with the scope project (plus repo for a private repository) for project Status and Needs; falls back to GH_PAT'
@@ -76,27 +85,43 @@ jobs:
       group: release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}
       cancel-in-progress: false
     steps:
-      - name: Check GH_PAT
+      - name: Check CI app
+        id: app
         shell: bash
         env:
-          HAS_TOKEN: ${{ secrets.GH_PAT != '' }}
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+
+      - name: Create CI app token
+        id: app-token
+        if: steps.app.outputs.present == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+      - name: Check release PR token
+        shell: bash
+        env:
+          HAS_APP: ${{ steps.app.outputs.present }}
+          HAS_PAT: ${{ secrets.GH_PAT != '' }}
           REQUIRE_PAT: ${{ inputs.require-pat }}
         run: |
-          if [ "$HAS_TOKEN" = "true" ]; then
+          if [ "$HAS_APP" = "true" ] || [ "$HAS_PAT" = "true" ]; then
             exit 0
           fi
           if [ "$REQUIRE_PAT" = "true" ]; then
-            echo "::error::Secret GH_PAT is not set (pass secrets: inherit or GH_PAT) and require-pat is true."
+            echo "::error::Neither the secrets CI_APP_ID/CI_APP_PRIVATE_KEY nor GH_PAT are set (pass secrets: inherit or the secrets) and require-pat is true."
             exit 1
           fi
-          echo "::warning::Secret GH_PAT is not set; a release PR created with the GITHUB_TOKEN triggers no pull_request workflows, so its required checks never run."
+          echo "::warning::No GitHub App (CI_APP_ID/CI_APP_PRIVATE_KEY) and no GH_PAT; a release PR created with the GITHUB_TOKEN triggers no pull_request workflows, so its required checks never run."
 
       - name: Release PR
         uses: GravionLabs/ci/versioning/release-pr@v1
         with:
           release-branch: ${{ inputs.release-branch }}
           base: ${{ inputs.base }}
-          token: ${{ secrets.GH_PAT || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
           dry-run: ${{ inputs.dry-run }}
 
       - name: Mark merged issues
