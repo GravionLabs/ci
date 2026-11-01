@@ -6,6 +6,47 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.4.1] — 2026-11-01
+
+### Bug Fixes
+- **versioning**: Push the changelog commit of the release job with GH_PAT
+
+
+## [1.4.0] — 2026-11-01
+
+### Bug Fixes
+- **pr-checks**: Align the title check with the bump rules, exempt only same-repo branches
+
+
+### Features
+- **versioning**: Bump the version from Conventional Commits by default (#107) (#110)
+- **pr-checks**: Require a Conventional Commit PR title (#108) (#111)
+
+
+## [1.3.0] — 2026-10-31
+
+### Features
+- Reusable pr-checks.yml with the readiness job and the PR checks aggregate (#93) (#102)
+- Set-RepoRulesets.ps1 requires PR checks in every repository (#96) (#103)
+- ADR job in pr-checks.yml (#94) (#104)
+
+
+## [1.2.0] — 2026-10-31
+
+### Features
+- ⚠️ **Breaking**: Node.js 26 is the default of the Node actions and workflows (#99)
+
+
+## [1.1.2] — 2026-10-31
+
+### Bug Fixes
+- Push the changelog commit with GH_PAT
+
+
+### Documentation
+- Update CHANGELOG.md for v1.1.1 [skip ci]
+
+
 ## [1.1.1] — 2026-10-29
 
 ### Bug Fixes

@@ -1278,6 +1278,7 @@ jobs:
 |-------------------|------------------------------------|----------|
 | `feed-token`      | Token for the private restore feed | No       |
 | `publish-api-key` | Token for the publish feed         | **Yes**  |
+| `GH_PAT` | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
 
 > The `publish` job uses `environment: nuget-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1331,6 +1332,7 @@ jobs:
 | Name                 | Description                                             | Required |
 |----------------------|---------------------------------------------------------|----------|
 | `publish-api-key`    | API token for private feeds; omit for PyPI Trusted Publishing | No |
+| `GH_PAT` | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
 
 > The `publish` job uses `environment: pypi-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1388,6 +1390,7 @@ jobs:
 |---------------------|----------|------------------------------------------------------|
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
+| `GH_PAT`            | No       | Admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
 
 ### `issues.yml`
 

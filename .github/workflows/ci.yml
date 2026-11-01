@@ -252,3 +252,5 @@ jobs:
           changelog-file: CHANGELOG.md
           cliff-config: cliff.toml
           update-changelog: 'true'
+          # main requires a pull request; only an admin's token (GH_PAT) may push the changelog commit.
+          token: ${{ secrets.GH_PAT || github.token }}

@@ -123,6 +123,9 @@ on:
       publish-api-key:
         description: 'API key or PAT for the target publish feed'
         required: true
+      GH_PAT:
+        description: 'PAT of an admin of the repository: gh-release pushes the changelog commit straight to the default branch, which a ruleset usually lets only admins update without a pull request'
+        required: false
 
 jobs:
   determine-version:
@@ -219,3 +222,5 @@ jobs:
           changelog-file: ${{ inputs.changelog-file }}
           cliff-config: ${{ inputs.cliff-config }}
           update-changelog: ${{ inputs.update-changelog }}
+          # The default branch usually requires a pull request; only an admin's token may push the changelog commit.
+          token: ${{ secrets.GH_PAT || github.token }}
