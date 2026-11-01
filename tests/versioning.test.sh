@@ -297,6 +297,20 @@ out=$(GITHUB_SHA=abc DRY_RUN=true bash "$CLOSE" 2>&1); log=$(cat "$GH_LOG")
 has "prints the removal" "would remove merged from #11" "$out"
 hasnt "no delete" "-X DELETE" "$log"
 
+echo "# release-pr: recreated branch without commits ahead opens no PR"
+RELEASE_PR="$ROOT/versioning/release-pr/release-pr.sh"
+setup; fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+fix "GET_repos_o_r_compare_main...release_1.5" '{"ahead_by":0,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},"commits":[]}'
+out=$(RELEASE_BRANCH=release/1.5 bash "$RELEASE_PR" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code"
+has "says nothing to do" "no commits ahead" "$out"
+hasnt "no PR created" "pr create" "$log"
+setup
+out=$(RELEASE_BRANCH=release/next bash "$RELEASE_PR" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "release/next: exit 0" || fail "exit $code"
+has "release/next is not a release/<x.y> branch" "nothing to do" "$out"
+[ -z "$log" ] && ok "release/next: no gh call" || fail "gh called: $log"
+
 echo
 echo "$((total - failures))/$total passed"
 [ "$failures" = 0 ]

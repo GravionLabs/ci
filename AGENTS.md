@@ -11,7 +11,7 @@ versioning/
   determine-version/    — GitVersion-based semantic versioning (outputs: semver, nuget-version, python-version, docker-version, major, minor, patch, …)
   create-version-tag/   — Creates and pushes a git tag from a version string
   move-major-tag/       — Moves the major tag (v1) to the commit of a release tag (v1.4.0) and force-pushes it; skips pre-releases
-  gh-release/           — Creates a GitHub Release with optional changelog extraction
+  gh-release/           — Creates a GitHub Release with optional changelog extraction; input `recreate-branch` (e.g. `release/next`) pushes that branch from the released commit when it is missing, never moving an existing one (test `tests/recreate-branch.test.sh`)
   release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)

@@ -97,6 +97,11 @@ on:
         type: boolean
         required: false
         default: false
+      recreate-branch:
+        description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
+        type: string
+        required: false
+        default: ''
       changelog-file:
         description: 'Path to a CHANGELOG.md file to use for release notes'
         type: string
@@ -219,3 +224,4 @@ jobs:
           tag-prefix: ${{ inputs.release-tag-prefix }}
           changelog-file: ${{ inputs.changelog-file }}
           cliff-config: ${{ inputs.cliff-config }}
+          recreate-branch: ${{ inputs.recreate-branch }}

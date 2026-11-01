@@ -26,6 +26,7 @@ docker/
 versioning/
 ├── determine-version/      # Determine SemVer from git history (GitVersion)
 ├── create-version-tag/     # Create and push a git tag
+├── gh-release/             # Create the GitHub Release; optionally recreate release/next afterwards
 ├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
 └── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
 issues/
@@ -488,6 +489,37 @@ steps:
 | `version`    | Version to tag (e.g. the semver output of determine-version, e.g. 1.2.3-alpha.4) | **Yes**  | —       |
 | `tag-prefix` | Prefix to prepend to the version when creating the tag (e.g. "v" → v1.2.3)       | No       | v       |
 <!-- /action-docs:inputs -->
+
+### `versioning/gh-release`
+
+Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELOG.md section or GitHub), closes the issues delivered by a merged release PR (`close-issues`) and optionally recreates the rolling release branch.
+
+**`recreate-branch`** (default empty = off): set it to `release/next` and, after the release, the branch is pushed from the released commit when it does not exist on origin. An existing branch is never moved or force-pushed. **Callers whose repository has `delete_branch_on_merge` should set it**: merging the release PR then deletes `release/next`, and without this input the next cycle starts only after a manual `github-release cut`. The recreated branch has no commits ahead of the default branch, so `versioning/release-pr` opens no (empty) release PR for it; GitVersion gives it the next minor from the caller's branch config. The step needs only `contents: write`. A push made with the default `GITHUB_TOKEN` triggers no workflows: pass a PAT as `token` (it is also what the changelog commit needs on a protected default branch) when the new branch must trigger them, e.g. `release-branch.yml`. The `*-package.yml` workflows pass the input through (`recreate-branch`).
+
+```yaml
+  - uses: GravionLabs/ci/versioning/gh-release@v1
+    with:
+      version: ${{ needs.determine-version.outputs.semver }}
+      recreate-branch: release/next
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/gh-release/action.yml" -->
+| Name                     | Description                                                                                                                                                                                                                                                                                                                                                                           | Required | Default             |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------|
+| `version`                | Version to release (e.g. 1.2.3 or 1.2.3-alpha.4)                                                                                                                                                                                                                                                                                                                                      | **Yes**  | —                   |
+| `tag-prefix`             | Prefix for the git tag (e.g. "v" → v1.2.3)                                                                                                                                                                                                                                                                                                                                            | No       | v                   |
+| `changelog-file`         | Path to a CHANGELOG.md file to extract release notes from                                                                                                                                                                                                                                                                                                                             | No       | CHANGELOG.md        |
+| `generate-release-notes` | Fall back to GitHub auto-generated release notes if no changelog section is found                                                                                                                                                                                                                                                                                                     | No       | true                |
+| `cliff-config`           | Path to a cliff.toml configuration file for git-cliff. When set, git-cliff generates release notes from Conventional Commits instead of extracting from CHANGELOG.md. Requires git history (fetch-depth: 0).                                                                                                                                                                          | No       |                     |
+| `update-changelog`       | When cliff-config is set, regenerate CHANGELOG.md from the full git history and commit it (with [skip ci]) before creating the release tag.                                                                                                                                                                                                                                           | No       | false               |
+| `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR (versioning/close-release-issues). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                                                                                         | No       | true                |
+| `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
+| `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/recreate-branch.test.sh` (local bare origin).
 
 ### `versioning/move-major-tag`
 
@@ -1387,6 +1419,7 @@ jobs:
 | `force-publish`         | No       | `false`                    | Publish regardless of branch                             |
 | `changelog-file`        | No       | `CHANGELOG.md`             | Path to changelog for release notes                      |
 | `release-tag-prefix`    | No       | `v`                        | Git tag prefix (e.g. `v` → `v1.2.3`)                    |
+| `recreate-branch`       | No       | `""`                       | Branch (e.g. `release/next`) recreated from the released commit when missing; an existing branch is never moved |
 
 | Secret              | Required | Description                                          |
 |---------------------|----------|------------------------------------------------------|

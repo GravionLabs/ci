@@ -71,6 +71,11 @@ on:
         type: boolean
         required: false
         default: false
+      recreate-branch:
+        description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
+        type: string
+        required: false
+        default: ''
       release-tag-prefix:
         description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
         type: string
@@ -162,6 +167,7 @@ jobs:
           tag-prefix: ${{ inputs.release-tag-prefix }}
           changelog-file: ${{ inputs.changelog-file }}
           cliff-config: ${{ inputs.cliff-config }}
+          recreate-branch: ${{ inputs.recreate-branch }}
           update-changelog: ${{ inputs.update-changelog }}
           # The default branch usually requires a pull request; only an admin's token may push the changelog commit.
           token: ${{ secrets.GH_PAT || github.token }}
