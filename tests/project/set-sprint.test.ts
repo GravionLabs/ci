@@ -75,6 +75,121 @@ describe.skipIf(!hasPwsh)('Set-Sprint.ps1 -StateFile', () => {
     );
     return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, err: r.stderr };
   };
+  const runRaw = (state: object, targets: string[]) => {
+    const file = path.join(dir, 'raw.json');
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ projectId: 'P', sprintField: { id: 'F', iterations: ITERATIONS }, ...state })
+    );
+    const r = spawnSync(
+      'pwsh',
+      ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-Today', '2026-10-22', '-Owner', 'me', '-Number', '5', '-Json', '-Issue', targets.join(',')],
+      { cwd: dir, encoding: 'utf8' }
+    );
+    return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, err: r.stderr + r.stdout };
+  };
+  const node = (num: number) => ({
+    id: `N-${num}`,
+    content: { __typename: 'Issue', number: num, state: 'OPEN', repository: { nameWithOwner: 'o/a' } },
+    status: { name: 'Todo' },
+    level: { name: 'PBI' },
+    sprint: null,
+  });
+  const shortPages = (nodes: object[]) => [
+    { totalCount: 3, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes },
+    { totalCount: 3, pageInfo: { hasNextPage: false }, nodes: [] },
+  ];
+  const sideNode = (id: string, owner: string) => ({
+    id,
+    project: { number: 5, owner: { login: owner } },
+    status: { name: 'Todo' },
+    level: { name: 'PBI' },
+    sprint: null,
+  });
+
+  // pwsh wraps error text, prefixes continuation lines with '|' and colors it
+  const plain = (t: string) =>
+    t
+      .replace(/\x1b\[[0-9;]*m/g, '')
+      .replace(/^\s*\|/gm, '')
+      .replace(/\s+/g, ' ');
+
+  describe('item walk', () => {
+    it('fails on a short walk and says the target was found via the issue side', () => {
+      const r = runRaw(
+        {
+          itemPages: shortPages([node(1)]),
+          issueSide: [{ id: 'N-9', repo: 'o/a', number: 9, state: 'OPEN', level: 'PBI', status: 'Todo' }],
+        },
+        ['o/a#9']
+      );
+      expect(r.status).not.toBe(0);
+      expect(plain(r.err)).toContain('ended early: read 1 of 3');
+      expect(plain(r.err)).toContain('targets found, limits need a complete walk');
+    });
+
+    it('fails on a short walk and says the target was not found', () => {
+      const r = runRaw({ itemPages: shortPages([node(1)]) }, ['o/a#9']);
+      expect(r.status).not.toBe(0);
+      expect(plain(r.err)).toContain('targets not found (o/a#9)');
+    });
+
+    it('retries a short page and goes on when the retry delivers the rest', () => {
+      const r = runRaw(
+        {
+          itemPages: [
+            { totalCount: 2, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node(1)] },
+            { totalCount: 2, pageInfo: { hasNextPage: false }, nodes: [] },
+            { totalCount: 2, pageInfo: { hasNextPage: false }, nodes: [node(2)] },
+          ],
+        },
+        ['o/a#2']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign).toHaveLength(1);
+    });
+
+    it('finds a target from the issue side although the walk is complete without it', () => {
+      const r = runRaw(
+        {
+          itemPages: [{ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [node(1)] }],
+          issueSide: [{ id: 'N-9', repo: 'o/a', number: 9, state: 'OPEN', level: 'PBI', status: 'Todo' }],
+        },
+        ['o/a#9']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign[0]).toMatchObject({ item: 'N-9', issue: 'o/a#9' });
+    });
+
+    it('ignores a same-numbered project of another owner on the issue side', () => {
+      const r = runRaw(
+        {
+          itemPages: [{ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [{ ...node(7), id: 'WALKED' }] }],
+          issueNodes: [
+            { repo: 'o/a', number: 7, state: 'OPEN', projectItems: [sideNode('FOREIGN', 'other')] },
+          ],
+        },
+        ['o/a#7']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign[0].item).toBe('WALKED');
+    });
+
+    it('picks the project of the owner (case-insensitive) on the issue side', () => {
+      const r = runRaw(
+        {
+          itemPages: [{ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [node(1)] }],
+          issueNodes: [
+            { repo: 'o/a', number: 7, state: 'OPEN', projectItems: [sideNode('FOREIGN', 'other'), sideNode('MINE', 'ME')] },
+          ],
+        },
+        ['o/a#7']
+      );
+      expect(r.status, r.err).toBe(0);
+      expect(r.out.assign[0].item).toBe('MINE');
+    });
+  });
+
   const types = (r: ReturnType<typeof run>) => r.out.violations.map((v: any) => v.type);
 
   it('assigns to the current ISO week by default and reports the iteration id', () => {
