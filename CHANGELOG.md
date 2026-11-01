@@ -6,6 +6,21 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.6.0] — 2026-11-01
+
+### Documentation
+- Update CHANGELOG.md for v1.5.1 [skip ci]
+
+
+### Features
+- **ci**: Run CI automation as a GitHub App instead of the user PAT (#127) (#135)
+- **project/needs**: One nightly sync of every project item from ci (#117) (#136)
+
+
+### Performance
+- **project/needs**: Cut the GraphQL cost of a project read (#132) (#133)
+
+
 ## [1.5.1] — 2026-11-01
 
 ### Bug Fixes
