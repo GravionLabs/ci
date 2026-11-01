@@ -4,9 +4,9 @@
 #   PROJECT_URL   https://github.com/(users|orgs)/<owner>/projects/<n> (required)
 #   GH_REPO       owner/repo whose items are synced (required)
 #   SYNC_SCRIPT   path of Sync-ProjectNeeds.ps1 (required)
-#   MODE          event (default) | full
+#   MODE          event (default) | full (every item of GH_REPO) | project (every item of the project, any repository)
 #   ISSUES        issue numbers (space, comma or newline separated); with MODE=event each is synced with parents and
-#                 dependents, independent of the event (MODE=full wins)
+#                 dependents, independent of the event (MODE=full and MODE=project win)
 #   EVENT_NAME, EVENT_ACTION, ISSUE_NUMBER, HEAD_REF, LABEL_NAME   event data
 # Exit code: the one of Sync-ProjectNeeds.ps1; 1 on invalid input; 0 when the event has nothing to sync.
 set -euo pipefail
@@ -30,8 +30,8 @@ if [[ ! "${GH_REPO:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "::error::Invalid GH_REPO '${GH_REPO:-}' (expected owner/repo)"
   exit 1
 fi
-case "$MODE" in event | full) ;; *)
-  echo "::error::Invalid mode '$MODE' (expected event or full)"
+case "$MODE" in event | full | project) ;; *)
+  echo "::error::Invalid mode '$MODE' (expected event, full or project)"
   exit 1
   ;;
 esac
@@ -40,7 +40,9 @@ if [ ! -f "${SYNC_SCRIPT:-}" ]; then
   exit 1
 fi
 
-args=(-Owner "$owner" -Number "$number" -Repo "$GH_REPO")
+args=(-Owner "$owner" -Number "$number")
+# project mode reads every item of the project: no -Repo, so no q=repo: filter; each item uses its own repository
+[ "$MODE" = project ] || args+=(-Repo "$GH_REPO")
 
 if [ "$MODE" = event ] && [ -n "${ISSUES//[[:space:],]/}" ]; then
   list=()
@@ -62,8 +64,8 @@ if [ "$MODE" = event ] && [ -n "${ISSUES//[[:space:],]/}" ]; then
     pwsh -NoProfile -File "$SYNC_SCRIPT" "${args[@]}" -Issue "$n" -IncludeParents -IncludeDependents || { c=$?; [ "$rc" -ne 0 ] || rc=$c; }
   done
   exit "$rc"
-elif [ "$MODE" = full ] || [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
-  : # full sync of the repository's items
+elif [ "$MODE" = full ] || [ "$MODE" = project ] || [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+  : # full sync of the repository's items (project: of the whole project)
 elif [ "$EVENT_NAME" = issues ]; then
   if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
     echo "::error::Invalid issue number '$ISSUE_NUMBER' for an issues event"

@@ -71,7 +71,7 @@ needs_if=$(q "$NEEDS.if")
 case "$needs_if" in "inputs.needs && inputs.project-url != '' &&"*) ok "needs off unless inputs.needs and project-url" ;; *) fail "needs off unless inputs.needs and project-url" ;; esac
 eq "needs issue types" 'closed,labeled,reopened,unlabeled' "$(events issues "$needs_if")"
 eq "needs PR types" 'closed,opened,ready_for_review' "$(events pull_request_target "$needs_if")"
-for branch in "inputs.mode == 'full'" "github.event_name == 'schedule'" "github.event_name == 'workflow_dispatch'"; do
+for branch in "inputs.mode == 'full'" "inputs.mode == 'project'" "github.event_name == 'schedule'" "github.event_name == 'workflow_dispatch'"; do
   case "$needs_if" in *"$branch ||"*) ok "needs runs on $branch" ;; *) fail "needs runs on $branch" ;; esac
 done
 eq "needs permissions empty" '{}' "$(qj "$NEEDS.permissions")"
@@ -99,14 +99,14 @@ eq "caller enables needs" true "$(q '.jobs.issues.with.needs' "$CALLER")"
 eq "caller keeps event mode" null "$(q '.jobs.issues.with.mode' "$CALLER")"
 
 # --- scheduled caller ---
-eq "scheduled caller runs hourly" '0 * * * *' "$(q '.on.schedule[0].cron' "$SCHED")"
+eq "scheduled caller runs nightly, off the full hour" '17 3 * * *' "$(q '.on.schedule[0].cron' "$SCHED")"
 eq "scheduled caller has one schedule" 1 "$(q '.on.schedule | length' "$SCHED")"
 eq "scheduled caller on workflow_dispatch" true "$(q '.on | has("workflow_dispatch")' "$SCHED")"
 eq "scheduled caller triggers" 'schedule,workflow_dispatch' "$(q '.on | keys | sort | join(",")' "$SCHED")"
 eq "scheduled caller calls issues.yml" './.github/workflows/issues.yml' "$(q '.jobs.needs.uses' "$SCHED")"
 eq "scheduled caller top-level permissions empty" '{}' "$(qj '.permissions' "$SCHED")"
 eq "scheduled caller job grants issues: write only" '{"issues":"write"}' "$(qj '.jobs.needs.permissions' "$SCHED")"
-eq "scheduled caller with" '{"project-url":"https://github.com/users/GravionLabs/projects/17","needs":true,"mode":"full"}' "$(qj '.jobs.needs.with' "$SCHED")"
+eq "scheduled caller with" '{"project-url":"https://github.com/users/GravionLabs/projects/17","needs":true,"mode":"project"}' "$(qj '.jobs.needs.with' "$SCHED")"
 eq "scheduled caller passes only PROJECT_TOKEN" '{"PROJECT_TOKEN":"${{ secrets.PROJECT_TOKEN }}"}' "$(qj '.jobs.needs.secrets' "$SCHED")"
 
 # --- token check step: run its script ---

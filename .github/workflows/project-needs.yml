@@ -1,5 +1,5 @@
-# Hourly full sync of the project field Needs for every item of this repository (and on demand),
-# through the needs job of the reusable workflow issues.yml in mode full. Event-driven syncs run from issue-events.yml.
+# Central nightly sync of the project field Needs for every item of the project, across all repositories (and on demand),
+# through the needs job of the reusable workflow issues.yml in mode project; other repositories need no such workflow. Event-driven syncs run from issue-events.yml.
 # Token: PROJECT_TOKEN (classic PAT, scope `project`; a GitHub App cannot write to a user-owned project).
 # The job grants issues: write only because GitHub validates the permissions of every job of issues.yml at startup
 # (conventions requests it); on schedule/workflow_dispatch only the needs job runs, and it uses permissions: {}.
@@ -7,7 +7,7 @@ name: Project needs
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -20,6 +20,6 @@ jobs:
     with:
       project-url: https://github.com/users/GravionLabs/projects/17
       needs: true
-      mode: full
+      mode: project
     secrets:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}

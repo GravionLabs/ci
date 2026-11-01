@@ -88,6 +88,21 @@ run_needs EVENT_NAME=push
 has "unknown event: notice" "::notice::Event 'push' is not handled" "$out"
 eq "unknown event: exit 0" 0 "$code"
 
+echo "# project mode"
+PROJ="pwsh -NoProfile -File $SCRIPT -Owner GravionLabs -Number 17"
+run_needs MODE=project EVENT_NAME=workflow_dispatch
+eq "mode project: no -Repo (items of every repository)" "$PROJ" "$out"
+run_needs MODE=project EVENT_NAME=issues EVENT_ACTION=opened ISSUE_NUMBER=63
+eq "mode project wins over the event" "$PROJ" "$out"
+run_needs MODE=project EVENT_NAME=push ISSUES=12
+eq "mode project wins over issues" "$PROJ" "$out"
+run_needs MODE=project GH_REPO=other/repo EVENT_NAME=schedule
+eq "mode project: calling repository is not used" "$PROJ" "$out"
+run_needs MODE=bogus EVENT_NAME=schedule
+has "invalid mode: error names project" "expected event, full or project" "$out"
+eq "invalid mode: exit 1" 1 "$code"
+eq "action mode input documents project" 1 "$(q '.inputs.mode.description' | grep -c 'project:')"
+
 echo "# issues list"
 run_needs EVENT_NAME=push ISSUES='12 34'
 eq "push with issues: one call per issue" "$BASE -Issue 12 -IncludeParents -IncludeDependents
