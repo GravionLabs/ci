@@ -544,6 +544,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 
 - **`readiness`** (input `readiness`): runs [`pr-checks/readiness`](#pr-checksreadiness). The PR body must close at least one issue (`Closes|Fixes|Resolves #n`; PRs from `release/**` are exempt, input `require-issue`), and each closed issue must have none of the `not-ready-labels` and no open "blocked by" issue. The job summary lists every problem.
 - **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
+- **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored). Release PRs from `release/**` and merge-back PRs (head is the default branch) are exempt. Needs `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
 | Input | Default | Description |
@@ -551,6 +552,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 | `readiness` | `true` | Run the readiness job |
 | `adr` | `true` | Run the adr job |
 | `spec` | `true` | Run the spec job |
+| `title` | `true` | Run the title job |
 | `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
 | `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
 
@@ -578,6 +580,20 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
 ```
 
+A repository that wants only the title check turns the others off:
+
+```yaml
+jobs:
+  pr-checks:
+    permissions:
+      pull-requests: read
+    uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main
+    with:
+      readiness: false
+      adr: false
+      spec: false
+```
+
 > The check name that reaches the ruleset is `<caller job id or name> / PR checks`; keep the caller job id `pr-checks` in every repository so the name is the same everywhere.
 
 Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh` (needs `yq` and `jq`); the `test-pr-checks` job of `ci.yml` runs both and runs the action against the pull request.
@@ -592,6 +608,16 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 | `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
 | `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
 | `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/title`
+
+Fails when the pull request title is not a Conventional Commit, contradicts the commits (breaking commit without `!`, `feat:` commit under another type) or, for a hotfix PR into the default branch, when a commit is not a Conventional Commit. Release and merge-back PRs are exempt. Needs `pull-requests: read`.
+
+<!-- action-docs:inputs source="pr-checks/title/action.yml" -->
+| Name    | Description                                     | Required | Default             |
+|---------|-------------------------------------------------|----------|---------------------|
+| `token` | Token with pull-requests read access            | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 ### `pr-checks/adr`

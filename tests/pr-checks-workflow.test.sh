@@ -18,8 +18,8 @@ command -v yq >/dev/null || { echo "yq is required"; exit 1; }
 command -v jq >/dev/null || { echo "jq is required"; exit 1; }
 
 # --- inputs ---
-eq "inputs" 'adr,not-ready-labels,readiness,require-issue,spec' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
-for name in readiness adr spec require-issue; do
+eq "inputs" 'adr,not-ready-labels,readiness,require-issue,spec,title' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
+for name in readiness adr spec title require-issue; do
   eq "input $name is a boolean defaulting to true" 'boolean true' "$(q ".on.workflow_call.inputs[\"$name\"] | .type + \" \" + (.default | tostring)")"
 done
 eq "not-ready-labels default" 'needs-refinement,needs-decision' "$(q '.on.workflow_call.inputs["not-ready-labels"].default')"
@@ -29,6 +29,7 @@ eq "no secrets" 'null' "$(q '.on.workflow_call.secrets')"
 eq "top-level permissions empty" '{}' "$(qj '.permissions')"
 eq "readiness permissions" '{"issues":"read","pull-requests":"read"}' "$(qj '.jobs.readiness.permissions')"
 eq "adr permissions" '{"contents":"read","issues":"read","pull-requests":"read"}' "$(qj '.jobs.adr.permissions')"
+eq "title permissions" '{"pull-requests":"read"}' "$(qj '.jobs.title.permissions')"
 eq "result permissions empty" '{}' "$(qj '.jobs.result.permissions')"
 eq "every job sets permissions" 0 "$(q '[.jobs[] | select(has("permissions") | not)] | length')"
 
@@ -44,6 +45,9 @@ needs=$(q '.jobs | to_entries | map(select(.key != "result") | .key) | sort | jo
 eq "result needs every other job" "$needs" "$(q '.jobs.result.needs | sort | join(",")')"
 eq "readiness is skipped by its input" 'inputs.readiness' "$(q '.jobs.readiness.if')"
 eq "adr is skipped by its input" 'inputs.adr' "$(q '.jobs.adr.if')"
+
+eq "title is skipped by its input" 'inputs.title' "$(q '.jobs.title.if')"
+eq "title job uses the title action" 'GravionLabs/ci/pr-checks/title@main' "$(q '.jobs.title.steps[0].uses')"
 
 script=$(q '.jobs.result.steps[0].run')
 aggregate() { NEEDS="$1" bash -c "$script" >/dev/null 2>&1; echo $?; }
