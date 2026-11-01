@@ -6,6 +6,25 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.5.0] — 2026-11-01
+
+### Bug Fixes
+- **scripts**: Set-RepoRulesets.ps1 recognises the local pr-checks caller (#124) (#125)
+- **versioning**: Release-pr accepts release/next (#55) (#126)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.4.1 [skip ci]
+
+
+### Features
+- **versioning**: Callers follow the moving major tag v1 (#115) (#116)
+
+
+### Reverts
+- Chore: release minor
+
+
 ## [1.4.1] — 2026-11-01
 
 ### Bug Fixes
