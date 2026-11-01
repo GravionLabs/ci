@@ -133,21 +133,13 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
   describe('item walk', () => {
     const node = (num: number) => ({
       id: `N-${num}`,
-      content: {
-        __typename: 'Issue',
-        number: num,
-        title: `t${num}`,
-        state: 'OPEN',
-      },
+      content: { __typename: 'Issue', number: num, title: `t${num}`, state: 'OPEN' },
       status: { name: 'Todo' },
       level: null,
     });
     const sync = (itemPages: unknown[]) => {
       const file = path.join(dir, 'walk.json');
-      fs.writeFileSync(
-        file,
-        JSON.stringify({ projectId: 'P', ownerType: 'User', ...state(), itemPages })
-      );
+      fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state(), itemPages }));
       return spawnSync(
         'pwsh',
         ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-DryRun', '-Sync', '-Json'],
@@ -158,19 +150,12 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
     it('reports the counts of a complete walk', () => {
       const r = sync([{ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [node(1)] }]);
       expect(r.status, r.stderr).toBe(0);
-      expect(JSON.parse(r.stdout)).toMatchObject({
-        itemsRead: 1,
-        itemsTotal: 1,
-      });
+      expect(JSON.parse(r.stdout)).toMatchObject({ itemsRead: 1, itemsTotal: 1 });
     });
 
     it('refuses to report No changes on a short page (nodes empty, hasNextPage false, totalCount higher)', () => {
       const r = sync([
-        {
-          totalCount: 3,
-          pageInfo: { hasNextPage: true, endCursor: 'c' },
-          nodes: [node(1)],
-        },
+        { totalCount: 3, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node(1)] },
         { totalCount: 3, pageInfo: { hasNextPage: false }, nodes: [] },
       ]);
       expect(r.status).toBe(1);
@@ -351,10 +336,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       color: 'FBCA04',
       description: 'Waiting for an owner review',
     };
-    const repo = (nameWithOwner: string, labels: object[] = []) => ({
-      nameWithOwner,
-      labels,
-    });
+    const repo = (nameWithOwner: string, labels: object[] = []) => ({ nameWithOwner, labels });
     const labels = (repositories: object[] | undefined, ...flags: string[]) =>
       ofType(plan({ ...state(), repositories }, ...flags), 'EnsureLabel');
 
@@ -362,11 +344,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       const a = labels([repo('o/a'), repo('o/b')], '-Sync');
       expect(a).toEqual(
         ['o/a', 'o/b'].flatMap((r) =>
-          [PLANNED, NEEDS_REVIEW].map((l) => ({
-            type: 'EnsureLabel',
-            repo: r,
-            ...l,
-          }))
+          [PLANNED, NEEDS_REVIEW].map((l) => ({ type: 'EnsureLabel', repo: r, ...l }))
         )
       );
     });
@@ -409,10 +387,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
         filter: '-label:epic,feature -status:Done',
         verticalGroupBy: 'Status',
       });
-      expect(creates[1]).toMatchObject({
-        layout: 'table',
-        groupBy: 'Parent issue',
-      });
+      expect(creates[1]).toMatchObject({ layout: 'table', groupBy: 'Parent issue' });
     });
 
     it('creates the Needs views and groups Release next by Milestone', () => {
@@ -487,9 +462,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
 
     it('plans the missing standard view before any deletion (it counts as existing afterwards)', () => {
       const guard = plan(
-        state({
-          views: [...ALL_VIEWS.slice(0, 4), ...ALL_VIEWS.slice(5), ...defaults],
-        }),
+        state({ views: [...ALL_VIEWS.slice(0, 4), ...ALL_VIEWS.slice(5), ...defaults] }),
         '-RemoveDefaultViews'
       );
       expect(guard.findIndex((a) => a.type === 'CreateView')).toBeLessThan(
@@ -542,27 +515,14 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
   });
 
   describe('-Sprints', () => {
-    const SPRINT = {
-      id: 'F-Sprint',
-      name: 'Sprint',
-      databaseId: 99,
-      dataType: 'ITERATION',
-    };
+    const SPRINT = { id: 'F-Sprint', name: 'Sprint', databaseId: 99, dataType: 'ITERATION' };
     const sprints = (s: unknown) => plan(s, '-Sprints', '-Today', '2026-10-22');
 
     it('creates 12 weekly iterations titled by ISO week, starting on this Monday', () => {
       const [a] = ofType(sprints(state()), 'CreateIterationField');
-      expect(a).toMatchObject({
-        name: 'Sprint',
-        startDate: '2026-10-19',
-        duration: 7,
-      });
+      expect(a).toMatchObject({ name: 'Sprint', startDate: '2026-10-19', duration: 7 });
       expect(a.iterations).toHaveLength(12);
-      expect(a.iterations[0]).toEqual({
-        title: '2026-W43',
-        startDate: '2026-10-19',
-        duration: 7,
-      });
+      expect(a.iterations[0]).toEqual({ title: '2026-W43', startDate: '2026-10-19', duration: 7 });
       expect(a.iterations[10].title).toBe('2026-W53');
       expect(a.iterations[11].title).toBe('2027-W01');
     });
@@ -618,11 +578,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       ];
       expect(
         sprints(
-          state({
-            status: [opt('Todo'), opt('In release'), opt('Done')],
-            fields: [SPRINT],
-            views,
-          })
+          state({ status: [opt('Todo'), opt('In release'), opt('Done')], fields: [SPRINT], views })
         )
       ).toEqual([]);
     });
@@ -637,11 +593,7 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
   it('is idempotent: a standard state yields no actions', () => {
     const items = [
       item(1, { labels: ['pbi'], status: 'Todo', level: 'PBI' }),
-      item(2, {
-        labels: ['merged', 'task'],
-        status: 'In release',
-        level: 'Task',
-      }),
+      item(2, { labels: ['merged', 'task'], status: 'In release', level: 'Task' }),
       item(3, { state: 'CLOSED', status: 'Done', level: 'Bug' }),
     ];
     const status = [opt('Todo'), opt('In release'), opt('Done')];
@@ -708,9 +660,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
       const { r, gh } = sync(false);
       expect(r.status, r.stderr + r.stdout).toBe(0);
       expect(r.stdout).not.toContain('Needs sync failed');
-      expect(gh.calls().some((c) => c.args.some((a) => a.includes('/projectsV2/1/items')))).toBe(
-        true
-      );
+      expect(gh.calls().some((c) => c.args.some((a) => a.includes('/projectsV2/1/items')))).toBe(true);
     });
 
     it('a failing Needs sync is one warning and the run still exits 0', () => {

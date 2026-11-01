@@ -162,7 +162,7 @@ query($o: String!, $r: String!, $n: Int!) { repository(owner: $o, name: $r) { is
 
 # The target as an item of this project, read from the issue side: found even when the project walk is incomplete.
 function ConvertTo-IssueSideItem($Issue, $Repo, $Num, $Nodes) {
-  $m = @($Nodes) | Where-Object { $_.project.number -eq $Number } | Select-Object -First 1
+  $m = @($Nodes) | Where-Object { $_.project.number -eq $Number -and $_.project.owner.login -ieq $Owner } | Select-Object -First 1
   if (-not $m) { return $null }
   [ordered]@{ id = $m.id; repo = $Repo; number = $Num; state = $Issue.state; status = $m.status.name; level = $m.level.name; sprint = $m.sprint.title }
 }
@@ -174,9 +174,12 @@ function Merge-IssueSideItems($Items, $IssueSide) {
   @($list)
 }
 
-function Assert-CompleteWalk {
+# Called after the targets were resolved from the issue side: says whether they were found.
+function Assert-CompleteWalk($Items, $Targets) {
   if ($script:ItemsRead -lt $script:ItemsTotal) {
-    throw "Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items. The limits need the complete list; run again later."
+    $missing = @($Targets | Where-Object { $t = $_; -not (@($Items) | Where-Object { $_.repo -eq $t.repo -and $_.number -eq $t.number }) })
+    $found = if ($missing.Count -eq 0) { 'targets found' } else { "targets not found ($(($missing | ForEach-Object { "$($_.repo)#$($_.number)" }) -join ', '))" }
+    throw "Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items; $found, limits need a complete walk. Run again later."
   }
 }
 
@@ -188,7 +191,6 @@ function Get-SprintState {
   if (-not $f) { throw "Project has no iteration field 'Sprint': run Set-ProjectStandard.ps1 -Sprints first." }
   $items = [System.Collections.Generic.List[object]]::new()
   $raw = Read-ItemNodes { param($c) (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $c }).node.items }
-  Assert-CompleteWalk
   foreach ($n in $raw) {
     if ($n.content.__typename -ne 'Issue') { continue }
     $items.Add([ordered]@{ id = $n.id; repo = $n.content.repository.nameWithOwner; number = $n.content.number; state = $n.content.state
@@ -200,6 +202,7 @@ function Get-SprintState {
     if ($iss) { ConvertTo-IssueSideItem $iss $t.repo $t.number $iss.projectItems.nodes }
   }
   $items = [System.Collections.Generic.List[object]]::new((Merge-IssueSideItems $items $side))
+  Assert-CompleteWalk $items $Targets
   # Native blocked-by links of the targets only (one REST call each); a blocker may live in another repository.
   foreach ($t in $Targets) {
     $item = $items | Where-Object { $_.repo -eq $t.repo -and $_.number -eq $t.number } | Select-Object -First 1
@@ -222,13 +225,18 @@ if ($StateFile) {
   # Optional: 'itemPages' (item connections of the walk) and 'issueSide' (targets as the issue side reports them).
   if ($state.itemPages) {
     $raw = Read-ItemNodes (New-PageFetcher $state.itemPages) 0
-    Assert-CompleteWalk
     $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' } | ForEach-Object {
         [ordered]@{ id = $_.id; repo = $_.content.repository.nameWithOwner; number = $_.content.number; state = $_.content.state
           status = $_.status.name; level = $_.level.name; sprint = $_.sprint.title } })
     $state | Add-Member -NotePropertyName items -NotePropertyValue $walked -Force
   }
+  # Optional: 'issueNodes' (raw issue-side answers) go through the same conversion as the live lookup.
+  if ($state.issueNodes) {
+    $conv = @($state.issueNodes | ForEach-Object { ConvertTo-IssueSideItem $_ $_.repo $_.number $_.projectItems })
+    $state | Add-Member -NotePropertyName items -NotePropertyValue (Merge-IssueSideItems $state.items $conv) -Force
+  }
   if ($state.issueSide) { $state | Add-Member -NotePropertyName items -NotePropertyValue (Merge-IssueSideItems $state.items $state.issueSide) -Force }
+  if ($state.itemPages) { Assert-CompleteWalk $state.items $targets }
   $DryRun = $true  # a state file never reaches GitHub
 } else {
   if (-not $Owner -or $Number -lt 1 -or $targets.Count -eq 0) { throw 'Usage: Set-Sprint.ps1 -Owner <login> -Number <n> -Issue <owner/repo#n>... [-Repo <owner/repo>] [-Sprint 2026-W43] [-MaxPerSprint 30] [-MaxPerRepo 10] [-MaxInRelease 10] [-Force] [-DryRun] [-StateFile <json>] [-Json]' }
