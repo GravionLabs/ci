@@ -78,13 +78,13 @@ function Get-RuleParams {
 }
 
 # The API returns two pull_request parameters it rejects on PUT (HTTP 422): required_reviewers and
-# require_extra_approval_for_unattributed_changes. They are dropped here; Get-RulesetPlan refuses the ruleset when either carries a real
-# requirement. Every other parameter passes through; missing defaults are added.
+# require_extra_approval_for_unattributed_changes. Both are dropped here. Only a non-empty required_reviewers is a real requirement that
+# Get-RulesetPlan refuses; the flag is true on every ruleset (API default, kept when omitted from a PUT), so it never blocks. Every other parameter passes through; missing defaults are added.
 function Test-PullRequestUnwritable {
   param($Parameters)
   if (-not $Parameters) { return $false }
   $rr = $Parameters['required_reviewers']
-  (@($rr | Where-Object { $_ }).Count -gt 0) -or ($Parameters['require_extra_approval_for_unattributed_changes'] -eq $true)
+  @($rr | Where-Object { $_ }).Count -gt 0
 }
 function ConvertTo-PullRequestParams {
   param($Parameters)
@@ -168,7 +168,7 @@ foreach ($full in $targets) {
       $plan = Get-RulesetPlan -Existing $existing -Name $s.Name -Include $s.Include -ExtraRules $s.Extra -MergeMethods $s.Methods
       if ($plan.Blocked) {
         $failed++
-        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers / require_extra_approval_for_unattributed_changes; set allowed_merge_methods by hand ($($s.Methods -join ', ')); not changed"
+        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers; set allowed_merge_methods by hand ($($s.Methods -join ', ')); not changed"
         continue
       }
       $verb = if ($existing) { 'update' } else { 'create' }
