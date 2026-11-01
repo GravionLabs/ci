@@ -52,6 +52,11 @@ on:
         type: string
         required: false
         default: ''
+      conventional-commits:
+        description: 'Bump the version from Conventional Commits (false = plain GitVersion defaults)'
+        type: boolean
+        required: false
+        default: true
       publish-directory:
         description: 'Directory containing the built Angular package to publish (e.g. dist/my-lib). Passed to the publish action to construct the correct publish command.'
         type: string
@@ -139,6 +144,7 @@ jobs:
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
+          conventional-commits: ${{ inputs.conventional-commits }}
 
   build-test:
     name: Build & Test

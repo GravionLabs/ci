@@ -27,6 +27,11 @@ on:
         type: string
         required: false
         default: ''
+      conventional-commits:
+        description: 'Bump the version from Conventional Commits (false = plain GitVersion defaults)'
+        type: boolean
+        required: false
+        default: true
       pytest-args:
         description: 'Additional arguments to pass to pytest (e.g. tests/ -k "not slow")'
         type: string
@@ -98,6 +103,7 @@ jobs:
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
+          conventional-commits: ${{ inputs.conventional-commits }}
 
   build-test:
     name: Build & Test

@@ -52,6 +52,11 @@ on:
         type: string
         required: false
         default: ''
+      conventional-commits:
+        description: 'Bump the version from Conventional Commits (false = plain GitVersion defaults)'
+        type: boolean
+        required: false
+        default: true
       publish-command:
         description: 'Override the publish command. If empty, auto-detected from package-manager.'
         type: string
@@ -129,6 +134,7 @@ jobs:
         uses: GravionLabs/ci/versioning/determine-version@main
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
+          conventional-commits: ${{ inputs.conventional-commits }}
 
   build-test:
     name: Build & Test
