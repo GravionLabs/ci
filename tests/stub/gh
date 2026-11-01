@@ -18,6 +18,7 @@ if [ "$1" = api ]; then
       --jq|-q) jq_expr=$2; shift 2 ;;
       -f|-F) vars["${2%%=*}"]=${2#*=}; shift 2 ;;
       --paginate|--silent) shift ;;
+      --input) shift 2; echo "body=$(cat)" >> "$GH_LOG" ;;
       *) args+=("$1"); shift ;;
     esac
   done

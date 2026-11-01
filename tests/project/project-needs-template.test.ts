@@ -44,6 +44,7 @@ describe.each([
   it('names the ci README and passes the secrets explicitly', () => {
     expect(text).toMatch(/GravionLabs\/ci README/);
     expect(text).not.toContain('secrets: inherit\n');
-    expect(text).toContain('GH_PAT: ${{ secrets.GH_PAT }}');
+    expect(text).toContain('PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}');
+    expect(text).not.toContain('GH_PAT: ${{ secrets.GH_PAT }}');
   });
 });

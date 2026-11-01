@@ -592,15 +592,22 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-    // Needs queries carry subIssues, the plain item/repository queries of Set-ProjectStandard do not.
+    // The Needs sync reads through REST (projectsV2 items), Set-ProjectStandard itself through GraphQL.
     const handler = (failNeeds: boolean) => `(call) => {
       const q = call.query || '';
+      const path = call.args.find((a) => /^(users|orgs)\\//.test(a)) || '';
+      if (path === 'users/o') return { rest: { type: 'User' } };
+      if (/projectsV2\\/1$/.test(path)) return { rest: { id: 9 } };
+      if (path.endsWith('/projectsV2/1/fields?per_page=100')) return { rest: [[{ id: 1, name: 'Needs', data_type: 'single_select', options: [] }]] };
+      if (path.includes('/projectsV2/1/items')) {
+        ${failNeeds ? "throw new Error('rest down');" : ''}
+        return { rest: [[]] };
+      }
       if (q.includes('projectV2(number')) return { repositoryOwner: { __typename: 'User', projectV2: { id: 'P1',
         fields: { nodes: [{ __typename: 'ProjectV2SingleSelectField', id: 'F-status', name: 'Status', options: [] },
           { __typename: 'ProjectV2SingleSelectField', id: 'F-needs', name: 'Needs', options: [] }] },
         views: { nodes: [] } } } };
       if (q.includes('items(first: 100')) {
-        ${failNeeds ? "if (q.includes('subIssues')) throw new Error('graphql down');" : ''}
         return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } };
       }
       if (q.includes('repositories(first')) return { node: { repositories: { nodes: [] } } };
@@ -620,7 +627,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
       const { r, gh } = sync(false);
       expect(r.status, r.stderr + r.stdout).toBe(0);
       expect(r.stdout).not.toContain('Needs sync failed');
-      expect(gh.calls().some((c) => c.query?.includes('subIssues'))).toBe(true);
+      expect(gh.calls().some((c) => c.args.some((a) => a.includes('/projectsV2/1/items')))).toBe(true);
     });
 
     it('a failing Needs sync is one warning and the run still exits 0', () => {

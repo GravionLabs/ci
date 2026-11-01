@@ -13,14 +13,16 @@
        Epic without Feature, Feature without PBI, PBI without Task sub-issues and without label planned -> Planning;
        else Ready for PBI-level items (PBI, Bug, Task, unknown level) and clear for Epics and Features.
   3. Get-NeedsPlan returns one action {issue, item, from, to} per item whose current Needs differs; unchanged items yield none.
-  GraphQL cost: sub-issue levels come from issueType / title prefix or the Level of items already read; blockers carry only number/state/repository,
-  their labels/Status come from the items already read (one batched lookup for blockers outside the read set). Every read query asks for
-  rateLimit { cost remaining }; the total is printed ('GraphQL cost: <n> points'), and the run stops before any write when remaining would not cover the next page.
-  Live mode (no -StateFile): reads the project with batched GraphQL (items(first: 100) pages; with -Repo only that repository's issues; with -Issue only the listed
-  issues, aliased), then applies one updateProjectV2ItemFieldValue (clearProjectV2ItemFieldValue for a clear) per changed
+  Reads are REST only (no GraphQL, so no GraphQL budget): GET /users|orgs/<owner>/projectsV2/<n>, /fields and /items?fields[]=<id>&q=repo:<o/r>
+  (Status, Level, Needs, Parent issue, Linked pull requests; paginated by gh --paginate --slurp), then per open item in scope only what its
+  summaries announce: /issues/<n>/sub_issues, /dependencies/blocked_by, /dependencies/blocking (-IncludeDependents), /issues/<n> (issue type of a
+  legacy issue without Level and title prefix), and /pulls?state=open per repository. The issue type is not part of a project item; sub-issue levels
+  come from the sub-issue's type / title prefix or the Level of items already read. A blocker blocks while open and not merged: its labels come from
+  the blocker, its Status from the items of its repository (read only when needed).
+  Live mode (no -StateFile): with -Repo only that repository's items are read (q=repo:), with -Issue only the repositories of the listed issues
+  (plus parents / dependents), then applies one REST update (PATCH .../projectsV2/<n>/items/<id>, value null for a clear) per changed
   item, 4 tries with backoff (15 s * try, env SYNC_PROJECT_NEEDS_BACKOFF overrides the 15). Prints '#<nr>: <from> -> <to>'
   per change and 'Needs: <k> changed, <m> unchanged'. No Needs field: 'Needs sync skipped: field Needs missing ...', exit 0.
-  Native blocked-by comes from GraphQL blockedBy; when that field is unavailable the REST dependencies endpoint is used.
   Exit 1 on an unrecoverable error (one line 'Needs sync failed: ...').
   -StateFile never calls gh.
   State file: {owner, number, projectId, needsField:{id, options:{name:id}},
@@ -151,47 +153,78 @@ function Invoke-Gh {
   if ($LASTEXITCODE -ne 0) { throw "gh $($GhArgs -join ' ') failed: $out" }
   ($out | Out-String) | ConvertFrom-Json -Depth 20
 }
-# GraphQL budget: every read query also asks for rateLimit { cost remaining }; the points of the run are summed in $script:Cost.
-$script:Cost = 0
-$script:Remaining = $null
-$script:LastCost = 0
-function Invoke-Graphql($Query, $Variables) {
-  if ($Query -match '^\s*query' -and $Query -notmatch 'rateLimit') { $Query = $Query -replace '\}\s*$', ' rateLimit { cost remaining } }' }
-  $data = (Invoke-Gh -GhArgs @('api', 'graphql') -Body @{ query = $Query; variables = $Variables }).data
-  $rl = Get-Prop $data 'rateLimit'
-  if ($rl) { $script:LastCost = [int]$rl.cost; $script:Cost += $script:LastCost; $script:Remaining = [int]$rl.remaining }
-  $data
-}
-# Stops the run (before any write) when the remaining points would not cover the next request.
-function Assert-Budget([int]$Needed, [string]$What) {
-  if ($null -ne $script:Remaining -and $script:Remaining -lt $Needed) {
-    throw "GraphQL budget too low: $script:Remaining points remaining, $What would need about $Needed; stopped without changing anything (used $script:Cost points in this run)."
-  }
+
+# ---- reads: REST only (no GraphQL, no GraphQL budget) -----------------------------------------------------------
+# Project: GET /{users|orgs}/{owner}/projectsV2/{n}, /fields, /items?fields[]=<id>&q=repo:<o/r> (paginated by gh --paginate --slurp).
+# Issues: the content of the project items (state, labels, issue_dependencies_summary, sub_issues_summary) plus the project fields
+# Status/Level/Needs/Parent issue/Linked pull requests; /issues/{n}/sub_issues, /dependencies/blocked_by, /dependencies/blocking,
+# /issues/{n} (issue type) only for the open issues in scope that need them; /pulls?state=open for the PR heads.
+# Every datum has a REST equivalent, so no GraphQL call is left in this script (actions/add-to-project stays GraphQL; it is an external action).
+
+# All pages of a REST list as one flat array.
+function Invoke-GhList([string]$Path) {
+  $pages = Invoke-Gh -GhArgs @('api', '--paginate', '--slurp', $Path)
+  @($pages | ForEach-Object { $_ })
 }
 
-$script:RestBlocked = $false
-$script:RestBlocking = $false
-$script:WantBlocking = $false
-$script:FieldsQuery = @'
-query($login: String!, $n: Int!) { repositoryOwner(login: $login) { ... on ProjectV2Owner { projectV2(number: $n) {
-  id
-  fields(first: 50) { nodes { __typename ... on ProjectV2SingleSelectField { id name options { id name } } } } } } } }
-'@
-$script:LevelFrag = 'status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } level: fieldValueByName(name: "Level") { ... on ProjectV2ItemFieldSingleSelectValue { name } } needs: fieldValueByName(name: "Needs") { ... on ProjectV2ItemFieldSingleSelectValue { name } }'
-$script:IssueFrag = '... on Issue { number title state issueType { name } repository { nameWithOwner } labels(first: 50) { nodes { name } } parent { number repository { nameWithOwner } } subIssues(first: 50) { nodes { number title issueType { name } repository { nameWithOwner } } } __BLOCKED__ __BLOCKING__ closedByPullRequestsReferences(first: 10) { nodes { state headRefName } } }'
+function Get-RepoOfUrl($Url) { if ($Url) { "$Url" -replace '^.*/repos/', '' } else { $null } }
+function Get-RepoOrDefault($Obj, [string]$Default) { $r = Get-RepoOfUrl (Get-Prop $Obj 'repository_url'); if ($r) { $r } else { $Default } }
+function Get-ItemNodeId($Item) { $n = Get-Prop $Item 'node_id'; if ($n) { "$n" } else { "$($Item.id)" } }
+function Get-ContentRepo($Content) {
+  $r = Get-Prop (Get-Prop $Content 'repository') 'full_name'
+  if ($r) { "$r" } else { Get-RepoOfUrl (Get-Prop $Content 'repository_url') }
+}
+# Select option names are strings or {raw, html}.
+function ConvertTo-OptionText($Value) {
+  if ($null -eq $Value) { return $null }
+  if ($Value -is [string]) { return $Value }
+  $raw = Get-Prop $Value 'raw'
+  if ($null -ne $raw) { "$raw" } else { $null }
+}
+function Get-SelectValue($Item, $FieldId) {
+  if (-not $FieldId) { return $null }
+  $f = @(Get-Prop $Item 'fields') | Where-Object { $_ -and "$($_.id)" -eq "$FieldId" } | Select-Object -First 1
+  if (-not $f) { return $null }
+  ConvertTo-OptionText (Get-Prop (Get-Prop $f 'value') 'name')
+}
+function Get-FieldValue($Item, $FieldId) {
+  if (-not $FieldId) { return $null }
+  $f = @(Get-Prop $Item 'fields') | Where-Object { $_ -and "$($_.id)" -eq "$FieldId" } | Select-Object -First 1
+  if ($f) { Get-Prop $f 'value' } else { $null }
+}
 
-# Runs a query containing __BLOCKED__; when GraphQL lacks blockedBy the field is dropped and REST is used instead.
-function Invoke-ItemsGraphql([string]$Template, $Variables) {
-  $blocked = if ($script:RestBlocked) { '' } else { 'blockedBy(first: 20) { nodes { number state repository { nameWithOwner } } }' }
-  $blocking = if ($script:WantBlocking -and -not $script:RestBlocking) { 'blocking(first: 50) { nodes { number state repository { nameWithOwner } } }' } else { '' }
-  try { return Invoke-Graphql ($Template -replace '__BLOCKED__', $blocked -replace '__BLOCKING__', $blocking) $Variables }
-  catch {
-    # a GraphQL without blockedBy / blocking: drop that field and use the REST dependencies endpoint instead
-    if (-not $script:RestBlocked -and "$_" -match 'blockedBy') { $script:RestBlocked = $true }
-    elseif ($script:WantBlocking -and -not $script:RestBlocking -and "$_" -match '\bblocking\b') { $script:RestBlocking = $true }
-    else { throw }
-    return Invoke-ItemsGraphql $Template $Variables
+# Owner kind (users|orgs path segment) and the project itself.
+function Get-ProjectContext([string]$Owner, [int]$Number) {
+  $kind = try { "$((Invoke-Gh -GhArgs @('api', "users/$Owner")).type)" } catch { throw "Project $Owner/$Number not found (or scope 'project' missing: gh auth refresh -s project)." }
+  $seg = if ($kind -eq 'Organization') { 'orgs' } else { 'users' }
+  try { $p = Invoke-Gh -GhArgs @('api', "$seg/$Owner/projectsV2/$Number") } catch { throw "Project $Owner/$Number not found (or scope 'project' missing: gh auth refresh -s project)." }
+  if (-not $p -or -not (Get-Prop $p 'id')) { throw "Project $Owner/$Number not found (or scope 'project' missing: gh auth refresh -s project)." }
+  [pscustomobject]@{ owner = $Owner; number = $Number; seg = $seg; ownerKind = $(if ($kind -eq 'Organization') { 'Organization' } else { 'User' }) }
+}
+
+function Get-ProjectFields($Ctx) { @(Invoke-GhList "$($Ctx.seg)/$($Ctx.owner)/projectsV2/$($Ctx.number)/fields?per_page=100") }
+function Get-SelectField($Fields, [string]$Name) {
+  @($Fields) | Where-Object { $_ -and $_.name -eq $Name -and (Get-Prop $_ 'data_type') -eq 'single_select' } | Select-Object -First 1
+}
+function Get-FieldOption($Field, [string]$Name) {
+  @($Field.options) | Where-Object { $_ -and (ConvertTo-OptionText $_.name) -eq $Name } | Select-Object -First 1
+}
+
+# Project items that are issues, optionally only those of one repository (q=repo:owner/repo). Cached per run in $script:Seen
+# ("repo#n" -> REST item); $script:ReadRepos lists the repositories already read, $script:ReadAll the whole project.
+$script:Seen = [ordered]@{}
+$script:ReadRepos = @{}
+$script:ReadAll = $false
+function Read-ProjectItems($Ctx, $FieldIds, [string]$Repo) {
+  if ($script:ReadAll -or ($Repo -and $script:ReadRepos.ContainsKey($Repo))) { return }
+  $query = 'per_page=100' + (@($FieldIds.PSObject.Properties.Value | Where-Object { $_ } | ForEach-Object { "&fields[]=$_" }) -join '') + $(if ($Repo) { "&q=repo:$Repo" } else { '' })
+  foreach ($it in @(Invoke-GhList "$($Ctx.seg)/$($Ctx.owner)/projectsV2/$($Ctx.number)/items?$query")) {
+    if ((Get-Prop $it 'content_type') -ne 'Issue') { continue }
+    $r = Get-ContentRepo $it.content
+    if ($Repo -and $r -ne $Repo) { continue }
+    $script:Seen["$r#$($it.content.number)"] = $it
   }
+  if ($Repo) { $script:ReadRepos[$Repo] = $true } else { $script:ReadAll = $true }
 }
 
 function Get-LevelOf($ItemLevel, $IssueType, [string]$Title) {
@@ -202,181 +235,129 @@ function Get-LevelOf($ItemLevel, $IssueType, [string]$Title) {
   $null
 }
 
-# Labels and Status of a blocker that is not an item of the read set: one aliased query per 50 blockers.
-function Get-BlockerInfo {
-  param([string]$ProjectId, $Refs, [hashtable]$Known)
-  $list = @($Refs)
-  for ($i = 0; $i -lt $list.Count; $i += 50) {
-    $chunk = @($list[$i..([Math]::Min($i + 49, $list.Count - 1))])
-    $decl = [System.Collections.Generic.List[string]]::new(); $body = [System.Collections.Generic.List[string]]::new(); $vars = @{}
-    for ($k = 0; $k -lt $chunk.Count; $k++) {
-      $o, $r = $chunk[$k].repo -split '/', 2
-      $decl.Add("`$o${k}: String!, `$r${k}: String!, `$n${k}: Int!")
-      $vars["o$k"] = $o; $vars["r$k"] = $r; $vars["n$k"] = [int]$chunk[$k].number
-      $body.Add("i${k}: repository(owner: `$o${k}, name: `$r${k}) { issue(number: `$n${k}) { labels(first: 20) { nodes { name } } " +
-        'projectItems(first: 10) { nodes { project { id } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } }')
+function Get-LabelNames($Labels) { @(@($Labels) | Where-Object { $_ } | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.name } }) }
+
+# Labels and Status of an issue that is (or may be) an item of the project; reads that repository's items when needed.
+function Get-KnownInfo($Ctx, $FieldIds, [string]$Key) {
+  if (-not $script:Seen.Contains($Key)) { Read-ProjectItems $Ctx $FieldIds ($Key -replace '#\d+$', '') }
+  $it = $script:Seen[$Key]
+  if (-not $it) { return $null }
+  @{ labels = @(Get-LabelNames $it.content.labels); status = (Get-SelectValue $it $FieldIds.status) }
+}
+
+# REST project item (+ the lists fetched for it) -> state item. prHeads are filled by the caller.
+function ConvertTo-NeedsItem($Ctx, $FieldIds, $Item) {
+  $c = $Item.content
+  $repo = Get-ContentRepo $c
+  $nr = [int]$c.number
+  $state = "$($c.state)".ToUpperInvariant()
+  $title = "$(Get-Prop $c 'title')"
+  $level = Get-LevelOf (Get-SelectValue $Item $FieldIds.level) (Get-Prop (Get-Prop $c 'type') 'name') $title
+  $subs = [System.Collections.Generic.List[string]]::new()
+  $blocked = 0
+  $heads = [System.Collections.Generic.List[string]]::new()
+  if ($state -eq 'OPEN') {
+    if (-not $level) {
+      # the issue type is not part of a project item: one issue read for a legacy issue without Level and title prefix
+      $level = Get-LevelOf $null (Get-Prop (Get-Prop (Invoke-Gh -GhArgs @('api', "repos/$repo/issues/$nr")) 'type') 'name') $title
     }
-    $d = Invoke-Graphql "query($($decl -join ', ')) { $($body -join ' ') }" $vars
-    for ($k = 0; $k -lt $chunk.Count; $k++) {
-      $issue = Get-Prop (Get-Prop $d "i$k") 'issue'
-      $st = @(Get-Prop (Get-Prop $issue 'projectItems') 'nodes') | Where-Object { $_ -and $_.project.id -eq $ProjectId } | ForEach-Object { Get-Prop $_.status 'name' } | Select-Object -First 1
-      $Known["$($chunk[$k].repo)#$($chunk[$k].number)"] = @{ labels = @((Get-Prop (Get-Prop $issue 'labels') 'nodes') | Where-Object { $_ } | ForEach-Object { $_.name }); status = $st }
+    $sum = Get-Prop $c 'sub_issues_summary'
+    if (-not $sum -or [int](Get-Prop $sum 'total') -gt 0) {
+      foreach ($s in @(Invoke-GhList "repos/$repo/issues/$nr/sub_issues?per_page=100")) {
+        $sr = Get-RepoOfUrl (Get-Prop $s 'repository_url')
+        $lv = Get-LevelOf $null (Get-Prop (Get-Prop $s 'type') 'name') "$(Get-Prop $s 'title')"
+        if (-not $lv) { $known = $script:Seen["$(if ($sr) { $sr } else { $repo })#$(Get-Prop $s 'number')"]; if ($known) { $lv = Get-SelectValue $known $FieldIds.level } }
+        if ($lv) { $subs.Add($lv) }
+      }
+    }
+    # a blocker blocks only while open and not merged (label merged or Status In release in this project)
+    $dep = Get-Prop $c 'issue_dependencies_summary'
+    if (-not $dep -or [int](Get-Prop $dep 'blocked_by') -gt 0) {
+      foreach ($b in @(Invoke-GhList "repos/$repo/issues/$nr/dependencies/blocked_by?per_page=100")) {
+        $br = Get-RepoOfUrl (Get-Prop $b 'repository_url')
+        $labels = @(Get-LabelNames (Get-Prop $b 'labels'))
+        $status = $null
+        if ("$($b.state)".ToUpperInvariant() -eq 'OPEN' -and @($labels | ForEach-Object { "$_".ToLowerInvariant() }) -notcontains 'merged') {
+          $info = Get-KnownInfo $Ctx $FieldIds "$(if ($br) { $br } else { $repo })#$($b.number)"
+          if ($info) { $status = $info.status; $labels = @($labels) + @($info.labels) }
+        }
+        if (Test-BlockerUnresolved ([pscustomobject]@{ state = $b.state; labels = $labels; status = $status })) { $blocked++ }
+      }
+    }
+    # a linked open PR counts as work in progress whatever its branch is called
+    foreach ($pr in @(Get-FieldValue $Item $FieldIds.linked | Where-Object { $_ -and "$(Get-Prop $_ 'state')".ToLowerInvariant() -eq 'open' })) {
+      $ref = "$(Get-Prop (Get-Prop $pr 'head') 'ref')"
+      $heads.Add($(if ($ref -match "(^|/)$nr-") { $ref } else { "$nr-linked-pr" }))
     }
   }
-}
-
-# GraphQL Issue node + its project item node -> state item (prHeads are filled by the caller).
-# $Known: "repo#n" -> {labels, status} of the items already read (blocker check); $Levels: "repo#n" -> Level of those items (sub-issue levels).
-function ConvertTo-NeedsItem($Content, $ItemNode, [string]$ProjectId, [hashtable]$Known = @{}, [hashtable]$Levels = @{}) {
-  $parentRepo = "$($Content.repository.nameWithOwner)"
-  $subLevels = @(@($Content.subIssues.nodes | Where-Object { $_ }) | ForEach-Object {
-      $r = Get-Prop (Get-Prop $_ 'repository') 'nameWithOwner'
-      $lv = Get-LevelOf $null (Get-Prop (Get-Prop $_ 'issueType') 'name') "$(Get-Prop $_ 'title')"
-      if (-not $lv) { $lv = $Levels["$(if ($r) { $r } else { $parentRepo })#$(Get-Prop $_ 'number')"] }
-      $lv
-    } | Where-Object { $_ })
-  # a blocker blocks only while open and not merged (label merged or Status In release in this project)
-  $blocked = if ($Content.PSObject.Properties['blockedBy'] -and $Content.blockedBy) {
-    @($Content.blockedBy.nodes | Where-Object { $_ } | Where-Object {
-        $r = Get-Prop (Get-Prop $_ 'repository') 'nameWithOwner'
-        $info = $Known["$(if ($r) { $r } else { $parentRepo })#$(Get-Prop $_ 'number')"]
-        Test-BlockerUnresolved ([pscustomobject]@{ state = $_.state; labels = $(if ($info) { @($info.labels) } else { @() }); status = $(if ($info) { $info.status } else { $null }) })
-      }).Count
-  } else { 0 }
-  # a linked open PR counts as work in progress whatever its branch is called
-  $nr = $Content.number
-  $heads = @($Content.closedByPullRequestsReferences.nodes | Where-Object { $_.state -eq 'OPEN' } |
-      ForEach-Object { if ("$($_.headRefName)" -match "(^|/)$nr-") { $_.headRefName } else { "$nr-linked-pr" } })
-  $parent = if ($Content.parent) { [ordered]@{ repo = $Content.parent.repository.nameWithOwner; number = $Content.parent.number } } else { $null }
-  [ordered]@{ itemId = $ItemNode.id; repo = $Content.repository.nameWithOwner; number = $Content.number; state = $Content.state
-    level = Get-LevelOf (Get-Prop (Get-Prop $ItemNode 'level') 'name') (Get-Prop (Get-Prop $Content 'issueType') 'name') "$(Get-Prop $Content 'title')"
-    labels = @($Content.labels.nodes | ForEach-Object { $_.name }); status = (Get-Prop (Get-Prop $ItemNode 'status') 'name'); needs = (Get-Prop (Get-Prop $ItemNode 'needs') 'name')
-    blockedByOpen = $blocked; subIssueLevels = $subLevels; prHeads = $heads; parent = $parent }
-}
-
-function Get-ProjectItemNodes {
-  param([string]$ProjectId)
-  $tpl = 'query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 { items(first: 100, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { id content { __typename ' + $script:IssueFrag + ' } ' + $script:LevelFrag + ' } } } } }'
-  $cursor = $null
-  do {
-    Assert-Budget (@($script:LastCost, 5) | Measure-Object -Maximum).Maximum 'the next page of items'
-    $page = (Invoke-ItemsGraphql $tpl @{ id = $ProjectId; cursor = $cursor }).node.items
-    foreach ($n in $page.nodes) { if ($n.content.__typename -eq 'Issue') { [pscustomobject]@{ item = $n; content = $n.content } } }
-    $cursor = $page.pageInfo.endCursor
-  } while ($page.pageInfo.hasNextPage)
-}
-
-# Every issue of one repository (open and closed) that is an item of the project: -Repo without -Issue reads only these.
-function Get-RepoIssueNodes {
-  param([string]$ProjectId, [string]$Repo)
-  $o, $r = $Repo -split '/', 2
-  $tpl = 'query($o: String!, $r: String!, $cursor: String) { repository(owner: $o, name: $r) { issues(first: 100, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { ' +
-    $script:IssueFrag + ' projectItems(first: 20) { nodes { id project { id } ' + $script:LevelFrag + ' } } } } } }'
-  $cursor = $null
-  do {
-    Assert-Budget (@($script:LastCost, 5) | Measure-Object -Maximum).Maximum "the next page of issues of $Repo"
-    $page = (Invoke-ItemsGraphql $tpl @{ o = $o; r = $r; cursor = $cursor }).repository.issues
-    foreach ($issue in $page.nodes) {
-      $it = $issue.projectItems.nodes | Where-Object { $_.project.id -eq $ProjectId } | Select-Object -First 1
-      if ($it) { [pscustomobject]@{ item = $it; content = $issue } }
-    }
-    $cursor = $page.pageInfo.endCursor
-  } while ($page.pageInfo.hasNextPage)
-}
-
-# Only the given {repo, number} refs, aliased per call; issues outside the project are dropped.
-function Get-IssueNodes {
-  param([string]$ProjectId, $Refs)
-  $list = @($Refs)
-  for ($i = 0; $i -lt $list.Count; $i += 50) {
-    $chunk = @($list[$i..([Math]::Min($i + 49, $list.Count - 1))])
-    $decl = [System.Collections.Generic.List[string]]::new(); $body = [System.Collections.Generic.List[string]]::new(); $vars = @{}
-    for ($k = 0; $k -lt $chunk.Count; $k++) {
-      $o, $r = $chunk[$k].repo -split '/', 2
-      $decl.Add("`$o${k}: String!, `$r${k}: String!, `$n${k}: Int!")
-      $vars["o$k"] = $o; $vars["r$k"] = $r; $vars["n$k"] = [int]$chunk[$k].number
-      $body.Add("i${k}: repository(owner: `$o${k}, name: `$r${k}) { issue(number: `$n${k}) { " + $script:IssueFrag +
-        ' projectItems(first: 20) { nodes { id project { id } ' + $script:LevelFrag + ' } } } }')
-    }
-    $q = "query($($decl -join ', ')) { $($body -join ' ') }"
-    $d = Invoke-ItemsGraphql $q $vars
-    for ($k = 0; $k -lt $chunk.Count; $k++) {
-      $issue = $d."i$k".issue
-      if (-not $issue) { continue }
-      $it = $issue.projectItems.nodes | Where-Object { $_.project.id -eq $ProjectId } | Select-Object -First 1
-      if ($it) { [pscustomobject]@{ item = $it; content = $issue } }
-    }
-  }
+  $pv = Get-FieldValue $Item $FieldIds.parent
+  $parent = if ($pv -and (Get-Prop $pv 'number')) { [ordered]@{ repo = $(Get-RepoOrDefault $pv $repo); number = [int]$pv.number } } else { $null }
+  [ordered]@{ itemId = $(Get-ItemNodeId $Item); itemDatabaseId = $Item.id; repo = $repo; number = $nr; state = $state
+    level = $level; labels = @(Get-LabelNames $c.labels); status = (Get-SelectValue $Item $FieldIds.status); needs = (Get-SelectValue $Item $FieldIds.needs)
+    blockedByOpen = $blocked; subIssueLevels = @($subs); prHeads = @($heads); parent = $parent }
 }
 
 function Get-OpenPrHeads([string]$RepoName) {
-  $o, $r = $RepoName -split '/', 2
-  $q = 'query($o: String!, $r: String!, $cursor: String) { repository(owner: $o, name: $r) { pullRequests(states: OPEN, first: 100, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { headRefName } } } }'
-  $heads = @(); $cursor = $null
-  do {
-    $page = (Invoke-Graphql $q @{ o = $o; r = $r; cursor = $cursor }).repository.pullRequests
-    $heads += @($page.nodes | ForEach-Object { $_.headRefName })
-    $more = [bool]($page.pageInfo -and $page.pageInfo.hasNextPage)
-    $cursor = if ($more) { $page.pageInfo.endCursor } else { $null }
-  } while ($more)
-  $heads
+  @(@(Invoke-GhList "repos/$RepoName/pulls?state=open&per_page=100") | ForEach-Object { $_.head.ref })
 }
 
 # Live state in the -StateFile shape, or $null when the project has no field Needs.
 function Get-NeedsState {
   param([string]$Owner, [int]$Number, [string]$Repo, [string[]]$Issue, [bool]$IncludeParents, [bool]$IncludeDependents = $false)
-  $script:WantBlocking = $IncludeDependents
-  $p = (Invoke-Graphql $script:FieldsQuery @{ login = $Owner; n = $Number }).repositoryOwner.projectV2
-  if (-not $p) { throw "Project $Owner/$Number not found (or scope 'project' missing: gh auth refresh -s project)." }
-  $field = @($p.fields.nodes) | Where-Object { $_.PSObject.Properties['options'] -and $_.name -eq 'Needs' } | Select-Object -First 1
+  $script:Seen = [ordered]@{}; $script:ReadRepos = @{}; $script:ReadAll = $false
+  $ctx = Get-ProjectContext $Owner $Number
+  $fields = Get-ProjectFields $ctx
+  $field = Get-SelectField $fields 'Needs'
   if (-not $field) { return $null }
   $options = [ordered]@{}
-  foreach ($o in $field.options) { $options[$o.name] = $o.id }
+  foreach ($o in $field.options) { $options[(ConvertTo-OptionText $o.name)] = $o.id }
+  $ids = @{ needs = $field.id
+    status = (Get-Prop (Get-SelectField $fields 'Status') 'id'); level = (Get-Prop (Get-SelectField $fields 'Level') 'id')
+    parent = (Get-Prop (@($fields) | Where-Object { $_ -and (Get-Prop $_ 'data_type') -eq 'parent_issue' } | Select-Object -First 1) 'id')
+    linked = (Get-Prop (@($fields) | Where-Object { $_ -and (Get-Prop $_ 'data_type') -eq 'linked_pull_requests' } | Select-Object -First 1) 'id') }
+  $fieldIds = [pscustomobject]$ids
 
   $dependents = @{}
   $refs = @(@($Issue | ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }) | ForEach-Object {
       $defaultRepo = if ($Repo) { $Repo } else { $null }
       ConvertTo-IssueRef $_ $defaultRepo })
   if ($refs.Count -eq 0) {
-    $nodes = if ($Repo) { @(Get-RepoIssueNodes -ProjectId $p.id -Repo $Repo) } else { @(Get-ProjectItemNodes -ProjectId $p.id) }
+    if ($Repo) { Read-ProjectItems $ctx $fieldIds $Repo; $scope = @($script:Seen.Values | Where-Object { (Get-ContentRepo $_.content) -eq $Repo }) }
+    else { Read-ProjectItems $ctx $fieldIds ''; $scope = @($script:Seen.Values) }
   } else {
     foreach ($r in $refs) { if (-not $r.repo) { throw "Issue #$($r.number) needs -Repo or the form owner/repo#n for a live run." } }
-    $nodes = @(Get-IssueNodes -ProjectId $p.id -Refs $refs)
-    $selNodes = @($nodes)
+    foreach ($rp in @($refs | ForEach-Object { $_.repo } | Sort-Object -Unique)) { Read-ProjectItems $ctx $fieldIds $rp }
+    $scope = [System.Collections.Generic.List[object]]::new()
+    foreach ($r in $refs) { $it = $script:Seen["$($r.repo)#$($r.number)"]; if ($it -and -not $scope.Contains($it)) { $scope.Add($it) } }
+    $direct = @($scope)
     if ($IncludeParents) {
-      $have = @($nodes | ForEach-Object { "$($_.content.repository.nameWithOwner)#$($_.content.number)" })
-      $parents = @($nodes | Where-Object { $_.content.parent } | ForEach-Object {
-          [pscustomobject]@{ repo = $_.content.parent.repository.nameWithOwner; number = $_.content.parent.number } } |
-          Where-Object { $have -notcontains "$($_.repo)#$($_.number)" } | Sort-Object repo, number -Unique)
-      if ($parents.Count -gt 0) { $nodes += @(Get-IssueNodes -ProjectId $p.id -Refs $parents) }
+      foreach ($it in $direct) {
+        $pv = Get-FieldValue $it $fieldIds.parent
+        if (-not ($pv -and (Get-Prop $pv 'number'))) { continue }
+        $pr = Get-RepoOrDefault $pv (Get-ContentRepo $it.content)
+        Read-ProjectItems $ctx $fieldIds $pr
+        $p = $script:Seen["$pr#$($pv.number)"]
+        if ($p -and -not $scope.Contains($p)) { $scope.Add($p) }
+      }
     }
     if ($IncludeDependents) {
-      # open issues the selected ones block; refs already fetched (selected, parents) drop out, issues outside the project too
-      foreach ($n in $selNodes) {
-        $key = "$($n.content.repository.nameWithOwner)#$($n.content.number)"
-        $list = if ($script:RestBlocking) { @(Invoke-Gh -GhArgs @('api', "repos/$($n.content.repository.nameWithOwner)/issues/$($n.content.number)/dependencies/blocking?per_page=100") |
-              ForEach-Object { [pscustomobject]@{ number = $_.number; state = "$($_.state)".ToUpper(); repository = [pscustomobject]@{ nameWithOwner = $(if (Get-Prop $_ 'repository_url') { "$($_.repository_url)" -replace '^.*/repos/', '' } else { $n.content.repository.nameWithOwner }) } } }) }
-        else { @(Get-Prop (Get-Prop $n.content 'blocking') 'nodes') }
-        $dependents[$key] = @($list | Where-Object { $_ -and $_.state -eq 'OPEN' } | ForEach-Object { [ordered]@{ repo = $_.repository.nameWithOwner; number = $_.number } })
+      # open issues the selected ones block (blocking links, also across repositories); issues outside the project drop out
+      foreach ($it in $direct) {
+        $repoOf = Get-ContentRepo $it.content
+        $sum = Get-Prop $it.content 'issue_dependencies_summary'
+        $list = if (-not $sum -or [int](Get-Prop $sum 'total_blocking') -gt 0) { @(Invoke-GhList "repos/$repoOf/issues/$($it.content.number)/dependencies/blocking?per_page=100") } else { @() }
+        $dependents["$repoOf#$($it.content.number)"] = @($list | Where-Object { $_ -and "$($_.state)".ToUpperInvariant() -eq 'OPEN' } |
+            ForEach-Object { [ordered]@{ repo = $(Get-RepoOrDefault $_ $repoOf); number = $_.number } })
       }
-      $have = @($nodes | ForEach-Object { "$($_.content.repository.nameWithOwner)#$($_.content.number)" })
-      $deps = @($dependents.Values | ForEach-Object { $_ } | ForEach-Object { [pscustomobject]$_ } |
-          Where-Object { $have -notcontains "$($_.repo)#$($_.number)" } | Sort-Object repo, number -Unique)
-      if ($deps.Count -gt 0) { $nodes += @(Get-IssueNodes -ProjectId $p.id -Refs $deps) }
+      foreach ($d in @($dependents.Values | ForEach-Object { $_ })) {
+        Read-ProjectItems $ctx $fieldIds $d.repo
+        $di = $script:Seen["$($d.repo)#$($d.number)"]
+        if ($di -and -not $scope.Contains($di)) { $scope.Add($di) }
+      }
     }
+    $scope = @($scope)
   }
-  # Level, labels and Status of the items already read serve sub-issue levels and the blocker check; only blockers outside the set cost a lookup.
-  $known = @{}; $levels = @{}
-  foreach ($n in $nodes) {
-    $key = "$($n.content.repository.nameWithOwner)#$($n.content.number)"
-    $levels[$key] = Get-LevelOf (Get-Prop (Get-Prop $n.item 'level') 'name') (Get-Prop (Get-Prop $n.content 'issueType') 'name') "$(Get-Prop $n.content 'title')"
-    $known[$key] = @{ labels = @($n.content.labels.nodes | ForEach-Object { $_.name }); status = (Get-Prop (Get-Prop $n.item 'status') 'name') }
-  }
-  $outside = @($nodes | ForEach-Object { $c = $_.content; if (Get-Prop $c 'blockedBy') { @($c.blockedBy.nodes | Where-Object { $_ -and "$($_.state)" -eq 'OPEN' } | ForEach-Object {
-          [pscustomobject]@{ repo = $(if (Get-Prop (Get-Prop $_ 'repository') 'nameWithOwner') { $_.repository.nameWithOwner } else { $c.repository.nameWithOwner }); number = $_.number } }) } } |
-      Where-Object { $_ -and -not $known.ContainsKey("$($_.repo)#$($_.number)") } | Sort-Object repo, number -Unique)
-  if ($outside.Count -gt 0) { Get-BlockerInfo -ProjectId $p.id -Refs $outside -Known $known }
-  $items = @($nodes | ForEach-Object { ConvertTo-NeedsItem $_.content $_.item $p.id $known $levels })
+  $items = @($scope | ForEach-Object { ConvertTo-NeedsItem $ctx $fieldIds $_ })
   foreach ($it in $items) { $k = "$($it.repo)#$($it.number)"; if ($dependents.ContainsKey($k)) { $it['blocking'] = @($dependents[$k]) } }
   $heads = @{}
   foreach ($r in @($items | Where-Object { $_.state -eq 'OPEN' } | ForEach-Object { $_.repo } | Sort-Object -Unique)) { $heads[$r] = @(Get-OpenPrHeads $r) }
@@ -384,31 +365,35 @@ function Get-NeedsState {
     if ($it.state -ne 'OPEN') { continue }
     $nr = $it.number
     $it.prHeads = @($it.prHeads) + @($heads[$it.repo] | Where-Object { $_ -match "(^|/)$nr-" })
-    if ($script:RestBlocked) {
-      $links = @(Invoke-Gh -GhArgs @('api', "repos/$($it.repo)/issues/$nr/dependencies/blocked_by?per_page=100"))
-      $it.blockedByOpen = @($links | Where-Object { Test-BlockerUnresolved $_ }).Count
-    }
   }
-  [pscustomobject][ordered]@{ owner = $Owner; number = $Number; projectId = $p.id; needsField = [ordered]@{ id = $field.id; options = $options }
+  [pscustomobject][ordered]@{ owner = $Owner; number = $Number; ownerKind = $ctx.ownerKind; needsField = [ordered]@{ id = $field.id; databaseId = $field.id; options = $options }
     # objects (not dictionaries) like a -StateFile, so Get-Prop sees every property
     items = @(ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject @($items) -Depth 8)) }
 }
 
+# Writes go through the REST endpoint PATCH /{users|orgs}/{owner}/projectsV2/{number}/items/{item_id} (not GraphQL), so they
+# do not use the GraphQL budget. It takes the numeric ids that the REST reads deliver (item id, field id).
+# $Value: option id of a single select field, or $null to clear the field.
+function Set-ProjectItemField([string]$OwnerKind, [string]$Owner, [int]$Number, $ItemDatabaseId, $FieldDatabaseId, $Value) {
+  if (-not $ItemDatabaseId -or -not $FieldDatabaseId) { throw 'the project item or field has no databaseId (needed for the REST projectsV2 update)' }
+  $seg = if ($OwnerKind -eq 'Organization') { 'orgs' } else { 'users' }
+  Invoke-Gh -GhArgs @('api', '-X', 'PATCH', "$seg/$Owner/projectsV2/$Number/items/$ItemDatabaseId") `
+    -Body @{ fields = @(@{ id = [long]$FieldDatabaseId; value = $Value }) } | Out-Null
+}
+
 function Set-NeedsValue($State, $Action) {
   $field = $State.needsField
+  $opt = $null
   if ($Action.to) {
     $opt = $field.options[$Action.to]
     if (-not $opt) { throw "Option '$($Action.to)' not found in field Needs." }
-    $q = 'mutation($i: UpdateProjectV2ItemFieldValueInput!) { updateProjectV2ItemFieldValue(input: $i) { clientMutationId } }'
-    $v = @{ i = @{ projectId = $State.projectId; itemId = $Action.item; fieldId = $field.id; value = @{ singleSelectOptionId = $opt } } }
-  } else {
-    $q = 'mutation($i: ClearProjectV2ItemFieldValueInput!) { clearProjectV2ItemFieldValue(input: $i) { clientMutationId } }'
-    $v = @{ i = @{ projectId = $State.projectId; itemId = $Action.item; fieldId = $field.id } }
   }
+  $item = @($State.items | Where-Object { (Get-Prop $_ 'itemId') -eq $Action.item }) | Select-Object -First 1
+  $itemDb = if ($item) { Get-Prop $item 'itemDatabaseId' } else { $null }
   # Bulk edits hit GitHub's secondary rate limit now and then: retry with backoff.
   $backoff = [double]($env:SYNC_PROJECT_NEEDS_BACKOFF ?? 15)
   foreach ($try in 1..4) {
-    try { Invoke-Graphql $q $v | Out-Null; return } catch {
+    try { Set-ProjectItemField (Get-Prop $State 'ownerKind') $State.owner $State.number $itemDb $field.databaseId $opt; return } catch {
       if ($try -eq 4) { throw "Needs update failed for $($Action.issue): $_" }
       Start-Sleep -Seconds ($backoff * $try)
     }
@@ -450,16 +435,15 @@ if ($SetStatus) {
   }
   if (-not $r.repo) { throw "Issue #$($r.number) needs -Repo or the form owner/repo#n. $script:Usage" }
   try {
-    $p = (Invoke-Graphql $script:FieldsQuery @{ login = $ref.owner; n = $ref.number }).repositoryOwner.projectV2
-    if (-not $p) { throw "Project $($ref.owner)/$($ref.number) not found." }
-    $field = @($p.fields.nodes) | Where-Object { $_.PSObject.Properties['options'] -and $_.name -eq 'Status' } | Select-Object -First 1
-    $opt = if ($field) { @($field.options) | Where-Object { $_.name -eq $SetStatus } | Select-Object -First 1 }
+    $ctx = Get-ProjectContext $ref.owner $ref.number
+    $field = Get-SelectField (Get-ProjectFields $ctx) 'Status'
+    $opt = if ($field) { Get-FieldOption $field $SetStatus }
     if (-not $opt) { Write-Output "Status not set: option '$SetStatus' missing in the project"; exit 0 }
-    $node = @(Get-IssueNodes -ProjectId $p.id -Refs @($r)) | Select-Object -First 1
+    Read-ProjectItems $ctx ([pscustomobject]@{ status = $field.id }) $r.repo
+    $node = $script:Seen["$($r.repo)#$($r.number)"]
     if (-not $node) { Write-Output "Status not set: #$($r.number) is not in the project"; exit 0 }
     if ($DryRun) { Write-Output "#$($r.number): Status -> $SetStatus (dry run)"; exit 0 }
-    $q = 'mutation($i: UpdateProjectV2ItemFieldValueInput!) { updateProjectV2ItemFieldValue(input: $i) { clientMutationId } }'
-    Invoke-Graphql $q @{ i = @{ projectId = $p.id; itemId = $node.item.id; fieldId = $field.id; value = @{ singleSelectOptionId = $opt.id } } } | Out-Null
+    Set-ProjectItemField $ctx.ownerKind $ref.owner $ref.number $node.id $field.id $opt.id
   } catch { Write-Output "Status not set: $_"; exit 1 }
   Write-Output "#$($r.number): Status -> $SetStatus"
   exit 0
@@ -483,16 +467,11 @@ if ($live) {
   $fmt = { param($a) "#{0}: {1} -> {2}" -f ($a.issue -replace '^.*#', ''), $(if ($a.from) { $a.from } else { '(none)' }), $(if ($a.to) { $a.to } else { '(clear)' }) }
   $inScope = @($state.items).Count - @($plan.skipped).Count
   try {
-    if (-not $DryRun) { Assert-Budget @($plan.actions).Count 'the updates' }
     foreach ($a in $plan.actions) {
       if (-not $Json) { Write-Output (& $fmt $a) }
       if (-not $DryRun) { Set-NeedsValue $state $a }
     }
   } catch { Write-Output "Needs sync failed: $_"; exit 1 }
-  if ($script:Cost -gt 0) {
-    $costLine = "GraphQL cost: $script:Cost points (remaining $script:Remaining)"
-    if ($Json) { [Console]::Error.WriteLine($costLine) } else { Write-Output $costLine }
-  }
   if (-not $Json) { Write-Output ("Needs: {0} {1}, {2} unchanged{3}" -f @($plan.actions).Count, $(if ($DryRun) { 'to change' } else { 'changed' }), ($inScope - @($plan.actions).Count), $(if ($DryRun) { ' (dry run)' } else { '' })) }
   exit 0
 }

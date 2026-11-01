@@ -90,8 +90,14 @@ on:
       publish-api-key:
         description: 'API token for the target feed. Not required when using PyPI Trusted Publishing.'
         required: false
+      CI_APP_ID:
+        description: 'ID of the GitHub App GravionLabs CI; with CI_APP_PRIVATE_KEY the workflow mints an installation token (own rate limit, not the user PAT)'
+        required: false
+      CI_APP_PRIVATE_KEY:
+        description: 'Private key (PEM) of the GitHub App GravionLabs CI'
+        required: false
       GH_PAT:
-        description: 'PAT of an admin of the repository: gh-release pushes the changelog commit straight to the default branch, which a ruleset usually lets only admins update without a pull request'
+        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY (fallback when no app is configured). PAT of an admin of the repository: gh-release pushes the changelog commit straight to the default branch, which a ruleset usually lets only admins update without a pull request'
         required: false
 
 jobs:
@@ -160,6 +166,21 @@ jobs:
       issues: write
       pull-requests: read
     steps:
+      - name: Check CI app
+        id: app
+        shell: bash
+        env:
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+
+      - name: Create CI app token
+        id: app-token
+        if: steps.app.outputs.present == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
       - name: Create GitHub Release
         uses: GravionLabs/ci/versioning/gh-release@v1
         with:
@@ -169,5 +190,5 @@ jobs:
           cliff-config: ${{ inputs.cliff-config }}
           recreate-branch: ${{ inputs.recreate-branch }}
           update-changelog: ${{ inputs.update-changelog }}
-          # The default branch usually requires a pull request; only an admin's token may push the changelog commit.
-          token: ${{ secrets.GH_PAT || github.token }}
+          # The default branch usually requires a pull request; only an admin's token (the GitHub App as ruleset bypass actor, or GH_PAT) may push the changelog commit.
+          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}

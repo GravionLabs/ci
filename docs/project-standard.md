@@ -44,7 +44,7 @@ Other repositories of the project keep Needs current with the two callers of the
 
 1. Copy `issue-events.yml` (label, close and pull request events, `needs: true`) and `project-needs.yml` (hourly full sync, `mode: full`) to `.github/workflows/`.
 2. Replace `<owner>` and `<n>` in `project-url` (`https://github.com/users/<owner>/projects/<n>`).
-3. Store a classic PAT with scopes `repo`, `workflow` and `project` as the secret `GH_PAT` (optional `PROJECT_TOKEN` with scope `project`); a fine-grained token or the `GITHUB_TOKEN` cannot write a user-owned project. Inputs and tokens: GravionLabs/ci README (`issues.yml`).
+3. Store a classic PAT with scopes `repo` and `project` as the secret `PROJECT_TOKEN` (`GH_PAT` is the deprecated fallback); a fine-grained token, a GitHub App or the `GITHUB_TOKEN` cannot write a user-owned project. Release PRs, changelog commits and Renovate use the GitHub App `GravionLabs CI` (secrets `CI_APP_ID`, `CI_APP_PRIVATE_KEY`, see the ci README). Inputs and tokens: GravionLabs/ci README (`issues.yml`).
 
 ## Views
 
