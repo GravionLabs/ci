@@ -77,13 +77,22 @@ function Get-RuleParams {
   }
 }
 
-# The API returns pull_request parameters it rejects on PUT (required_reviewers, require_extra_approval_for_unattributed_changes: HTTP 422),
-# so only the accepted keys are sent back; missing ones get the defaults.
+# The API returns two pull_request parameters it rejects on PUT (HTTP 422): required_reviewers and
+# require_extra_approval_for_unattributed_changes. They are dropped here; Get-RulesetPlan refuses the ruleset when either carries a real
+# requirement. Every other parameter passes through; missing defaults are added.
+function Test-PullRequestUnwritable {
+  param($Parameters)
+  if (-not $Parameters) { return $false }
+  $rr = $Parameters['required_reviewers']
+  (@($rr | Where-Object { $_ }).Count -gt 0) -or ($Parameters['require_extra_approval_for_unattributed_changes'] -eq $true)
+}
 function ConvertTo-PullRequestParams {
   param($Parameters)
-  $defaults = Get-RuleParams 'pull_request'
   $out = @{}
-  foreach ($k in $defaults.Keys) { $out[$k] = if ($Parameters -and $Parameters.ContainsKey($k) -and $null -ne $Parameters[$k]) { $Parameters[$k] } else { $defaults[$k] } }
+  if ($Parameters) { foreach ($k in $Parameters.Keys) { if ($null -ne $Parameters[$k]) { $out[$k] = $Parameters[$k] } } }
+  $out.Remove('required_reviewers'); $out.Remove('require_extra_approval_for_unattributed_changes')
+  $defaults = Get-RuleParams 'pull_request'
+  foreach ($k in $defaults.Keys) { if (-not $out.ContainsKey($k)) { $out[$k] = $defaults[$k] } }
   $out
 }
 
@@ -98,7 +107,9 @@ function Get-RulesetPlan {
     $rules.Add((New-Rule 'pull_request' (Get-RuleParams 'pull_request'))); $changed = $true
   }
   $pr = $rules | Where-Object { $_.type -eq 'pull_request' } | Select-Object -First 1
+  $blocked = $false
   if ($pr -and $MergeMethods.Count) {
+    $blocked = Test-PullRequestUnwritable $pr.parameters
     $pr.parameters = ConvertTo-PullRequestParams $pr.parameters
     $have = @($pr.parameters.allowed_merge_methods | Sort-Object) -join ','
     if ($have -ne (@($MergeMethods | Sort-Object) -join ',')) { $changed = $true }
@@ -123,7 +134,7 @@ function Get-RulesetPlan {
     bypass_actors = $(if ($Existing -and $Existing.bypass_actors) { , @($Existing.bypass_actors) } else { , @() })
     rules = @($rules)
   }
-  [pscustomobject]@{ Body = $body; Changed = $changed }
+  [pscustomobject]@{ Body = $body; Changed = $changed; Blocked = $blocked }
 }
 
 $targets = @()
@@ -155,6 +166,11 @@ foreach ($full in $targets) {
       $hit = $list | Where-Object { $_.name -eq $s.Name } | Select-Object -First 1
       $existing = if ($hit) { Get-Json @('api', "repos/$full/rulesets/$($hit.id)") -AsHashtable } else { $null }
       $plan = Get-RulesetPlan -Existing $existing -Name $s.Name -Include $s.Include -ExtraRules $s.Extra -MergeMethods $s.Methods
+      if ($plan.Blocked) {
+        $failed++
+        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers / require_extra_approval_for_unattributed_changes; set allowed_merge_methods by hand ($($s.Methods -join ', ')); not changed"
+        continue
+      }
       $verb = if ($existing) { 'update' } else { 'create' }
       if (-not $plan.Changed) { Write-Host "OK   $full : ruleset '$($s.Name)' already requires '$Context' and allows only: $($s.Methods -join ', ')"; continue }
       $checks = (($plan.Body.rules | Where-Object { $_.type -eq 'required_status_checks' }).parameters.required_status_checks | ForEach-Object { $_.context }) -join ', '
