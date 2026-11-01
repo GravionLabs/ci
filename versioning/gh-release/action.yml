@@ -37,6 +37,14 @@ inputs:
       and commit it (with [skip ci]) before creating the release tag.
     required: false
     default: 'false'
+  version-command:
+    description: >
+      Shell command run after the checkout with VERSION set (the version without tag prefix, e.g.
+      1.0.0-rc.1), before the changelog commit, to write the version into project files. Every file
+      it changes is committed together with the changelog in the one [skip ci] commit that gets
+      tagged. Empty = off.
+    required: false
+    default: ''
   close-issues:
     description: >
       After the release, close the issues delivered by a merged release/<x.y> PR
@@ -69,6 +77,14 @@ runs:
         fetch-depth: 0
         ref: ${{ github.ref_name }}
 
+    - name: Run version command
+      if: ${{ inputs.version-command != '' }}
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.version-command }}
+        VERSION: ${{ inputs.version }}
+      run: bash "${{ github.action_path }}/version-command.sh"
+
     - name: Generate release notes with git-cliff
       id: cliff
       if: ${{ inputs.cliff-config != '' }}
@@ -87,21 +103,13 @@ runs:
         OUTPUT: ${{ inputs.changelog-file }}
 
     - name: Commit updated CHANGELOG.md
-      if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
+      if: ${{ (inputs.cliff-config != '' && inputs.update-changelog == 'true') || inputs.version-command != '' }}
       shell: bash
       env:
         TAG: ${{ inputs.tag-prefix }}${{ inputs.version }}
         CHANGELOG: ${{ inputs.changelog-file }}
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add "$CHANGELOG"
-        if git diff --cached --quiet; then
-          echo "No changes to $CHANGELOG — skipping commit."
-        else
-          git commit -m "docs: update $CHANGELOG for $TAG [skip ci]"
-          git push
-        fi
+        VERSION_COMMAND: ${{ inputs.version-command }}
+      run: bash "${{ github.action_path }}/commit-release.sh"
 
     - name: Create version tag
       uses: GravionLabs/ci/versioning/create-version-tag@v1
