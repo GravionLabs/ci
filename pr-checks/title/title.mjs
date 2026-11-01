@@ -14,14 +14,17 @@ export function isBreaking(message) {
   return parseConventional(subject)?.breaking === true || /^BREAKING[ -]CHANGE: /m.test(rest.join('\n'));
 }
 
-/** Release PRs (head release/**) and merge-back PRs (head is the default branch) are exempt. */
-export function isExempt(headRef, defaultBranch) {
-  return /^release\//.test(headRef ?? '') || (headRef ?? '') === defaultBranch;
+/**
+ * Release PRs (head release/**) and merge-back PRs (head is the default branch) are exempt, but only from the
+ * same repository: a fork's branch named main or release/x is checked like any other.
+ */
+export function isExempt(headRef, defaultBranch, sameRepo = true) {
+  return sameRepo && (/^release\//.test(headRef ?? '') || (headRef ?? '') === defaultBranch);
 }
 
 /** Hotfix rule: a PR into the default branch from a branch other than release/** checks every commit. */
-export function checksEveryCommit(baseRef, headRef, defaultBranch) {
-  return baseRef === defaultBranch && !isExempt(headRef, defaultBranch);
+export function checksEveryCommit(baseRef, headRef, defaultBranch, sameRepo = true) {
+  return baseRef === defaultBranch && !isExempt(headRef, defaultBranch, sameRepo);
 }
 
 /**
@@ -32,8 +35,9 @@ export function titleProblems(title, commits, { everyCommit = false } = {}) {
   const problems = [];
   const parsed = parseConventional(title);
   if (!parsed) {
+    const hint = /^Revert "/.test(title ?? '') ? ' For a revert use `revert: <original title>`.' : '';
     problems.push(
-      `The title "${title}" is not a Conventional Commit: use \`type(scope)!: description\` with a type of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.`,
+      `The title "${title}" is not a Conventional Commit: use \`type(scope)!: description\` with a type of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.${hint}`,
     );
   }
   const own = (commits ?? []).filter((commit) => (commit.parents ?? 1) <= 1);

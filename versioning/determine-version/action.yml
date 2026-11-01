@@ -88,9 +88,9 @@ runs:
         fi
         {
           echo 'override-config<<GV_EOF'
-          echo 'major-version-bump-message=\+semver:\s?(breaking|major)|^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([\w\s-,/\\]*\))?(!:|:.*\n\n((.+\n)+\n)?BREAKING CHANGE:\s.+)'
-          echo 'minor-version-bump-message=\+semver:\s?(feature|minor)|^(feat)(\([\w\s-,/\\]*\))?:'
-          echo 'patch-version-bump-message=\+semver:\s?(fix|patch)|^(fix|perf|revert)(\([\w\s-,/\\]*\))?:'
+          echo 'major-version-bump-message=\+semver:\s?(breaking|major)|^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)\n]+\))?(!:|:.*\n\n((.+\n)+\n)?BREAKING[ -]CHANGE:\s.+)'
+          echo 'minor-version-bump-message=\+semver:\s?(feature|minor)|^(feat)(\([^)\n]+\))?:'
+          echo 'patch-version-bump-message=\+semver:\s?(fix|patch)|^(fix|perf|revert)(\([^)\n]+\))?:'
           echo 'GV_EOF'
         } >> "$GITHUB_OUTPUT"
 

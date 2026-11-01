@@ -544,7 +544,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 
 - **`readiness`** (input `readiness`): runs [`pr-checks/readiness`](#pr-checksreadiness). The PR body must close at least one issue (`Closes|Fixes|Resolves #n`; PRs from `release/**` are exempt, input `require-issue`), and each closed issue must have none of the `not-ready-labels` and no open "blocked by" issue. The job summary lists every problem.
 - **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
-- **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored). Release PRs from `release/**` and merge-back PRs (head is the default branch) are exempt. Needs `pull-requests: read`.
+- **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored; the API lists at most 250 commits). Release PRs from `release/**` and merge-back PRs (head is the default branch) of the same repository are exempt; a fork branch with such a name is checked. Needs `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
 | Input | Default | Description |
@@ -615,9 +615,9 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 Fails when the pull request title is not a Conventional Commit, contradicts the commits (breaking commit without `!`, `feat:` commit under another type) or, for a hotfix PR into the default branch, when a commit is not a Conventional Commit. Release and merge-back PRs are exempt. Needs `pull-requests: read`.
 
 <!-- action-docs:inputs source="pr-checks/title/action.yml" -->
-| Name    | Description                                     | Required | Default             |
-|---------|-------------------------------------------------|----------|---------------------|
-| `token` | Token with pull-requests read access            | No       | ${{ github.token }} |
+| Name    | Description                          | Required | Default             |
+|---------|--------------------------------------|----------|---------------------|
+| `token` | Token with pull-requests read access | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 ### `pr-checks/adr`
@@ -1626,7 +1626,7 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
 - Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
-- **A plain merge is only a patch.** GitVersion on `main` ignores the branch rule after a `--no-ff` merge and yields `1.0.61`, not `1.1.0`. The minor bump needs a `+semver: minor` footer in a commit message that reaches `main`: put it in the merge commit message (or squash message) of the release PR, or in a commit on `release/next`. `versioning/release-pr` does not add it; it must be added by hand when merging. `tests/determine-version.test.sh` asserts both cases.
+- **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
 
 ---

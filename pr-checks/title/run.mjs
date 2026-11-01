@@ -10,12 +10,15 @@ export default async function run({ github, context, core }) {
 
   const summary = async (text) => core.summary.addHeading('PR title', 3).addRaw(`${text}\n`).write();
 
-  if (isExempt(pr.head.ref, defaultBranch)) {
+  const sameRepo = !!pr.head.repo && pr.head.repo.full_name === pr.base.repo?.full_name;
+
+  if (isExempt(pr.head.ref, defaultBranch, sameRepo)) {
     core.notice(`PR from ${pr.head.ref} is exempt from the title check.`);
     await summary('Exempt (release or merge-back PR).');
     return;
   }
 
+  // The API lists at most 250 commits of a PR, even paginated; later commits are not checked.
   const commits = (
     await github.paginate(github.rest.pulls.listCommits, { owner, repo, pull_number, per_page: 100 })
   ).map((item) => ({
@@ -23,7 +26,7 @@ export default async function run({ github, context, core }) {
     message: item.commit.message,
     parents: item.parents?.length ?? 1,
   }));
-  const everyCommit = checksEveryCommit(pr.base.ref, pr.head.ref, defaultBranch);
+  const everyCommit = checksEveryCommit(pr.base.ref, pr.head.ref, defaultBranch, sameRepo);
   const problems = titleProblems(pr.title, commits, { everyCommit });
 
   const lines = problems.map((problem) => `- ${problem}`).join('\n');

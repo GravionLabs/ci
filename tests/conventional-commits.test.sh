@@ -61,9 +61,20 @@ eq "feat! is a major" "2.0.0" "$(var on)"
 mkrepo; git commit -q --allow-empty -m "fix: x" -m "BREAKING CHANGE: the format changed"
 eq "BREAKING CHANGE footer is a major" "2.0.0" "$(var on)"
 
+mkrepo; git commit -q --allow-empty -m "fix: x" -m "BREAKING-CHANGE: the format changed"
+eq "BREAKING-CHANGE footer is a major" "2.0.0" "$(var on)"
+
+mkrepo; git commit -q --allow-empty -m "feat(action.yml): a thing"
+eq "feat with a dotted scope is a minor" "1.1.0" "$(var on)"
+
 mkrepo; git commit -q --allow-empty -m "feat: squashed thing (#7)" -m "* feat!: intermediate
 * fix: another"
 eq "! only in a squash body line is no major" "1.1.0" "$(var on)"
+
+# GitVersion matches without RegexOptions.Multiline: ^ is the start of the message, not of a body line.
+mkrepo; git commit -q --allow-empty -m "fix: squashed thing (#7)" -m "feat!: intermediate
+feat: another"
+eq "unprefixed body lines bump nothing" "1.0.1" "$(var on)"
 
 mkrepo; git commit -q --allow-empty -m "chore: tidy" -m "+semver: major"
 eq "+semver: major stays an escape hatch" "2.0.0" "$(var on)"

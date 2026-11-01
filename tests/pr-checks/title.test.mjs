@@ -43,6 +43,11 @@ describe('exemptions', () => {
     assert.equal(isExempt('main', 'main'), true);
     assert.equal(isExempt('feat/1-x', 'main'), false);
   });
+  it('exempts only branches of the same repository', () => {
+    assert.equal(isExempt('release/next', 'main', false), false);
+    assert.equal(isExempt('main', 'main', false), false);
+    assert.equal(checksEveryCommit('main', 'main', 'main', false), true);
+  });
   it('checks every commit only for non-release PRs into the default branch', () => {
     assert.equal(checksEveryCommit('main', 'fix/3-x', 'main'), true);
     assert.equal(checksEveryCommit('release/next', 'feat/1-x', 'main'), false);
@@ -59,6 +64,11 @@ describe('titleProblems', () => {
   it('fails an invalid title', () => {
     const [problem] = titleProblems('Add thing', []);
     assert.match(problem, /not a Conventional Commit/);
+    assert.doesNotMatch(problem, /For a revert/);
+  });
+  it('hints at revert: for a GitHub revert title', () => {
+    const [problem] = titleProblems('Revert "feat: x"', []);
+    assert.match(problem, /For a revert use `revert: <original title>`/);
   });
   it('fails a breaking commit without ! in the title', () => {
     const problems = titleProblems('feat: add', [commit('feat!: a')]);
@@ -84,7 +94,7 @@ describe('titleProblems', () => {
   });
 });
 
-function harness({ title, head = 'feat/1-x', base = 'release/next', commits = [] }) {
+function harness({ title, head = 'feat/1-x', base = 'release/next', commits = [], headRepo = 'o/r' }) {
   const calls = { failed: [], notices: [], summary: '' };
   const summary = {
     addHeading: () => summary,
@@ -98,7 +108,11 @@ function harness({ title, head = 'feat/1-x', base = 'release/next', commits = []
       rest: {
         pulls: {
           get: async () => ({
-            data: { title, head: { ref: head }, base: { ref: base, repo: { default_branch: 'main' } } },
+            data: {
+              title,
+              head: { ref: head, repo: headRepo && { full_name: headRepo } },
+              base: { ref: base, repo: { full_name: 'o/r', default_branch: 'main' } },
+            },
           }),
           listCommits,
         },
@@ -139,6 +153,19 @@ describe('run', () => {
     const h = harness({ title: 'Merge main', head: 'main' });
     await run(h);
     assert.deepEqual(h.calls.failed, []);
+  });
+  it('does not exempt a fork branch named like a release or the default branch', async () => {
+    for (const head of ['release/next', 'main']) {
+      const h = harness({ title: 'nope', head, base: 'main', commits: ['wip'], headRepo: 'fork/r' });
+      await run(h);
+      assert.equal(h.calls.failed.length, 1, head);
+      assert.match(h.calls.failed[0], /"wip" is not a Conventional Commit/);
+    }
+  });
+  it('does not exempt a PR whose head repository was deleted', async () => {
+    const h = harness({ title: 'nope', head: 'release/next', base: 'main', headRepo: null });
+    await run(h);
+    assert.equal(h.calls.failed.length, 1);
   });
   it('checks every commit of a hotfix into main', async () => {
     const h = harness({ title: 'fix: x', head: 'fix/9-x', base: 'main', commits: ['fix: a', 'oops'] });
