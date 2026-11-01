@@ -4,4 +4,3 @@ next-version: 1.0.0
 branches:
   release:
     regex: ^release/next$
-    increment: Minor
