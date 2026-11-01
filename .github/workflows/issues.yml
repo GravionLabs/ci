@@ -97,7 +97,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Apply issue conventions
-        uses: GravionLabs/ci/issues/conventions@main
+        uses: GravionLabs/ci/issues/conventions@v1
         with:
           levels: ${{ inputs.levels }}
           required-sections: ${{ inputs.required-sections }}
@@ -117,7 +117,7 @@ jobs:
       cancel-in-progress: true
     steps:
       - name: Sync project Needs
-        uses: GravionLabs/ci/project/needs@main
+        uses: GravionLabs/ci/project/needs@v1
         with:
           project-url: ${{ inputs.project-url }}
           mode: ${{ inputs.mode }}

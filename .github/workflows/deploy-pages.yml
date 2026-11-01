@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build and upload pages artifact
-        uses: GravionLabs/ci/pages/deploy@main
+        uses: GravionLabs/ci/pages/deploy@v1
         with:
           docs-path: ${{ inputs.docs-path }}
           mkdocs-config-file: ${{ inputs.mkdocs-config-file }}

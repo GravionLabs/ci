@@ -47,7 +47,7 @@ eq "readiness is skipped by its input" 'inputs.readiness' "$(q '.jobs.readiness.
 eq "adr is skipped by its input" 'inputs.adr' "$(q '.jobs.adr.if')"
 
 eq "title is skipped by its input" 'inputs.title' "$(q '.jobs.title.if')"
-eq "title job uses the title action" 'GravionLabs/ci/pr-checks/title@main' "$(q '.jobs.title.steps[0].uses')"
+eq "title job uses the title action" 'GravionLabs/ci/pr-checks/title@v1' "$(q '.jobs.title.steps[0].uses')"
 
 script=$(q '.jobs.result.steps[0].run')
 aggregate() { NEEDS="$1" bash -c "$script" >/dev/null 2>&1; echo $?; }

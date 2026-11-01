@@ -96,7 +96,7 @@ runs:
         fi
 
     - name: Create version tag
-      uses: GravionLabs/ci/versioning/create-version-tag@main
+      uses: GravionLabs/ci/versioning/create-version-tag@v1
       with:
         version: ${{ inputs.version }}
         tag-prefix: ${{ inputs.tag-prefix }}
@@ -173,7 +173,7 @@ runs:
     - name: Close issues delivered by the release
       if: ${{ inputs.close-issues == 'true' }}
       continue-on-error: true
-      uses: GravionLabs/ci/versioning/close-release-issues@main
+      uses: GravionLabs/ci/versioning/close-release-issues@v1
       with:
         version: ${{ inputs.version }}
         token: ${{ inputs.token }}

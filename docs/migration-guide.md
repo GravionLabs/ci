@@ -45,7 +45,7 @@ permissions:
   contents: read
 jobs:
   release:
-    uses: GravionLabs/ci/.github/workflows/tauri-app.yml@main
+    uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1
     permissions:
       contents: write
     with:

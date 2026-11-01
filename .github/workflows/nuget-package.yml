@@ -138,7 +138,7 @@ jobs:
 
       - name: Determine version
         id: version
-        uses: GravionLabs/ci/versioning/determine-version@main
+        uses: GravionLabs/ci/versioning/determine-version@v1
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
           conventional-commits: ${{ inputs.conventional-commits }}
@@ -153,7 +153,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Build
-        uses: GravionLabs/ci/dotnet/build@main
+        uses: GravionLabs/ci/dotnet/build@v1
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
           dotnet-project: ${{ inputs.dotnet-project }}
@@ -166,7 +166,7 @@ jobs:
           feed-token: ${{ secrets.feed-token }}
 
       - name: Test
-        uses: GravionLabs/ci/dotnet/test@main
+        uses: GravionLabs/ci/dotnet/test@v1
         with:
           test-project: ${{ inputs.test-project }}
           configuration: ${{ inputs.configuration }}
@@ -175,7 +175,7 @@ jobs:
           upload-results: 'true'
 
       - name: Pack
-        uses: GravionLabs/ci/dotnet/nuget/pack@main
+        uses: GravionLabs/ci/dotnet/nuget/pack@v1
         with:
           dotnet-project: ${{ inputs.dotnet-project }}
           configuration: ${{ inputs.configuration }}
@@ -183,7 +183,7 @@ jobs:
 
       - name: Verify Package Contents
         if: inputs.verify-package-files != ''
-        uses: GravionLabs/ci/dotnet/nuget/verify-package@main
+        uses: GravionLabs/ci/dotnet/nuget/verify-package@v1
         with:
           files: ${{ inputs.verify-package-files }}
 
@@ -195,7 +195,7 @@ jobs:
     environment: nuget-publish
     steps:
       - name: Publish NuGet packages
-        uses: GravionLabs/ci/dotnet/nuget/publish@main
+        uses: GravionLabs/ci/dotnet/nuget/publish@v1
         with:
           feed-url: ${{ inputs.publish-feed-url }}
           api-key: ${{ secrets.publish-api-key }}
@@ -212,7 +212,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Create GitHub Release
-        uses: GravionLabs/ci/versioning/gh-release@main
+        uses: GravionLabs/ci/versioning/gh-release@v1
         with:
           version: ${{ needs.determine-version.outputs.semver }}
           tag-prefix: ${{ inputs.release-tag-prefix }}

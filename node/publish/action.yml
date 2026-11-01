@@ -60,7 +60,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Node.js
-      uses: GravionLabs/ci/node/setup@main
+      uses: GravionLabs/ci/node/setup@v1
       with:
         package-manager: ${{ inputs.package-manager }}
         package-manager-version: ${{ inputs.package-manager-version }}

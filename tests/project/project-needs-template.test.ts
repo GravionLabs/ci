@@ -14,7 +14,7 @@ const strip = (w: Wf) =>
       k === 'project-url' || k === 'name'
         ? undefined
         : k === 'uses' && v === './.github/workflows/issues.yml'
-          ? 'GravionLabs/ci/.github/workflows/issues.yml@main'
+          ? 'GravionLabs/ci/.github/workflows/issues.yml@v1'
           : v
     )
   ) as Record<string, unknown>;
@@ -33,7 +33,7 @@ describe.each([
 
   it('calls issues.yml of GravionLabs/ci with the project URL placeholder', () => {
     const job = tpl.jobs[jobName] as { uses?: string; with?: Record<string, unknown> };
-    expect(job.uses).toBe('GravionLabs/ci/.github/workflows/issues.yml@main');
+    expect(job.uses).toBe('GravionLabs/ci/.github/workflows/issues.yml@v1');
     expect(job.with?.['project-url']).toBe('https://github.com/users/<owner>/projects/<n>');
   });
 

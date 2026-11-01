@@ -101,7 +101,7 @@ jobs:
 
       - name: Determine version
         id: version
-        uses: GravionLabs/ci/versioning/determine-version@main
+        uses: GravionLabs/ci/versioning/determine-version@v1
         with:
           gitversion-config-file: ${{ inputs.gitversion-config-file }}
           conventional-commits: ${{ inputs.conventional-commits }}
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Lint Dockerfile
-        uses: GravionLabs/ci/docker/lint@main
+        uses: GravionLabs/ci/docker/lint@v1
         with:
           dockerfile: ${{ inputs.dockerfile }}
 
@@ -125,7 +125,7 @@ jobs:
       contents: read
     steps:
       - name: Build
-        uses: GravionLabs/ci/docker/build@main
+        uses: GravionLabs/ci/docker/build@v1
         with:
           image-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           dockerfile: ${{ inputs.dockerfile }}
@@ -134,7 +134,7 @@ jobs:
           build-args: ${{ inputs.build-args }}
 
       - name: Publish
-        uses: GravionLabs/ci/docker/publish@main
+        uses: GravionLabs/ci/docker/publish@v1
         with:
           image-name: ${{ inputs.image-name }}
           registry: ${{ inputs.registry }}
@@ -161,7 +161,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Create GitHub Release
-        uses: GravionLabs/ci/versioning/gh-release@main
+        uses: GravionLabs/ci/versioning/gh-release@v1
         with:
           version: ${{ needs.determine-version.outputs.semver }}
           tag-prefix: ${{ inputs.release-tag-prefix }}

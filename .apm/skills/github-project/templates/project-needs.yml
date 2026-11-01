@@ -16,7 +16,7 @@ jobs:
     # GitHub validates every job of issues.yml at startup; its conventions job requests issues: write.
     permissions:
       issues: write
-    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    uses: GravionLabs/ci/.github/workflows/issues.yml@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true

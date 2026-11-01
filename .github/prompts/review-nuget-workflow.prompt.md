@@ -8,7 +8,7 @@ Review the provided GitHub Actions workflow file against the `GravionLabs/ci` be
 
 ### Interface Usage
 
-- [ ] Uses `GravionLabs/ci/.github/workflows/nuget-package.yml@main` (not an older path or fork)
+- [ ] Uses `GravionLabs/ci/.github/workflows/nuget-package.yml@v1` (not an older path or fork)
 - [ ] Does **NOT** pass a `version:` input (versioning is internal since the workflow refactor)
 - [ ] Does **NOT** have a separate `determine-version` job (it runs inside the reusable workflow)
 - [ ] Uses `gitversion-config-file:` input (not `config-file-path:`) if GitVersion is configured

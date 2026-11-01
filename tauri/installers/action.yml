@@ -83,7 +83,7 @@ runs:
         cache: ${{ inputs.package-manager }}
 
     - name: Set up Rust
-      uses: GravionLabs/ci/rust/setup@main
+      uses: GravionLabs/ci/rust/setup@v1
       with:
         targets: ${{ inputs.target }}
         cache-key: installers-${{ inputs.target }}

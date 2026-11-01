@@ -10,6 +10,7 @@
 versioning/
   determine-version/    — GitVersion-based semantic versioning (outputs: semver, nuget-version, python-version, docker-version, major, minor, patch, …)
   create-version-tag/   — Creates and pushes a git tag from a version string
+  move-major-tag/       — Moves the major tag (v1) to the commit of a release tag (v1.4.0) and force-pushes it; skips pre-releases
   gh-release/           — Creates a GitHub Release with optional changelog extraction
   release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
@@ -83,7 +84,7 @@ Migrating a repository with an inline workflow: see `docs/migration-guide.md`.
 
 ## Reusable Workflow: `nuget-package.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main`.
+Call with `uses: GravionLabs/ci/.github/workflows/nuget-package.yml@v1`.
 
 ### Inputs
 
@@ -134,7 +135,7 @@ JFrog Artifactory:   https://{domain}/artifactory/api/nuget/v3/{repo}
 jobs:
   package:
     name: Package
-    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/nuget-package.yml@v1
     with:
       publish-feed-url: https://api.nuget.org/v3/index.json
     secrets:
@@ -143,7 +144,7 @@ jobs:
 
 ## Reusable Workflow: `docker-package.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/docker-package.yml@main`.
+Call with `uses: GravionLabs/ci/.github/workflows/docker-package.yml@v1`.
 
 ### Inputs
 
@@ -178,7 +179,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/docker-package.yml@main`.
 ```yaml
 jobs:
   docker:
-    uses: GravionLabs/ci/.github/workflows/docker-package.yml@main
+    uses: GravionLabs/ci/.github/workflows/docker-package.yml@v1
     with:
       image-name: ${{ github.repository }}
     secrets:
@@ -191,7 +192,7 @@ jobs:
 
 ## Reusable Workflow: `issues.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@main` from a workflow on `issues` and `pull_request_target`.
+Call with `uses: GravionLabs/ci/.github/workflows/issues.yml@v1` from a workflow on `issues` and `pull_request_target`.
 
 ### Inputs
 
@@ -231,7 +232,7 @@ permissions:
   issues: write
 jobs:
   issues:
-    uses: GravionLabs/ci/.github/workflows/issues.yml@main
+    uses: GravionLabs/ci/.github/workflows/issues.yml@v1
     with:
       project-url: https://github.com/users/<owner>/projects/<n>
       needs: true
@@ -243,11 +244,11 @@ Tests: `node --test "issues/conventions/*.test.mjs"` (quote the glob, Node 21+; 
 
 ## Reusable Workflow: `pr-checks.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@main` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
+Call with `uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1` from a workflow on `pull_request` (types opened, edited, synchronize, reopened); the caller job id is `pr-checks` and it grants `contents: read`, `issues: read`, `pull-requests: read`. Jobs: `readiness`, `adr` (`.agents/config.json` of the base branch via the API; keys `governance.adrPaths|adrDir|skipLabels`, skills#65 pending), `title` (`pr-checks/title`, Conventional Commit title and commits) and the aggregate `result`, named `PR checks`: needs every job, `if: always()`, fails on failure or cancelled, passes on skipped. No checkout. Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-workflow.test.sh`. Details: README, "pr-checks.yml".
 
 ## Reusable Workflow: `release-branch.yml`
 
-Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@main` from a workflow on `push` to `release/**` (the file has no triggers of its own).
+Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a workflow on `push` to `release/**` (the file has no triggers of its own).
 
 ### Inputs
 
@@ -272,7 +273,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@main` from 
 
 - One job, no checkout, top-level `permissions: {}`; the calling job must grant `contents: read`, `issues: write`, `pull-requests: write`. `secrets: inherit` works.
 - Steps: check `GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which only prints that it would sync, since a dry run labels nothing). Only newly labelled issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
-- Actions are referenced at `@main`: works for callers once those versions are released.
+- Actions are referenced at `@v1`, the moving major tag (see "Releasing ci").
 - Test: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints it.
 
 ## Composite Actions
@@ -310,7 +311,7 @@ jobs:
   release-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: GravionLabs/ci/versioning/release-pr@main
+      - uses: GravionLabs/ci/versioning/release-pr@v1
         with:
           token: ${{ secrets.GH_PAT || github.token }}
 ```
@@ -328,7 +329,7 @@ Inputs: `version` (for the comment), `label` (default `merged`), `token`, `dry-r
 `versioning/gh-release` calls it by default (input `close-issues`, `continue-on-error`), so every release job gets it. The token needs `issues: write` and `pull-requests: read`; without them the step only warns. The release jobs of the reusable `*-package.yml` workflows and the `publish` job of `tauri-app.yml` request `issues: write` and `pull-requests: read` (besides `contents: write`), so the calling job must grant them: a reusable workflow that requests more than its caller allows fails at startup. `tauri-app.yml` calls this action itself in `publish`.
 
 ```yaml
-      - uses: GravionLabs/ci/versioning/close-release-issues@main
+      - uses: GravionLabs/ci/versioning/close-release-issues@v1
         with:
           version: ${{ needs.determine-version.outputs.semver }}
 ```
@@ -353,7 +354,7 @@ jobs:
   mark-merged-issues:
     runs-on: ubuntu-latest
     steps:
-      - uses: GravionLabs/ci/versioning/mark-merged-issues@main
+      - uses: GravionLabs/ci/versioning/mark-merged-issues@v1
         with:
           project-status: In release
           project-token: ${{ secrets.GH_PAT }}
@@ -436,7 +437,8 @@ Requires `pages: write`, `id-token: write` permissions on the calling job — us
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets `branches: release: { regex: ^release/next$, increment: Minor }`, so `release/next` gets a `1.1.0` pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
-- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags and publishes it. Callers keep using `@main`.
+- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1`, never `@main` or a commit SHA.
+- **Self-references follow the major tag.** Every `uses: GravionLabs/ci/...` inside this repository (reusable workflows, composite actions) is `@v<major>` of the next release, so a caller on `@v1` runs the actions of the same line. `tests/self-references.test.sh` fails on `@main`, a SHA or another major; a breaking change (`feat!:`) raises them to `@v2` in the same pull request. A caller pinned to an exact `@v1.x.y` still gets the nested actions of `@v1`.
 - **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
 

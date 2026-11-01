@@ -80,7 +80,7 @@ eq "needs concurrency per issue/PR/event" \
   "$(q "$NEEDS.concurrency.group")"
 eq "needs concurrency cancels" true "$(q "$NEEDS.concurrency[\"cancel-in-progress\"]")"
 eq "needs has one step" 1 "$(q "$NEEDS.steps | length")"
-eq "needs uses project/needs" 'GravionLabs/ci/project/needs@main' "$(q "$NEEDS.steps[0].uses")"
+eq "needs uses project/needs" 'GravionLabs/ci/project/needs@v1' "$(q "$NEEDS.steps[0].uses")"
 eq "needs token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$NEEDS.steps[0].with.token")"
 eq "needs passes project-url and mode" \
   'mode=${{ inputs.mode }},project-url=${{ inputs.project-url }}' \
