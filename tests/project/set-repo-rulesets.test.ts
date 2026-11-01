@@ -159,18 +159,32 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
 
   it.each([
     ['non-empty required_reviewers', { required_reviewers: [{ reviewer: { id: 1, type: 'Team' }, file_patterns: ['*'], minimum_approvals: 1 }] }],
-    ['the unattributed-changes flag', { require_extra_approval_for_unattributed_changes: true }],
   ])('writes nothing and warns for %s, other rulesets unaffected', (_n, extra) => {
     const blocked = withPr(mainRuleset([rsc('PR checks')]), prRule(['merge', 'squash'], extra));
     for (const flags of [['-Apply'], []]) {
       const r = run({ a: { workflow: CALLER, rulesets: [blocked, releaseRuleset()] } }, '-Repo', 'a', ...flags);
       expect(r.status).toBe(1);
-      expect(r.stdout + r.stderr).toContain("GravionLabs/a ruleset 'main' has required_reviewers / require_extra_approval_for_unattributed_changes; set allowed_merge_methods by hand");
+      expect(r.stdout + r.stderr).toContain("GravionLabs/a ruleset 'main' has required_reviewers; set allowed_merge_methods by hand");
       if (flags.length) {
         expect(r.writes).toHaveLength(1);
         expect(r.writes[0].body.name).toBe('release');
       }
     }
+  });
+
+  it('ignores the unattributed-changes flag (API default true): right methods change nothing, wrong methods update without it', () => {
+    const flag = { required_reviewers: [], require_extra_approval_for_unattributed_changes: true };
+    const ok = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'], flag)), releaseRuleset([prRule(['squash'], flag), rsc('PR checks')])];
+    const r = run({ a: { workflow: CALLER, rulesets: ok } }, '-Repo', 'a', '-Apply');
+    expect(r.status).toBe(0);
+    expect(r.writes).toHaveLength(0);
+    expect(r.stdout + r.stderr).not.toContain('by hand');
+    const wrong = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge', 'squash', 'rebase'], flag)), ok[1]];
+    const w = run({ a: { workflow: CALLER, rulesets: wrong } }, '-Repo', 'a', '-Apply');
+    expect(w.status).toBe(0);
+    expect(w.writes).toHaveLength(1);
+    expect(prOf(w.writes[0].body).allowed_merge_methods).toEqual(['merge']);
+    expect(prOf(w.writes[0].body)).not.toHaveProperty('require_extra_approval_for_unattributed_changes');
   });
 
   it('is idempotent: nothing to change when the methods are right, and the dry run reports a change', () => {
