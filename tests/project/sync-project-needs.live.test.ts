@@ -7,7 +7,7 @@ import { PwshWorker } from '../helpers/pwsh-worker';
 
 const SCRIPT = path.resolve(
   __dirname,
-  '../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1'
+  '../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1',
 );
 
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;
@@ -18,7 +18,7 @@ it('pwsh is installed in CI (the live Sync-ProjectNeeds cases must not be skippe
 });
 
 // Canned GraphQL answers. data.json: {fields, items (project item nodes), issues ({"o/r#n": project item + content}), prs, noNeeds}.
-const HANDLER = `(call, ctx) => {
+const INNER = `(call, ctx) => {
   const fs = require('fs');
   const d = JSON.parse(fs.readFileSync(process.env.FAKE_DATA, 'utf8'));
   const q = call.query || '';
@@ -41,6 +41,12 @@ const HANDLER = `(call, ctx) => {
       options: ['Planning','Ready','In progress','Blocked','Review','Decision','Release review'].map((n) => ({ id: 'O-' + n, name: n })) }];
     return { repositoryOwner: { projectV2: { id: 'P1', fields: { nodes } } } };
   }
+  if (q.includes('issues(first: 100')) {
+    const all = (d.repoIssues || {})[call.variables.o + '/' + call.variables.r] || [];
+    const start = call.variables.cursor ? Number(call.variables.cursor) : 0;
+    return { repository: { issues: { pageInfo: { hasNextPage: start + 100 < all.length, endCursor: String(start + 100) },
+      nodes: all.slice(start, start + 100) } } };
+  }
   if (q.includes('items(first: 100')) {
     const start = call.variables.cursor ? Number(call.variables.cursor) : 0;
     const nodes = d.items.slice(start, start + 100);
@@ -62,6 +68,17 @@ const HANDLER = `(call, ctx) => {
   return out;
 }`;
 
+// rateLimit: d.rateLimit = {cost, remaining}; every read query answers it and remaining shrinks by cost per query.
+const HANDLER = `(call, ctx) => {
+  const out = (${INNER})(call, ctx);
+  const fs = require('fs');
+  const d = JSON.parse(fs.readFileSync(process.env.FAKE_DATA, 'utf8'));
+  if (d.rateLimit && out && call.query && !call.query.includes('mutation') && call.query.includes('rateLimit { cost remaining }')) {
+    out.rateLimit = { cost: d.rateLimit.cost, remaining: d.rateLimit.remaining - d.rateLimit.cost * (ctx.count('rl') - 1) };
+  }
+  return out;
+}`;
+
 const issueNode = (over: Record<string, any> = {}) => ({
   number: 1,
   title: '[PBI] t',
@@ -70,7 +87,9 @@ const issueNode = (over: Record<string, any> = {}) => ({
   repository: { nameWithOwner: 'o/r' },
   labels: { nodes: [] },
   parent: null,
-  subIssues: { nodes: [{ number: 100, title: '[Task] x', projectItems: { nodes: [] } }] },
+  subIssues: {
+    nodes: [{ number: 100, title: '[Task] x', projectItems: { nodes: [] } }],
+  },
   blockedBy: { nodes: [] },
   closedByPullRequestsReferences: { nodes: [] },
   ...over,
@@ -100,14 +119,19 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     const run = async (
       data: Record<string, any>,
       args: string[] = [],
-      env: Record<string, string> = {}
+      env: Record<string, string> = {},
     ) => {
       const gh = createFakeGh(tmp, HANDLER);
       const dataFile = path.join(tmp, 'data.json');
       fs.writeFileSync(dataFile, JSON.stringify({ prs: {}, issues: {}, items: [], ...data }));
       const r = await worker.run(['-Owner', 'o', '-Number', '1', ...args], {
         cwd: tmp,
-        env: { ...gh.env(), FAKE_DATA: dataFile, SYNC_PROJECT_NEEDS_BACKOFF: '0', ...env },
+        env: {
+          ...gh.env(),
+          FAKE_DATA: dataFile,
+          SYNC_PROJECT_NEEDS_BACKOFF: '0',
+          ...env,
+        },
       });
       const calls = gh.calls();
       return {
@@ -121,7 +145,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     it('pages 150 items in 2 queries and mutates only the changed ones', async () => {
       // 150 PBIs with a Task sub-issue and no other signal -> Ready; 10 of them already carry Ready.
       const items = Array.from({ length: 150 }, (_, i) =>
-        projectItem(i + 1, i < 10 ? 'Ready' : null)
+        projectItem(i + 1, i < 10 ? 'Ready' : null),
       );
       const { r, itemQueries, mutations } = await run({ items });
       expect(r.stdout).toContain('#11: (none) -> Ready');
@@ -141,7 +165,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     });
 
     it('clears the field of a closed item with clearProjectV2ItemFieldValue', async () => {
-      const { r, mutations } = await run({ items: [projectItem(5, 'Ready', { state: 'CLOSED' })] });
+      const { r, mutations } = await run({
+        items: [projectItem(5, 'Ready', { state: 'CLOSED' })],
+      });
       expect(r.stdout).toContain('#5: Ready -> (clear)');
       expect(mutations).toHaveLength(1);
       expect(mutations[0].query).toContain('clearProjectV2ItemFieldValue');
@@ -155,7 +181,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     it('-DryRun prints the changes and sends no mutation', async () => {
       const { r, mutations } = await run(
         { items: [projectItem(1, null), projectItem(2, 'Ready')] },
-        ['-DryRun']
+        ['-DryRun'],
       );
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#1: (none) -> Ready');
@@ -182,7 +208,15 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         'o/r#8': {
           ...issueNode({ number: 8 }),
           projectItems: {
-            nodes: [{ id: 'I8', project: { id: 'OTHER' }, status: null, level: null, needs: null }],
+            nodes: [
+              {
+                id: 'I8',
+                project: { id: 'OTHER' },
+                status: null,
+                level: null,
+                needs: null,
+              },
+            ],
           },
         },
       };
@@ -204,7 +238,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
 
     it('a bare -Issue number takes the repository from the origin remote of the checkout', async () => {
       spawnSync('git', ['init', '-q'], { cwd: tmp });
-      spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:o/r.git'], { cwd: tmp });
+      spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:o/r.git'], {
+        cwd: tmp,
+      });
       const issues = {
         'o/r#7': {
           ...issueNode({ number: 7 }),
@@ -231,7 +267,10 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     it('reads every page of open PR heads', async () => {
       const prs = Array.from({ length: 120 }, (_, i) => `feat/${1000 + i}-x`);
       prs.push('feat/7-late');
-      const { r, calls } = await run({ items: [projectItem(7, null)], prs: { 'o/r': prs } });
+      const { r, calls } = await run({
+        items: [projectItem(7, null)],
+        prs: { 'o/r': prs },
+      });
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#7: (none) -> In progress');
       expect(calls.filter((c) => c.query?.includes('pullRequests'))).toHaveLength(2);
@@ -242,7 +281,15 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         'o/r#7': {
           ...issueNode({ number: 7 }),
           projectItems: {
-            nodes: [{ id: 'I7', project: { id: project }, status: null, level: null, needs: null }],
+            nodes: [
+              {
+                id: 'I7',
+                project: { id: project },
+                status: null,
+                level: null,
+                needs: null,
+              },
+            ],
           },
         },
       });
@@ -330,7 +377,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         },
       });
       const issues = {
-        'o/r#7': pItem(7, { parent: { number: 3, repository: { nameWithOwner: 'o/r' } } }),
+        'o/r#7': pItem(7, {
+          parent: { number: 3, repository: { nameWithOwner: 'o/r' } },
+        }),
         'o/r#3': pItem(3, { title: '[Feature] f', subIssues: { nodes: [] } }),
       };
       issues['o/r#3'].projectItems.nodes[0].level = { name: 'Feature' };
@@ -362,7 +411,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       });
       const issues = () => ({
         'o/r#7': pItem(7, {
-          blocking: { nodes: [dep(8), dep(9, 'o/r', 'CLOSED'), dep(10, 'o/x'), dep(11)] },
+          blocking: {
+            nodes: [dep(8), dep(9, 'o/r', 'CLOSED'), dep(10, 'o/x'), dep(11)],
+          },
         }),
         'o/r#8': pItem(8, {}),
         'o/x#10': pItem(10, { repository: { nameWithOwner: 'o/x' } }),
@@ -392,7 +443,7 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         };
         const { r, mutations, calls } = await run(
           { issues: issues(), noBlocking: true, restBlocking },
-          ['-Issue', 'o/r#7', '-IncludeDependents']
+          ['-Issue', 'o/r#7', '-IncludeDependents'],
         );
         expect(r.status).toBe(0);
         expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I7', 'I8']);
@@ -400,10 +451,94 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       });
     });
 
+    describe('-Repo without -Issue', () => {
+      const repoIssue = (nr: number, needs: string | null, over: object = {}) => ({
+        ...issueNode({ number: nr, ...over }),
+        projectItems: {
+          nodes: [
+            {
+              id: `I${nr}`,
+              project: { id: 'P1' },
+              status: null,
+              level: { name: 'PBI' },
+              needs: needs ? { name: needs } : null,
+            },
+            { id: 'X', project: { id: 'P2' } },
+          ],
+        },
+      });
+      it('reads only the issues of that repository, never the project items', async () => {
+        const repoIssues = {
+          'o/r': [
+            repoIssue(1, null),
+            repoIssue(2, 'Ready'),
+            repoIssue(3, 'Ready', { state: 'CLOSED' }),
+          ],
+        };
+        const { r, calls, itemQueries, mutations } = await run(
+          { repoIssues, items: [projectItem(9, null)] },
+          ['-Repo', 'o/r'],
+        );
+        expect(r.status).toBe(0);
+        expect(itemQueries).toHaveLength(0);
+        expect(calls.filter((c) => c.query?.includes('issues(first: 100'))).toHaveLength(1);
+        expect(r.stdout).toContain('Needs: 2 changed, 1 unchanged');
+        expect(mutations.map((m) => m.variables!.i.itemId).sort()).toEqual(['I1', 'I3']);
+      });
+      it('pages through the issues of the repository', async () => {
+        const repoIssues = {
+          'o/r': Array.from({ length: 130 }, (_, i) => repoIssue(i + 1, 'Ready')),
+        };
+        const { r, calls } = await run({ repoIssues }, ['-Repo', 'o/r', '-DryRun']);
+        expect(r.stdout).toContain('Needs: 0 to change, 130 unchanged (dry run)');
+        expect(calls.filter((c) => c.query?.includes('issues(first: 100'))).toHaveLength(2);
+      });
+    });
+
+    describe('GraphQL budget', () => {
+      it('asks for rateLimit and prints the total cost of the run', async () => {
+        const items = Array.from({ length: 150 }, (_, i) => projectItem(i + 1, 'Ready'));
+        const { r, itemQueries } = await run({
+          items,
+          rateLimit: { cost: 3, remaining: 4000 },
+        });
+        expect(r.status).toBe(0);
+        expect(itemQueries[0].query).toContain('rateLimit { cost remaining }');
+        // fields query + 2 item pages + open PR heads = 4 reads
+        expect(r.stdout).toContain('GraphQL cost: 12 points (remaining 3991)');
+      });
+      it('stops before any write when remaining does not cover the next page', async () => {
+        const items = Array.from({ length: 150 }, (_, i) => projectItem(i + 1, null));
+        const { r, mutations, itemQueries } = await run({
+          items,
+          rateLimit: { cost: 5, remaining: 8 },
+        });
+        expect(r.status).toBe(1);
+        expect(r.stdout).toMatch(
+          /Needs sync failed: GraphQL budget too low: 3 points remaining, the next page of items would need about 5/,
+        );
+        expect(itemQueries).toHaveLength(1);
+        expect(mutations).toHaveLength(0);
+      });
+      it('stops before the first write when remaining does not cover the updates', async () => {
+        const items = [projectItem(1, null), projectItem(2, null), projectItem(3, null)];
+        const { r, mutations } = await run({
+          items,
+          rateLimit: { cost: 1, remaining: 4 },
+        });
+        expect(r.status).toBe(1);
+        expect(r.stdout).toContain('GraphQL budget too low');
+        expect(mutations).toHaveLength(0);
+      });
+    });
+
     it('prints the skip line and exits 0 when the field Needs is missing', async () => {
-      const { r, calls } = await run({ noNeeds: true, items: [projectItem(1, null)] });
+      const { r, calls } = await run({
+        noNeeds: true,
+        items: [projectItem(1, null)],
+      });
       expect(r.stdout.trim()).toBe(
-        'Needs sync skipped: field Needs missing (run Set-ProjectStandard.ps1, #596)'
+        'Needs sync skipped: field Needs missing (run Set-ProjectStandard.ps1, #596)',
       );
       expect(r.status).toBe(0);
       expect(calls).toHaveLength(1);
@@ -412,13 +547,27 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
     it('matches open PR heads of the repository and blocked-by links from GraphQL', async () => {
       const items = [
         projectItem(7, null),
-        projectItem(8, null, { blockedBy: { nodes: [{ state: 'OPEN' }, { state: 'CLOSED' }] } }),
-        projectItem(9, null, { blockedBy: { nodes: [{ state: 'CLOSED' }] } }),
+        projectItem(8, null, {
+          blockedBy: {
+            nodes: [
+              { number: 90, state: 'OPEN' },
+              { number: 91, state: 'CLOSED' },
+            ],
+          },
+        }),
+        projectItem(9, null, {
+          blockedBy: { nodes: [{ number: 91, state: 'CLOSED' }] },
+        }),
         projectItem(10, null, {
-          closedByPullRequestsReferences: { nodes: [{ state: 'OPEN', headRefName: 'x' }] },
+          closedByPullRequestsReferences: {
+            nodes: [{ state: 'OPEN', headRefName: 'x' }],
+          },
         }),
       ];
-      const { r, calls } = await run({ items, prs: { 'o/r': ['feat/7-thing', 'feat/17-other'] } });
+      const { r, calls } = await run({
+        items,
+        prs: { 'o/r': ['feat/7-thing', 'feat/17-other'] },
+      });
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#7: (none) -> In progress');
       expect(r.stdout).toContain('#8: (none) -> Blocked');
@@ -427,43 +576,109 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(calls.filter((c) => c.query?.includes('pullRequests'))).toHaveLength(1);
     });
 
-    it('treats merged blockers (label, Status In release) as resolved and open cross-repo ones as blocking', async () => {
-      const inRelease = { project: { id: 'P1' }, status: { name: 'In release' } };
+    const blocker = (nr: number, repo = 'o/r', state = 'OPEN') => ({
+      number: nr,
+      state,
+      repository: { nameWithOwner: repo },
+    });
+
+    it('resolves blockers from the labels and Status of items already read (no nested connections)', async () => {
       const items = [
-        projectItem(21, null, {
-          blockedBy: { nodes: [{ state: 'OPEN', labels: { nodes: [{ name: 'merged' }] } }] },
-        }),
-        projectItem(22, null, {
-          blockedBy: { nodes: [{ state: 'OPEN', projectItems: { nodes: [inRelease] } }] },
-        }),
-        projectItem(23, null, {
-          blockedBy: {
-            nodes: [
-              { state: 'OPEN', repository: { nameWithOwner: 'o/other' }, labels: { nodes: [] } },
-            ],
-          },
-        }),
-        projectItem(24, null, {
-          blockedBy: {
-            nodes: [
-              {
-                state: 'OPEN',
-                projectItems: {
-                  nodes: [{ project: { id: 'P2' }, status: { name: 'In release' } }],
-                },
-              },
-            ],
-          },
-        }),
+        projectItem(30, null, { labels: { nodes: [{ name: 'merged' }] } }),
+        { ...projectItem(31, null), status: { name: 'In release' } },
+        projectItem(32, null),
+        projectItem(21, null, { blockedBy: { nodes: [blocker(30)] } }),
+        projectItem(22, null, { blockedBy: { nodes: [blocker(31)] } }),
+        projectItem(23, null, { blockedBy: { nodes: [blocker(32)] } }),
       ];
       const { r, calls } = await run({ items });
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#21: (none) -> Ready');
       expect(r.stdout).toContain('#22: (none) -> Ready');
       expect(r.stdout).toContain('#23: (none) -> Blocked');
-      expect(r.stdout).toContain('#24: (none) -> Blocked');
       const q = calls.find((c) => c.query?.includes('items(first: 100'))!.query!;
-      expect(q).toMatch(/blockedBy\(first: 20\) \{ nodes \{ number state repository/);
+      expect(q).toContain(
+        'blockedBy(first: 20) { nodes { number state repository { nameWithOwner } } }',
+      );
+      expect(q).not.toMatch(/subIssues\(first: 50\) \{ nodes \{[^}]*projectItems/);
+      expect(calls.filter((c) => c.variables?.n0 !== undefined)).toHaveLength(0);
+    });
+
+    it('looks up blockers outside the read set in one batched query', async () => {
+      const lookup = (labels: string[], status: string | null, project = 'P1') => ({
+        labels: { nodes: labels.map((name) => ({ name })) },
+        projectItems: {
+          nodes: [
+            {
+              project: { id: project },
+              status: status ? { name: status } : null,
+            },
+          ],
+        },
+      });
+      const issues = {
+        'o/other#1': lookup(['merged'], null),
+        'o/other#2': lookup([], 'In release'),
+        'o/other#3': lookup([], 'In release', 'P2'),
+        'o/other#4': lookup([], null),
+      };
+      const items = [1, 2, 3, 4].map((n) =>
+        projectItem(40 + n, null, {
+          blockedBy: { nodes: [blocker(n, 'o/other')] },
+        }),
+      );
+      items.push(
+        projectItem(45, null, {
+          blockedBy: {
+            nodes: [blocker(1, 'o/other'), blocker(9, 'o/other', 'CLOSED')],
+          },
+        }),
+      );
+      const { r, calls } = await run({ items, issues });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain('#41: (none) -> Ready');
+      expect(r.stdout).toContain('#42: (none) -> Ready');
+      expect(r.stdout).toContain('#43: (none) -> Blocked');
+      expect(r.stdout).toContain('#44: (none) -> Blocked');
+      expect(r.stdout).toContain('#45: (none) -> Ready');
+      const lookups = calls.filter((c) => c.variables?.n0 !== undefined);
+      expect(lookups).toHaveLength(1);
+      expect(Object.keys(lookups[0].variables!).filter((k) => k[0] === 'n')).toHaveLength(4);
+    });
+
+    it('takes sub-issue levels from title, issueType or the Level of items already read', async () => {
+      const feature = (nr: number, subs: object[]) => ({
+        ...projectItem(nr, null, {
+          title: '[Feature] f',
+          subIssues: { nodes: subs },
+        }),
+        level: { name: 'Feature' },
+      });
+      const sub = (nr: number, over: object = {}) => ({
+        number: nr,
+        title: 'plain',
+        repository: { nameWithOwner: 'o/r' },
+        ...over,
+      });
+      const items = [
+        feature(1, [sub(51)]),
+        feature(2, [sub(52, { title: '[PBI] x' })]),
+        feature(3, [sub(53, { issueType: { name: 'PBI' } })]),
+        feature(4, [sub(54, { number: 999 })]),
+        { ...projectItem(51, 'Ready'), level: { name: 'PBI' } },
+      ];
+      const { r, calls } = await run({ items });
+      expect(r.status).toBe(0);
+      expect(r.stdout).not.toContain('#1:');
+      expect(r.stdout).not.toContain('#2:');
+      expect(r.stdout).not.toContain('#3:');
+      expect(r.stdout).toContain('#4: (none) -> Planning');
+      expect(
+        calls.some(
+          (c) =>
+            c.query?.includes('Level') && /subIssues[^]*projectItems\(first: 10\)/.test(c.query),
+        ),
+      ).toBe(false);
     });
 
     it('REST fallback: merged-label blocker is resolved, open unmerged blocks', async () => {
@@ -496,19 +711,25 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#4: (none) -> Blocked');
       expect(
-        calls.some((c) => c.args.join(' ').includes('repos/o/r/issues/4/dependencies/blocked_by'))
+        calls.some((c) => c.args.join(' ').includes('repos/o/r/issues/4/dependencies/blocked_by')),
       ).toBe(true);
     });
 
     it('retries a failing mutation and succeeds on the 3rd try', async () => {
-      const { r, mutations } = await run({ items: [projectItem(1, null)], failMutation: 2 });
+      const { r, mutations } = await run({
+        items: [projectItem(1, null)],
+        failMutation: 2,
+      });
       expect(r.status).toBe(0);
       expect(mutations).toHaveLength(3);
       expect(r.stdout).toContain('Needs: 1 changed, 0 unchanged');
     });
 
     it('exits 1 with one line after 4 failed tries', async () => {
-      const { r, mutations } = await run({ items: [projectItem(1, null)], failMutation: 99 });
+      const { r, mutations } = await run({
+        items: [projectItem(1, null)],
+        failMutation: 99,
+      });
       expect(r.status).toBe(1);
       expect(mutations).toHaveLength(4);
       expect(r.stdout).toMatch(/Needs sync failed: Needs update failed for o\/r#1/);
@@ -516,9 +737,12 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
 
     it('exits 1 when the project is not found', async () => {
       const gh = createFakeGh(tmp, '() => ({ repositoryOwner: { projectV2: null } })');
-      const r = await worker.run(['-Owner', 'o', '-Number', '1'], { cwd: tmp, env: gh.env() });
+      const r = await worker.run(['-Owner', 'o', '-Number', '1'], {
+        cwd: tmp,
+        env: gh.env(),
+      });
       expect(r.status).toBe(1);
       expect(r.stdout).toContain('Needs sync failed: Project o/1 not found');
     });
-  }
+  },
 );
