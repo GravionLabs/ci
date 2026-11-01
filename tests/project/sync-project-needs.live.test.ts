@@ -359,6 +359,52 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       });
     });
 
+    describe('project-wide sync (no -Repo, no -Issue)', () => {
+      const blockedByOne = {
+        content: { issue_dependencies_summary: { blocked_by: 1, total_blocked_by: 1, blocking: 0, total_blocking: 0 } },
+      };
+      const items = () => [
+        restItem(1, null),
+        restItem(2, null, { repo: 'o/x' }),
+        restItem(3, null, { repo: 'o/x', ...blockedByOne }),
+        restItem(4, 'Ready', { repo: 'o/y' }),
+        restItem(5, 'Ready', { repo: 'o/y', content: { state: 'closed' } }),
+      ];
+      const data = () => ({
+        items: items(),
+        blockedBy: { 'o/x#3': [dep(90, 'o/x')] },
+        // the PR head of #1 sits in o/x only: it must not count for #1 of o/r
+        prs: { 'o/x': ['feat/2-thing', 'feat/1-other'], 'o/r': [], 'o/y': [] },
+      });
+
+      it('reads the items of every repository in one unfiltered call and syncs them all', async () => {
+        const { r, itemCalls, mutations } = await run(data());
+        expect(r.status).toBe(0);
+        expect(itemCalls).toHaveLength(1);
+        expect(restPath(itemCalls[0])).not.toContain('q=repo:');
+        expect(r.stdout).toContain('#1: (none) -> Ready');
+        expect(r.stdout).toContain('#2: (none) -> In progress');
+        expect(r.stdout).toContain('#3: (none) -> Blocked');
+        expect(r.stdout).toContain('#5: Ready -> (clear)');
+        expect(r.stdout).toContain('Needs: 4 changed, 1 unchanged');
+        expect(mutations.map(itemNr).sort((a, b) => a - b)).toEqual([1, 2, 3, 5]);
+      });
+
+      it('looks up PRs and blockers in the repository of each item', async () => {
+        const { paths } = await run(data());
+        expect(paths).toContain('repos/o/x/issues/3/dependencies/blocked_by?per_page=100');
+        expect(paths.filter((p) => p.includes('/pulls')).map((p) => p.split('/')[1] + '/' + p.split('/')[2]).sort())
+          .toEqual(['o/r', 'o/x', 'o/y']);
+        expect(paths.filter((p) => p.startsWith('repos/o/r/issues/') && p.includes('/dependencies/'))).toEqual([]);
+      });
+
+      it('-DryRun sends no mutation', async () => {
+        const { r, mutations } = await run(data(), ['-DryRun']);
+        expect(r.stdout).toContain('Needs: 4 to change, 1 unchanged (dry run)');
+        expect(mutations).toHaveLength(0);
+      });
+    });
+
     it('prints the skip line and exits 0 when the field Needs is missing', async () => {
       const { r, mutations, itemCalls } = await run({ noNeeds: true, items: [restItem(1, null)] });
       expect(r.stdout.trim()).toBe(

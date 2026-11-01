@@ -37,7 +37,7 @@ on:
         required: false
         default: false
       mode:
-        description: 'needs job: event (sync the issue of the event) or full (sync every item of the repository)'
+        description: 'needs job: event (sync the issue of the event), full (every item of the calling repository) or project (every item of the project, any repository)'
         type: string
         required: false
         default: event
@@ -108,7 +108,7 @@ jobs:
     name: Project Needs
     if: >-
       inputs.needs && inputs.project-url != '' &&
-      (inputs.mode == 'full' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (inputs.mode == 'full' || inputs.mode == 'project' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issues' && contains(fromJSON('["labeled","unlabeled","closed","reopened"]'), github.event.action)) ||
       (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","closed","ready_for_review"]'), github.event.action)))
     runs-on: ubuntu-latest
