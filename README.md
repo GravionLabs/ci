@@ -794,7 +794,7 @@ Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
 
 ### `rust/setup`
 
-Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1).
+Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1). The Linux packages (Tauri libraries plus `linux-packages`) come from a GitHub Actions cache (`awalsh128/cache-apt-pkgs-action`, SHA-pinned) keyed by runner image, package list and `apt-cache-version`; the mirror is used only on a cache miss. To bust the cache, change `apt-cache-version` (for example `v2`). Other runners skip the step.
 
 **Usage:**
 
@@ -817,6 +817,7 @@ Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an expli
 | `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                                     | No       |                |
 | `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                                         | No       | false          |
 | `linux-packages`   | Space-separated extra apt packages to install on Linux runners (for example libgtk-layer-shell-dev), besides the Tauri libraries. Ignored on other runners. | No       |                |
+| `apt-cache-version` | Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again. | No | v1 |
 <!-- /action-docs:inputs -->
 
 ---
