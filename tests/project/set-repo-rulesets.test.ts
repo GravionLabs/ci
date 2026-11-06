@@ -178,12 +178,24 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     for (const flags of [['-Apply'], []]) {
       const r = run({ a: { workflow: CALLER, rulesets: [blocked, releaseRuleset()] } }, '-Repo', 'a', ...flags);
       expect(r.status).toBe(1);
-      expect(r.stdout + r.stderr).toContain("GravionLabs/a ruleset 'main' has required_reviewers; set allowed_merge_methods by hand");
+      expect(r.stdout + r.stderr).toContain("GravionLabs/a ruleset 'main' has required_reviewers; ruleset skipped completely");
+      expect(r.stdout + r.stderr).toContain("set allowed_merge_methods by hand");
+      expect(r.stdout + r.stderr).toContain("ruleset skipped completely, required check 'PR checks' not added");
       if (flags.length) {
         expect(r.writes).toHaveLength(1);
         expect(r.writes[0].body.name).toBe('release');
       }
     }
+  });
+
+  it('adds the pull_request rule with merge only to an existing main ruleset that has none', () => {
+    const main = mainRuleset([rsc('PR checks')]);
+    main.rules = main.rules.filter((x: any) => x.type !== 'pull_request');
+    const r = run({ a: { workflow: CALLER, rulesets: [main, releaseRuleset([prRule(['merge', 'squash']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
+    expect(r.stdout).not.toContain('OK   GravionLabs/a : ruleset \'main\'');
+    expect(r.writes).toHaveLength(1);
+    expect(r.writes[0].body.name).toBe('main');
+    expect(prOf(r.writes[0].body).allowed_merge_methods).toEqual(['merge']);
   });
 
   it('ignores the unattributed-changes flag (API default true): right methods change nothing, wrong methods update without it', () => {
