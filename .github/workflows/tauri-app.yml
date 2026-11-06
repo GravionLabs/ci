@@ -50,7 +50,7 @@ on:
         type: string
         default: ''
       apt-cache-version:
-        description: 'Cache version of the Linux apt packages (checks and Linux installer job). Change it to discard the cache.'
+        description: 'Cache version of the Linux apt packages (Linux installer job only; the checks install no apt packages). Change it to discard the cache.'
         type: string
         default: 'v1'
       installer-sidecars:
