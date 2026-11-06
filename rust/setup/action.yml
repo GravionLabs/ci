@@ -58,6 +58,16 @@ runs:
         list="$(echo "$list $EXTRA" | xargs)"
         echo "packages=$list" >> "$GITHUB_OUTPUT"
 
+    # The cache action keys only on the package list and `version`; the OS release is not in it, so the
+    # runner image goes into `version` (ImageOS is a runner env var, not available to expressions here).
+    - name: Compute the apt cache key
+      id: aptkey
+      if: ${{ steps.apt.outputs.packages != '' }}
+      shell: bash
+      env:
+        APT_CACHE_VERSION: ${{ inputs.apt-cache-version }}
+      run: echo "key=${RUNNER_OS}-${ImageOS:-unknown}-${APT_CACHE_VERSION}" >> "$GITHUB_OUTPUT"
+
     # Restores the .deb files from the Actions cache (key: runner image, package list, version) and installs
     # them from the mirror only on a cache miss.
     - name: Install Linux packages (cached)
@@ -66,7 +76,7 @@ runs:
       uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9
       with:
         packages: ${{ steps.apt.outputs.packages }}
-        version: ${{ inputs.apt-cache-version }}
+        version: ${{ steps.aptkey.outputs.key }}
 
     - name: Install the toolchain from rust-toolchain.toml
       if: ${{ inputs.toolchain == '' && hashFiles('rust-toolchain.toml', 'rust-toolchain') != '' }}

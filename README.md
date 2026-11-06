@@ -794,7 +794,7 @@ Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
 
 ### `rust/setup`
 
-Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1). The Linux packages (Tauri libraries plus `linux-packages`) come from a GitHub Actions cache (`awalsh128/cache-apt-pkgs-action`, SHA-pinned) keyed by runner image, package list and `apt-cache-version`; the mirror is used only on a cache miss. To bust the cache, change `apt-cache-version` (for example `v2`). Other runners skip the step.
+Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1). The Linux packages (Tauri libraries plus `linux-packages`) come from a GitHub Actions cache (`awalsh128/cache-apt-pkgs-action`, SHA-pinned) keyed by package list and a version string made of `runner.os`, the runner image (`ImageOS`, for example `ubuntu24`) and `apt-cache-version`, so ubuntu-22.04 and ubuntu-24.04 do not share a cache; the mirror is used only on a cache miss. To bust the cache, change `apt-cache-version` (for example `v2`). Other runners skip the step.
 
 **Usage:**
 
