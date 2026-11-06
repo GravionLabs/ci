@@ -17,6 +17,18 @@ eq "list step covers tauri deps and extra packages" 1 "$(q '[.runs.steps[] | sel
 eq "cache version input default" v1 "$(q '.inputs["apt-cache-version"].default')"
 eq "cache version is the key of runner os, image and apt-cache-version" '${{ steps.aptkey.outputs.key }}' "$(q '.runs.steps[] | select(.uses != null and (.uses | test("cache-apt"))) | .with.version')"
 eq "key step passes apt-cache-version via env" '${{ inputs.apt-cache-version }}' "$(q '.runs.steps[] | select(.id == "aptkey") | .env.APT_CACHE_VERSION')"
+eq "key step comes before the cache step" yes "$(q '([.runs.steps | to_entries[] | select(.value.id == "aptkey") | .key][0]) as $k | ([.runs.steps | to_entries[] | select(.value.uses != null and (.value.uses | test("cache-apt"))) | .key][0]) as $c | if $k < $c then "yes" else "no" end')"
+eq "key step has the same if as the cache step" 1 "$(q '[.runs.steps[] | select(.id == "aptkey" or (.uses != null and (.uses | test("cache-apt")))) | .if] | unique | length')"
+
+# apt-cache-version is passed through the wrappers
+W="$ROOT/.github/workflows/tauri-app.yml"
+for f in rust/ci/action.yml tauri/installers/action.yml; do
+  eq "$f has apt-cache-version default v1" v1 "$(yq -r '.inputs["apt-cache-version"].default' "$ROOT/$f")"
+  eq "$f forwards apt-cache-version to rust/setup" '${{ inputs.apt-cache-version }}' "$(yq -r '.runs.steps[] | select(.uses != null and (.uses | test("rust/setup"))) | .with["apt-cache-version"]' "$ROOT/$f")"
+done
+eq "tauri-app.yml input apt-cache-version" v1 "$(yq -r '.on.workflow_call.inputs["apt-cache-version"].default' "$W")"
+eq "tauri-app.yml forwards to rust/ci" '${{ inputs.apt-cache-version }}' "$(yq -r '.jobs[].steps[]? | select(.uses != null and (.uses | test("rust/ci"))) | .with["apt-cache-version"]' "$W")"
+eq "tauri-app.yml forwards to tauri/installers" '${{ inputs.apt-cache-version }}' "$(yq -r '.jobs[].steps[]? | select(.uses != null and (.uses | test("tauri/installers"))) | .with["apt-cache-version"]' "$W")"
 key=$(q '.runs.steps[] | select(.id == "aptkey") | .run')
 keyrun() { local out; out=$(mktemp); RUNNER_OS=$1 ImageOS=$2 APT_CACHE_VERSION=$3 GITHUB_OUTPUT=$out bash -c "$key"; cat "$out"; rm -f "$out"; }
 eq "key has os, image and version" "key=Linux-ubuntu24-v1" "$(keyrun Linux ubuntu24 v1)"

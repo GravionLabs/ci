@@ -49,7 +49,7 @@ docker/
   publish/              — setup QEMU + buildx + login + compute tags + build+push; NO checkout
 
 rust/
-  setup/                — Installs the Rust toolchain, caches cargo (optionally Tauri Linux libraries)
+  setup/                — Installs the Rust toolchain, caches cargo and the Linux apt packages (cache action keyed by runner image and `apt-cache-version`, forwarded by `rust/ci`, `tauri/installers` and `tauri-app.yml`; optionally Tauri Linux libraries)
   ci/                   — cargo fmt --check, clippy -D warnings, test
   release-binary/       — Builds, packs (tar.gz/zip + SHA-256), smoke tests and uploads versioned binaries for one target
 

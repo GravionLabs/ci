@@ -46,6 +46,10 @@ inputs:
     description: 'Space-separated extra apt packages to install on Linux runners, besides the Tauri libraries'
     required: false
     default: ''
+  apt-cache-version:
+    description: 'Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again.'
+    required: false
+    default: 'v1'
 
 runs:
   using: 'composite'
@@ -56,6 +60,7 @@ runs:
         toolchain: ${{ inputs.toolchain }}
         tauri-linux-deps: ${{ inputs.tauri-linux-deps }}
         linux-packages: ${{ inputs.linux-packages }}
+        apt-cache-version: ${{ inputs.apt-cache-version }}
         workspaces: ${{ inputs.working-directory }}
 
     - name: Select crates
