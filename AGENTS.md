@@ -49,7 +49,7 @@ docker/
   publish/              — setup QEMU + buildx + login + compute tags + build+push; NO checkout
 
 rust/
-  setup/                — Installs the Rust toolchain, caches cargo (optionally Tauri Linux libraries)
+  setup/                — Installs the Rust toolchain, caches cargo and the Linux apt packages (cache action keyed by runner image and `apt-cache-version`, forwarded by `rust/ci`, `tauri/installers` and `tauri-app.yml`; optionally Tauri Linux libraries)
   ci/                   — cargo fmt --check, clippy -D warnings, test
   release-binary/       — Builds, packs (tar.gz/zip + SHA-256), smoke tests and uploads versioned binaries for one target
 
@@ -63,7 +63,7 @@ node/
 .apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new|sprints|sprint`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, Set-Sprint, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
 scripts/
-  Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
+  Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
 
 .github/workflows/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)

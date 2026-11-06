@@ -8,8 +8,7 @@
   GravionLabs/ci/.github/workflows/pr-checks.yml under .github/workflows (in GravionLabs/ci itself also the local
   './.github/workflows/pr-checks.yml'; a required check that never runs blocks every PR; warning).
   Otherwise adds -Context to the required_status_checks rule of the rulesets 'main' (default branch) and 'release' (release/**),
-  creating the rule, or the ruleset, when missing. 'release' also gets the pull_request rule so the check applies to PRs into release
-  branches. Other rules and other required checks stay; -Replace removes superseded checks in the same update.
+  creating the rule, or the ruleset, when missing. An existing ruleset without a pull_request rule ('main' or 'release') gets it, so the check applies to PRs. A ruleset with a non-empty required_reviewers is skipped completely (no merge methods, no check; warning, exit 1). The pull_request rule also gets allowed_merge_methods: 'main' merge only, 'release' merge and squash (squash for feature PRs, merge for the merge-back of main). Other rules and other required checks stay; -Replace removes superseded checks in the same update.
   Without -Apply it is a dry run: it prints the planned change and makes no write call. Uses 'gh api' only (token scopes: repo plus
   administration, i.e. a classic PAT with 'repo', or a fine-grained token with Administration: write).
   Rollback: delete the ruleset (the dry run prints each ruleset id; Settings > Rules > Rulesets, or 'gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>').
@@ -71,21 +70,49 @@ function Get-RuleParams {
   param([string]$Type)
   switch ($Type) {
     'pull_request' { @{ required_approving_review_count = 0; dismiss_stale_reviews_on_push = $false; require_code_owner_review = $false
-        require_last_push_approval = $false; required_review_thread_resolution = $false } }
+        require_last_push_approval = $false; required_review_thread_resolution = $false; allowed_merge_methods = @() } }
     'required_status_checks' { @{ strict_required_status_checks_policy = $false; required_status_checks = @() } }
     default { $null }
   }
 }
 
+# The API returns two pull_request parameters it rejects on PUT (HTTP 422): required_reviewers and
+# require_extra_approval_for_unattributed_changes. Both are dropped here. Only a non-empty required_reviewers is a real requirement that
+# Get-RulesetPlan refuses; the flag is true on every ruleset (API default, kept when omitted from a PUT), so it never blocks. Every other parameter passes through; missing defaults are added.
+function Test-PullRequestUnwritable {
+  param($Parameters)
+  if (-not $Parameters) { return $false }
+  $rr = $Parameters['required_reviewers']
+  @($rr | Where-Object { $_ }).Count -gt 0
+}
+function ConvertTo-PullRequestParams {
+  param($Parameters)
+  $out = @{}
+  if ($Parameters) { foreach ($k in $Parameters.Keys) { if ($null -ne $Parameters[$k]) { $out[$k] = $Parameters[$k] } } }
+  $out.Remove('required_reviewers'); $out.Remove('require_extra_approval_for_unattributed_changes')
+  $defaults = Get-RuleParams 'pull_request'
+  foreach ($k in $defaults.Keys) { if (-not $out.ContainsKey($k)) { $out[$k] = $defaults[$k] } }
+  $out
+}
+
 # Returns the new ruleset body and whether it differs from $Existing ($null = create). $Existing is a hashtable.
 function Get-RulesetPlan {
-  param($Existing, [string]$Name, [string]$Include, [string[]]$ExtraRules)
+  param($Existing, [string]$Name, [string]$Include, [string[]]$ExtraRules, [string[]]$MergeMethods = @())
   $changed = -not $Existing
   $rules = [System.Collections.Generic.List[object]]::new()
   if ($Existing) { foreach ($r in $Existing.rules) { $rules.Add((New-Rule $r.type $r.parameters)) } }
   else { foreach ($t in $ExtraRules) { $rules.Add((New-Rule $t (Get-RuleParams $t))) } }
-  if ($Existing -and $Name -eq 'release' -and -not ($rules | Where-Object { $_.type -eq 'pull_request' })) {
+  if ($Existing -and $MergeMethods.Count -and -not ($rules | Where-Object { $_.type -eq 'pull_request' })) {
     $rules.Add((New-Rule 'pull_request' (Get-RuleParams 'pull_request'))); $changed = $true
+  }
+  $pr = $rules | Where-Object { $_.type -eq 'pull_request' } | Select-Object -First 1
+  $blocked = $false
+  if ($pr -and $MergeMethods.Count) {
+    $blocked = Test-PullRequestUnwritable $pr.parameters
+    $pr.parameters = ConvertTo-PullRequestParams $pr.parameters
+    $have = @($pr.parameters.allowed_merge_methods | Sort-Object) -join ','
+    if ($have -ne (@($MergeMethods | Sort-Object) -join ',')) { $changed = $true }
+    $pr.parameters.allowed_merge_methods = @($MergeMethods)
   }
   $rsc = $rules | Where-Object { $_.type -eq 'required_status_checks' } | Select-Object -First 1
   if (-not $rsc) {
@@ -106,7 +133,7 @@ function Get-RulesetPlan {
     bypass_actors = $(if ($Existing -and $Existing.bypass_actors) { , @($Existing.bypass_actors) } else { , @() })
     rules = @($rules)
   }
-  [pscustomobject]@{ Body = $body; Changed = $changed }
+  [pscustomobject]@{ Body = $body; Changed = $changed; Blocked = $blocked }
 }
 
 $targets = @()
@@ -120,8 +147,8 @@ if ($All) {
 }
 
 $specs = @(
-  @{ Name = 'main';    Include = '~DEFAULT_BRANCH';    Extra = @('deletion', 'non_fast_forward', 'pull_request') },
-  @{ Name = 'release'; Include = 'refs/heads/release/**'; Extra = @('non_fast_forward', 'pull_request') }
+  @{ Name = 'main';    Include = '~DEFAULT_BRANCH';    Extra = @('deletion', 'non_fast_forward', 'pull_request'); Methods = @('merge') },
+  @{ Name = 'release'; Include = 'refs/heads/release/**'; Extra = @('non_fast_forward', 'pull_request'); Methods = @('merge', 'squash') }
 )
 $mode = if ($Apply) { 'apply' } else { 'dry run' }
 $failed = 0
@@ -137,12 +164,17 @@ foreach ($full in $targets) {
     foreach ($s in $specs) {
       $hit = $list | Where-Object { $_.name -eq $s.Name } | Select-Object -First 1
       $existing = if ($hit) { Get-Json @('api', "repos/$full/rulesets/$($hit.id)") -AsHashtable } else { $null }
-      $plan = Get-RulesetPlan -Existing $existing -Name $s.Name -Include $s.Include -ExtraRules $s.Extra
+      $plan = Get-RulesetPlan -Existing $existing -Name $s.Name -Include $s.Include -ExtraRules $s.Extra -MergeMethods $s.Methods
+      if ($plan.Blocked) {
+        $failed++
+        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers; ruleset skipped completely, required check '$Context' not added; set allowed_merge_methods by hand ($($s.Methods -join ', ')) and add the check"
+        continue
+      }
       $verb = if ($existing) { 'update' } else { 'create' }
-      if (-not $plan.Changed) { Write-Host "OK   $full : ruleset '$($s.Name)' already requires '$Context'"; continue }
+      if (-not $plan.Changed) { Write-Host "OK   $full : ruleset '$($s.Name)' already requires '$Context' and allows only: $($s.Methods -join ', ')"; continue }
       $checks = (($plan.Body.rules | Where-Object { $_.type -eq 'required_status_checks' }).parameters.required_status_checks | ForEach-Object { $_.context }) -join ', '
       $idText = if ($existing) { " (id $($hit.id))" } else { '' }
-      Write-Host "PLAN $full : $verb ruleset '$($s.Name)'$idText ($(($plan.Body.rules | ForEach-Object { $_.type }) -join ', ')); required checks: $checks [$mode]"
+      Write-Host "PLAN $full : $verb ruleset '$($s.Name)'$idText ($(($plan.Body.rules | ForEach-Object { $_.type }) -join ', ')); required checks: $checks; merge methods: $($s.Methods -join ', ') [$mode]"
       if ($Apply) {
         if ($existing) { Invoke-Gh @('api', '--method', 'PUT', "repos/$full/rulesets/$($hit.id)") $plan.Body | Out-Null }
         else { Invoke-Gh @('api', '--method', 'POST', "repos/$full/rulesets") $plan.Body | Out-Null }

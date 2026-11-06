@@ -155,6 +155,10 @@ jobs:
         # triggers, permissions, step order, token wiring, token check script
         run: bash tests/release-branch-workflow.test.sh
 
+      - name: Test rust/setup apt cache
+        shell: bash
+        run: bash tests/rust-setup.test.sh
+
       - name: Test the GitHub App token wiring
         shell: bash
         # app token step pinned, github.token fallbacks, no GH_PAT left in this repository's own workflows

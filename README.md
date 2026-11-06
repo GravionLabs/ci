@@ -425,8 +425,8 @@ jobs:
 
 **Versioning model (Conventional Commits).** With `conventional-commits: true` (default) the bump comes from the commit messages that reach the branch: `fix:`, `perf:`, `revert:` (and any other type, e.g. `docs:`) give a patch, `feat:` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major. `+semver: major|minor|patch` stays as an escape hatch (for example the jump to 1.0.0). `conventional-commits: false` keeps the plain GitVersion defaults. The caller's `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`.
 
-- The PR title is the squash commit and carries the bump: feature PRs into `release/**` are squash merged, so the title is the one checked place and discarded intermediate commits do not count (a `feat!:` line in the squash body is no major).
-- `release/next` into the default branch stays a merge commit (no squash), otherwise the `feat:`/`fix:` commits are invisible to GitVersion and git-cliff. Merge methods per ruleset: `release/**`: squash only; default branch: merge only; hotfixes into `main` with a merge commit.
+- The PR title is the squash commit and carries the bump: feature PRs into `release/**` are squash merged by convention (the ruleset also allows merge, so it does not enforce this), so the title is the one checked place and discarded intermediate commits do not count (a `feat!:` line in the squash body is no major). A feature PR merged with a merge commit brings its intermediate commits to GitVersion and git-cliff; `pr-checks/title` checks the title against the commits.
+- `release/next` into the default branch stays a merge commit (no squash), otherwise the `feat:`/`fix:` commits are invisible to GitVersion and git-cliff. Merge methods per ruleset: `release/**`: merge and squash (squash is the convention for feature PRs, merge for the merge-back of `main` after a hotfix, which keeps the merge ancestry); default branch: merge only; hotfixes into `main` with a merge commit.
 - Limit in 0.x: a breaking change jumps to 1.0.0 (GitVersion has no "bump minor pre major"). Avoid `!` in 0.x repositories or use `+semver: minor` deliberately.
 - The reusable `*-package.yml` workflows and `tauri-app.yml` pass the input `conventional-commits` through. Test: `bash tests/conventional-commits.test.sh`.
 
@@ -778,12 +778,12 @@ steps:
 **Inputs**
 
 <!-- action-docs:inputs source="project/needs/action.yml" -->
-| Name          | Description                                                                                                                                                              | Required | Default |
-|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                               | **Yes**  | —       |
-| `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning | No       |         |
-| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the calling repository; project: sync every item of the project, any repository                                       | No       | event   |
-| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full and project still win)                                  | No       |         |
+| Name          | Description                                                                                                                                                                                                                           | Required | Default |
+|---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>                                                                                                                            | **Yes**  | —       |
+| `token`       | Classic PAT with the scope project, plus repo for a private repository (a user-owned project is not writable with the GITHUB_TOKEN); empty skips the sync with a warning                                                              | No       |         |
+| `mode`        | event: sync the issue of the event (and its parent, plus dependents on blocker events); full: sync every item of the calling repository; project: sync every item of the project, regardless of repository (the central nightly sync) | No       | event   |
+| `issues`      | Issue numbers (space, comma or newline separated) to sync with their parents and dependents; overrides the event (mode full and project still win)                                                                                    | No       |         |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
@@ -794,7 +794,7 @@ Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
 
 ### `rust/setup`
 
-Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1).
+Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an explicit `toolchain`, or stable), adds components and targets, and caches cargo builds with `Swatinem/rust-cache`. With `tauri-linux-deps: 'true'` it installs the Linux system libraries that Tauri 2 needs (webkit2gtk 4.1). The Linux packages (Tauri libraries plus `linux-packages`) come from a GitHub Actions cache (`awalsh128/cache-apt-pkgs-action`, SHA-pinned) keyed by package list and a version string made of `runner.os`, the runner image (`ImageOS`, for example `ubuntu24`) and `apt-cache-version`, so ubuntu-22.04 and ubuntu-24.04 do not share a cache; the mirror is used only on a cache miss. To bust the cache, change `apt-cache-version` (for example `v2`). On a cache hit the packages are restored without running their install scripts (`execute_install_scripts: false`): fine for `-dev` libraries, but a `linux-packages` entry that needs its postinst script would break only on a hit. Other runners skip the step.
 
 **Usage:**
 
@@ -807,23 +807,24 @@ Installs the Rust toolchain (the repository's `rust-toolchain.toml`, or an expli
 **Inputs**
 
 <!-- action-docs:inputs source="rust/setup/action.yml" -->
-| Name               | Description                                                                                                                                                 | Required | Default        |
-|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------|
-| `toolchain`        | Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.                         | No       |                |
-| `components`       | Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.                                                             | No       | rustfmt,clippy |
-| `targets`          | Comma-separated extra targets (for example aarch64-unknown-linux-gnu)                                                                                       | No       |                |
-| `cache`            | Cache cargo builds with Swatinem/rust-cache                                                                                                                 | No       | true           |
-| `cache-key`        | Extra cache key, for example the matrix target when several jobs share a runner OS                                                                          | No       |                |
-| `workspaces`       | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                                     | No       |                |
-| `tauri-linux-deps` | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                                         | No       | false          |
-| `linux-packages`   | Space-separated extra apt packages to install on Linux runners (for example libgtk-layer-shell-dev), besides the Tauri libraries. Ignored on other runners. | No       |                |
+| Name                | Description                                                                                                                                                 | Required | Default        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------|
+| `toolchain`         | Toolchain to install (stable, 1.94.1, ...). Leave empty to use rust-toolchain.toml of the repository, or stable when there is none.                         | No       |                |
+| `components`        | Comma-separated components (for example rustfmt,clippy). Added to those of rust-toolchain.toml.                                                             | No       | rustfmt,clippy |
+| `targets`           | Comma-separated extra targets (for example aarch64-unknown-linux-gnu)                                                                                       | No       |                |
+| `cache`             | Cache cargo builds with Swatinem/rust-cache                                                                                                                 | No       | true           |
+| `cache-key`         | Extra cache key, for example the matrix target when several jobs share a runner OS                                                                          | No       |                |
+| `workspaces`        | Cargo workspaces for the cache (rust-cache syntax, e.g. ". -> target"). Empty uses the repository root.                                                     | No       |                |
+| `tauri-linux-deps`  | Install the system libraries Tauri 2 needs on Linux runners (webkit2gtk 4.1 and friends). Ignored on other runners.                                         | No       | false          |
+| `linux-packages`    | Space-separated extra apt packages to install on Linux runners (for example libgtk-layer-shell-dev), besides the Tauri libraries. Ignored on other runners. | No       |                |
+| `apt-cache-version` | Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again.                 | No       | v1             |
 <!-- /action-docs:inputs -->
 
 ---
 
 ### `rust/ci`
 
-Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` after one `rust/setup`. `exclude` leaves crates out of clippy and test (a Tauri crate that needs system libraries), `packages` limits the run to some crates.
+Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` after one `rust/setup`. `exclude` leaves crates out of clippy and test (a Tauri crate that needs system libraries), `packages` limits the run to some crates. With `tauri-linux-deps` or `linux-packages` the apt packages come from the cache of `rust/setup`; `apt-cache-version` is forwarded to it, change it (for example `v2`) to bust the cache.
 
 **Usage:**
 
@@ -836,19 +837,20 @@ Runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and 
 **Inputs**
 
 <!-- action-docs:inputs source="rust/ci/action.yml" -->
-| Name                | Description                                                                                                    | Required | Default |
-|---------------------|----------------------------------------------------------------------------------------------------------------|----------|---------|
-| `toolchain`         | Toolchain (empty: rust-toolchain.toml, else stable)                                                            | No       |         |
-| `working-directory` | Directory of the Cargo workspace                                                                               | No       | .       |
-| `exclude`           | Space-separated crates to leave out of clippy and test (for example a Tauri crate that needs system libraries) | No       |         |
-| `packages`          | Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.                 | No       |         |
-| `run-fmt`           | Run cargo fmt --check                                                                                          | No       | true    |
-| `run-clippy`        | Run cargo clippy with -D warnings                                                                              | No       | true    |
-| `run-tests`         | Run cargo test                                                                                                 | No       | true    |
-| `all-features`      | Pass --all-features to clippy and test                                                                         | No       | false   |
-| `locked`            | Pass --locked to clippy and test (fail when Cargo.lock needs an update)                                        | No       | true    |
-| `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                             | No       | false   |
-| `linux-packages`    | Space-separated extra apt packages to install on Linux runners, besides the Tauri libraries                    | No       |         |
+| Name                | Description                                                                                                                                 | Required | Default |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `toolchain`         | Toolchain (empty: rust-toolchain.toml, else stable)                                                                                         | No       |         |
+| `working-directory` | Directory of the Cargo workspace                                                                                                            | No       | .       |
+| `exclude`           | Space-separated crates to leave out of clippy and test (for example a Tauri crate that needs system libraries)                              | No       |         |
+| `packages`          | Space-separated crates to check instead of the whole workspace. Takes precedence over exclude.                                              | No       |         |
+| `run-fmt`           | Run cargo fmt --check                                                                                                                       | No       | true    |
+| `run-clippy`        | Run cargo clippy with -D warnings                                                                                                           | No       | true    |
+| `run-tests`         | Run cargo test                                                                                                                              | No       | true    |
+| `all-features`      | Pass --all-features to clippy and test                                                                                                      | No       | false   |
+| `locked`            | Pass --locked to clippy and test (fail when Cargo.lock needs an update)                                                                     | No       | true    |
+| `tauri-linux-deps`  | Install the Tauri system libraries on Linux (needed when a Tauri crate is checked)                                                          | No       | false   |
+| `linux-packages`    | Space-separated extra apt packages to install on Linux runners, besides the Tauri libraries                                                 | No       |         |
+| `apt-cache-version` | Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again. | No       | v1      |
 <!-- /action-docs:inputs -->
 
 ---
@@ -951,6 +953,7 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 | `node-version-file`            | File with the Node.js version (for example .nvmrc)                                                                                                                                           | No       | .nvmrc                                 |
 | `package-manager`              | pnpm or npm                                                                                                                                                                                  | No       | pnpm                                   |
 | `linux-packages`               | Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev)                                                            | No       |                                        |
+| `apt-cache-version`            | Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again.                                                  | No       | v1                                     |
 | `token`                        | GITHUB_TOKEN with contents: write                                                                                                                                                            | No       | ${{ github.token }}                    |
 | `signing-private-key`          | Private key that signs the update packages (secret TAURI_SIGNING_PRIVATE_KEY). Empty: unsigned updater artifacts are not created.                                                            | No       |                                        |
 | `signing-private-key-password` | Password of the signing key                                                                                                                                                                  | No       |                                        |
@@ -1010,7 +1013,7 @@ jobs:
 
 The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
 
-**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `apt-cache-version` (cache version of the apt packages of the Linux installer job only; the checks install none), `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
 
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
@@ -1711,7 +1714,7 @@ pages:
 
 ## `scripts/Set-RepoRulesets.ps1`
 
-Requires the check of the reusable workflow `pr-checks.yml` in every repository: it adds the context to the `required_status_checks` rule of the existing rulesets `main` (default branch) and `release` (`release/**`), creating the rule, or the ruleset, when missing. `release` also gets the `pull_request` rule so the check applies to PRs into release branches. Other rules and other required checks stay.
+Requires the check of the reusable workflow `pr-checks.yml` in every repository: it adds the context to the `required_status_checks` rule of the existing rulesets `main` (default branch) and `release` (`release/**`), creating the rule, or the ruleset, when missing. An existing ruleset without a `pull_request` rule (`main` or `release`) gets it, so the check applies to PRs. The `pull_request` rule also gets `allowed_merge_methods`: `["merge"]` for `main` (Conventional Commits stay visible to GitVersion and git-cliff), `["merge", "squash"]` for `release`; an existing ruleset is updated when they differ. Other rules, parameters and bypass actors stay; the `required_reviewers` and `require_extra_approval_for_unattributed_changes` parameters are not sent back (the API answers HTTP 422; omitting the flag leaves its default `true`). Only a non-empty `required_reviewers` blocks a ruleset: it is skipped completely (no merge methods and no `PR checks` context), with a warning saying so and exit 1.
 
 ```powershell
 pwsh scripts/Set-RepoRulesets.ps1 -Repo ci,py-common                # dry run: prints the plan per repository
