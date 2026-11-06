@@ -68,6 +68,13 @@ runs:
         APT_CACHE_VERSION: ${{ inputs.apt-cache-version }}
       run: echo "key=${RUNNER_OS}-${ImageOS:-unknown}-${APT_CACHE_VERSION}" >> "$GITHUB_OUTPUT"
 
+    # The runner image's apt index goes stale: the cache action then asks the mirror for package versions that no
+    # longer exist (404), saves an empty cache and still succeeds (GravionLabs/ci#161). Refresh the index first.
+    - name: Refresh the apt index
+      if: ${{ steps.apt.outputs.packages != '' }}
+      shell: bash
+      run: sudo apt-get update || sudo apt-get update
+
     # Restores the .deb files from the Actions cache (key: runner image, package list, version) and installs
     # them from the mirror only on a cache miss.
     - name: Install Linux packages (cached)
@@ -77,6 +84,23 @@ runs:
       with:
         packages: ${{ steps.apt.outputs.packages }}
         version: ${{ steps.aptkey.outputs.key }}
+
+    # A cache hit (or a failed install that was cached) can leave the packages missing; install them directly then.
+    - name: Verify the Linux packages
+      if: ${{ steps.apt.outputs.packages != '' }}
+      shell: bash
+      env:
+        PACKAGES: ${{ steps.apt.outputs.packages }}
+      run: |
+        missing=""
+        for p in $PACKAGES; do
+          dpkg -s "${p%%=*}" >/dev/null 2>&1 || missing="$missing ${p%%=*}"
+        done
+        if [ -n "$missing" ]; then
+          echo "::warning::Linux packages missing after the cache step (${missing# }); installing them directly"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+        fi
 
     - name: Install the toolchain from rust-toolchain.toml
       if: ${{ inputs.toolchain == '' && hashFiles('rust-toolchain.toml', 'rust-toolchain') != '' }}
