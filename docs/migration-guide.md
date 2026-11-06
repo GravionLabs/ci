@@ -18,7 +18,7 @@ The inputs of each workflow are listed in the README. Versioning is done inside 
 
 Keep a `GitVersion.yml` in the repository. Do not pin `next-version` to an old minor, or a release is numbered as a patch of that minor. The bump follows Conventional Commits by default (input `conventional-commits`, `true`): `fix:`/`perf:`/`revert:` patch, `feat:` minor, `<type>!:` or `BREAKING CHANGE:` major, and `+semver: major|minor|patch` stays as an escape hatch. `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`: remove `increment: Minor` on `release/next` and merge-message regexes.
 
-Preconditions: the PR title is the squash commit and carries the bump (feature PRs into `release/**`: squash only, so discarded intermediate commits do not count); `release/next` into the default branch stays a merge commit (default branch: merge only; hotfixes into `main` with a merge commit), otherwise the `feat:`/`fix:` commits are invisible. In 0.x a breaking change jumps to 1.0.0: avoid `!` there or use `+semver: minor`.
+Preconditions: the PR title is the squash commit and carries the bump (feature PRs into `release/**` are squash merged, so discarded intermediate commits do not count; the merge-back of `main` is a merge commit); `release/next` into the default branch stays a merge commit (default branch: merge only; hotfixes into `main` with a merge commit), otherwise the `feat:`/`fix:` commits are invisible. In 0.x a breaking change jumps to 1.0.0: avoid `!` there or use `+semver: minor`.
 
 ## 3. Replace the jobs
 
