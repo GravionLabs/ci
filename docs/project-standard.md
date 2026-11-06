@@ -90,7 +90,7 @@ With `-Sync` the script ensures `planned` and `needs-review` (colour and descrip
 
 | Target | Merge method | Why |
 |:--|:--|:--|
-| `release/**` | squash only | PR title = squash commit = bump; the title is the one checked place, discarded intermediate commits do not count |
+| `release/**` | merge and squash (squash for feature PRs, merge for the merge-back of `main`) | PR title = squash commit = bump; the title is the one checked place, discarded intermediate commits do not count |
 | default branch | merge commit only | `release/next` into `main` keeps the `feat:`/`fix:` commits visible to GitVersion and git-cliff |
 | hotfix into `main` | merge commit | same reason |
 
