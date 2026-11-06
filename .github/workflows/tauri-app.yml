@@ -49,6 +49,10 @@ on:
         description: 'Space-separated extra apt packages for the Linux installer job, besides the Tauri libraries'
         type: string
         default: ''
+      apt-cache-version:
+        description: 'Cache version of the Linux apt packages (checks and Linux installer job). Change it to discard the cache.'
+        type: string
+        default: 'v1'
       installer-sidecars:
         description: 'JSON object {"package","binary","dir"} of binaries to build into the installers (bundle.externalBin); see tauri/installers. Empty: none.'
         type: string
@@ -117,6 +121,7 @@ jobs:
       - uses: GravionLabs/ci/rust/ci@v1
         with:
           exclude: ${{ inputs.ci-exclude }}
+          apt-cache-version: ${{ inputs.apt-cache-version }}
 
   draft:
     name: draft release
@@ -170,6 +175,7 @@ jobs:
           release-id: ${{ needs.draft.outputs.release-id }}
           args: ${{ inputs.installer-args }}
           linux-packages: ${{ inputs.installer-linux-packages }}
+          apt-cache-version: ${{ inputs.apt-cache-version }}
           sidecar-package: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).package || '' }}
           sidecar-binary: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).binary || '' }}
           sidecar-dir: ${{ inputs.installer-sidecars != '' && fromJSON(inputs.installer-sidecars).dir || 'src-tauri/binaries' }}

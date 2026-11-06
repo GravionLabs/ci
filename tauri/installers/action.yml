@@ -36,6 +36,10 @@ inputs:
     description: 'Space-separated extra apt packages to install on a Linux runner, besides the Tauri libraries (for example libgtk-layer-shell-dev)'
     required: false
     default: ''
+  apt-cache-version:
+    description: 'Cache version of the Linux apt packages (tauri-linux-deps, linux-packages). Change it to discard the cache and download the packages again.'
+    required: false
+    default: 'v1'
   token:
     description: 'GITHUB_TOKEN with contents: write'
     required: false
@@ -89,6 +93,7 @@ runs:
         cache-key: installers-${{ inputs.target }}
         tauri-linux-deps: 'true'
         linux-packages: ${{ inputs.linux-packages }}
+        apt-cache-version: ${{ inputs.apt-cache-version }}
 
     - name: Set the version
       shell: bash
