@@ -15,7 +15,13 @@ eq "cache step skipped without packages" "\${{ steps.apt.outputs.packages != '' 
 eq "list step linux only" 1 "$(q '[.runs.steps[] | select(.id == "apt") | .if | select(test("runner.os == .Linux."))] | length')"
 eq "list step covers tauri deps and extra packages" 1 "$(q '[.runs.steps[] | select(.id == "apt") | .if | select(test("tauri-linux-deps") and test("linux-packages"))] | length')"
 eq "cache version input default" v1 "$(q '.inputs["apt-cache-version"].default')"
-eq "cache version reaches the action" '${{ inputs.apt-cache-version }}' "$(q '.runs.steps[] | select(.uses != null and (.uses | test("cache-apt"))) | .with.version')"
+eq "cache version is the key of runner os, image and apt-cache-version" '${{ steps.aptkey.outputs.key }}' "$(q '.runs.steps[] | select(.uses != null and (.uses | test("cache-apt"))) | .with.version')"
+eq "key step passes apt-cache-version via env" '${{ inputs.apt-cache-version }}' "$(q '.runs.steps[] | select(.id == "aptkey") | .env.APT_CACHE_VERSION')"
+key=$(q '.runs.steps[] | select(.id == "aptkey") | .run')
+keyrun() { local out; out=$(mktemp); RUNNER_OS=$1 ImageOS=$2 APT_CACHE_VERSION=$3 GITHUB_OUTPUT=$out bash -c "$key"; cat "$out"; rm -f "$out"; }
+eq "key has os, image and version" "key=Linux-ubuntu24-v1" "$(keyrun Linux ubuntu24 v1)"
+eq "key differs per image" "key=Linux-ubuntu22-v1" "$(keyrun Linux ubuntu22 v1)"
+eq "key without ImageOS" "key=Linux-unknown-v2" "$(keyrun Linux '' v2)"
 
 # the package list script, run for real
 step=$(q '.runs.steps[] | select(.id == "apt") | .run')
