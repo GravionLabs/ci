@@ -6,6 +6,26 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.8.0] — 2026-11-06
+
+### Bug Fixes
+- **scripts**: Set-RepoRulesets blocks every ruleset because require_extra_approval_for_unattributed_changes is true by default (#146) (#147)
+- **rust/setup**: Apt cache key does not include the runner image (#150) (#153)
+- **rust**: Pass apt-cache-version through rust/ci, tauri/installers and tauri-app.yml (#151) (#154)
+- **scripts**: Set-RepoRulesets allows merge and squash on release (#152) (#155)
+- **scripts**: Set-RepoRulesets skips merge methods on a main ruleset without pull_request and hides the missing check (#158) (#160)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.7.0 [skip ci]
+- Apt-cache-version scope, squash convention and postinst caveat (#157) (#159)
+
+
+### Features
+- **scripts**: Set-RepoRulesets sets allowed_merge_methods (main merge, release squash) (#144) (#145)
+- **rust/setup**: Cache the Tauri Linux apt packages (#148) (#149)
+
+
 ## [1.7.0] — 2026-11-01
 
 ### Bug Fixes
