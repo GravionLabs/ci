@@ -10,7 +10,10 @@ command -v yq >/dev/null || { echo "yq is required"; exit 1; }
 q() { yq -r "$1" "$A"; }
 
 eq "cache action pinned to a full SHA" 1 "$(q '[.runs.steps[].uses | select(. != null and test("^awalsh128/cache-apt-pkgs-action@[0-9a-f]{40}$"))] | length')"
-eq "no direct apt-get install left" 0 "$(q '[.runs.steps[].run | select(. != null and test("apt-get install"))] | length')"
+eq "apt-get install only in the verify fallback" "Verify the Linux packages" "$(q '[.runs.steps[] | select(.run != null and (.run | test("apt-get install"))) | .name] | join(",")')"
+eq "apt index refreshed before the cache step" yes "$(q '([.runs.steps | to_entries[] | select(.value.name == "Refresh the apt index") | .key][0]) as $r | ([.runs.steps | to_entries[] | select(.value.uses != null and (.value.uses | test("cache-apt"))) | .key][0]) as $c | if $r != null and $r < $c then "yes" else "no" end')"
+eq "packages verified after the cache step" yes "$(q '([.runs.steps | to_entries[] | select(.value.name == "Verify the Linux packages") | .key][0]) as $v | ([.runs.steps | to_entries[] | select(.value.uses != null and (.value.uses | test("cache-apt"))) | .key][0]) as $c | if $v != null and $v > $c then "yes" else "no" end')"
+eq "refresh and verify steps have the same if as the cache step" 1 "$(q '[.runs.steps[] | select(.name == "Refresh the apt index" or .name == "Verify the Linux packages" or .name == "Install Linux packages (cached)") | .if] | unique | length')"
 eq "cache step skipped without packages" "\${{ steps.apt.outputs.packages != '' }}" "$(q '.runs.steps[] | select(.name == "Install Linux packages (cached)") | .if')"
 eq "list step linux only" 1 "$(q '[.runs.steps[] | select(.id == "apt") | .if | select(test("runner.os == .Linux."))] | length')"
 eq "list step covers tauri deps and extra packages" 1 "$(q '[.runs.steps[] | select(.id == "apt") | .if | select(test("tauri-linux-deps") and test("linux-packages"))] | length')"

@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.8.1] — 2026-11-06
+
+### Bug Fixes
+- **rust-ci**: Refresh the apt index and verify the Linux packages after the cache step (#161)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.8.0 [skip ci]
+
+
 ## [1.8.0] — 2026-11-06
 
 ### Bug Fixes
