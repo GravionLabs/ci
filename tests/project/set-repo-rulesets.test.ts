@@ -130,10 +130,10 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
   const prOf = (body: any) => body.rules.find((x: any) => x.type === 'pull_request').parameters;
   const withPr = (rs: any, pr: any) => ({ ...rs, rules: rs.rules.map((x: any) => (x.type === 'pull_request' ? pr : x)) });
 
-  it('creates rulesets with merge methods: main merge, release squash', () => {
+  it('creates rulesets with merge methods: main merge, release merge and squash', () => {
     const r = run({ a: { workflow: CALLER, rulesets: [] } }, '-Repo', 'a', '-Apply');
     expect(prOf(r.writes[0].body).allowed_merge_methods).toEqual(['merge']);
-    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['squash']);
+    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['merge', 'squash']);
   });
 
   it('updates an existing ruleset that allows all three methods and keeps foreign rules', () => {
@@ -144,9 +144,23 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
     const r = run({ a: { workflow: CALLER, rulesets: [m, rel] } }, '-Repo', 'a', '-Apply');
     expect(r.writes).toHaveLength(2);
     expect(prOf(r.writes[0].body).allowed_merge_methods).toEqual(['merge']);
-    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['squash']);
+    expect(prOf(r.writes[1].body).allowed_merge_methods).toEqual(['merge', 'squash']);
     expect(r.writes[0].body.rules.map((x: any) => x.type)).toEqual(['deletion', 'non_fast_forward', 'pull_request', 'required_status_checks', 'copilot_code_review']);
     expect(r.writes[0].body.rules[4]).toEqual(copilot);
+  });
+
+  it('updates a release ruleset that is squash only', () => {
+    const main = withPr(mainRuleset([rsc('PR checks')]), prRule(['merge']));
+    const old = run({ a: { workflow: CALLER, rulesets: [main, releaseRuleset([prRule(['squash']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
+    expect(old.writes).toHaveLength(1);
+    expect(old.writes[0].body.name).toBe('release');
+    expect(prOf(old.writes[0].body).allowed_merge_methods).toEqual(['merge', 'squash']);
+  });
+
+  it('leaves a release ruleset at merge and squash in any order unchanged', () => {
+    const main = withPr(mainRuleset([rsc('PR checks')]), prRule(['merge']));
+    const ok = run({ a: { workflow: CALLER, rulesets: [main, releaseRuleset([prRule(['squash', 'merge']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
+    expect(ok.writes).toHaveLength(0);
   });
 
   it('does not send the parameters the API rejects on PUT', () => {
@@ -174,7 +188,7 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
 
   it('ignores the unattributed-changes flag (API default true): right methods change nothing, wrong methods update without it', () => {
     const flag = { required_reviewers: [], require_extra_approval_for_unattributed_changes: true };
-    const ok = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'], flag)), releaseRuleset([prRule(['squash'], flag), rsc('PR checks')])];
+    const ok = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'], flag)), releaseRuleset([prRule(['squash', 'merge'], flag), rsc('PR checks')])];
     const r = run({ a: { workflow: CALLER, rulesets: ok } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
@@ -189,7 +203,7 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
 
   it('is idempotent: nothing to change when the methods are right, and the dry run reports a change', () => {
     const ok = [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'], { required_reviewers: [] })),
-      releaseRuleset([prRule(['squash']), rsc('PR checks')])];
+      releaseRuleset([prRule(['squash', 'merge']), rsc('PR checks')])];
     const r = run({ a: { workflow: CALLER, rulesets: ok } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
@@ -202,7 +216,7 @@ describe.skipIf(!hasPwsh)('Set-RepoRulesets.ps1', () => {
 
   it('writes nothing when the check is already required', () => {
     const r = run({ a: { workflow: CALLER, rulesets: [withPr(mainRuleset([rsc('PR checks')]), prRule(['merge'])),
-      releaseRuleset([prRule(['squash']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
+      releaseRuleset([prRule(['squash', 'merge']), rsc('PR checks')])] } }, '-Repo', 'a', '-Apply');
     expect(r.status).toBe(0);
     expect(r.writes).toHaveLength(0);
     expect(r.stdout).toContain('already requires');

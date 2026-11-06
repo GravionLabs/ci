@@ -9,7 +9,7 @@
   './.github/workflows/pr-checks.yml'; a required check that never runs blocks every PR; warning).
   Otherwise adds -Context to the required_status_checks rule of the rulesets 'main' (default branch) and 'release' (release/**),
   creating the rule, or the ruleset, when missing. 'release' also gets the pull_request rule so the check applies to PRs into release
-  branches. The pull_request rule also gets allowed_merge_methods: 'main' merge only, 'release' squash only. Other rules and other required checks stay; -Replace removes superseded checks in the same update.
+  branches. The pull_request rule also gets allowed_merge_methods: 'main' merge only, 'release' merge and squash (squash for feature PRs, merge for the merge-back of main). Other rules and other required checks stay; -Replace removes superseded checks in the same update.
   Without -Apply it is a dry run: it prints the planned change and makes no write call. Uses 'gh api' only (token scopes: repo plus
   administration, i.e. a classic PAT with 'repo', or a fine-grained token with Administration: write).
   Rollback: delete the ruleset (the dry run prints each ruleset id; Settings > Rules > Rulesets, or 'gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>').
@@ -149,7 +149,7 @@ if ($All) {
 
 $specs = @(
   @{ Name = 'main';    Include = '~DEFAULT_BRANCH';    Extra = @('deletion', 'non_fast_forward', 'pull_request'); Methods = @('merge') },
-  @{ Name = 'release'; Include = 'refs/heads/release/**'; Extra = @('non_fast_forward', 'pull_request'); Methods = @('squash') }
+  @{ Name = 'release'; Include = 'refs/heads/release/**'; Extra = @('non_fast_forward', 'pull_request'); Methods = @('merge', 'squash') }
 )
 $mode = if ($Apply) { 'apply' } else { 'dry run' }
 $failed = 0
