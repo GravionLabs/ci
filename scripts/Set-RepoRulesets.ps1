@@ -8,8 +8,7 @@
   GravionLabs/ci/.github/workflows/pr-checks.yml under .github/workflows (in GravionLabs/ci itself also the local
   './.github/workflows/pr-checks.yml'; a required check that never runs blocks every PR; warning).
   Otherwise adds -Context to the required_status_checks rule of the rulesets 'main' (default branch) and 'release' (release/**),
-  creating the rule, or the ruleset, when missing. 'release' also gets the pull_request rule so the check applies to PRs into release
-  branches. The pull_request rule also gets allowed_merge_methods: 'main' merge only, 'release' merge and squash (squash for feature PRs, merge for the merge-back of main). Other rules and other required checks stay; -Replace removes superseded checks in the same update.
+  creating the rule, or the ruleset, when missing. An existing ruleset without a pull_request rule ('main' or 'release') gets it, so the check applies to PRs. A ruleset with a non-empty required_reviewers is skipped completely (no merge methods, no check; warning, exit 1). The pull_request rule also gets allowed_merge_methods: 'main' merge only, 'release' merge and squash (squash for feature PRs, merge for the merge-back of main). Other rules and other required checks stay; -Replace removes superseded checks in the same update.
   Without -Apply it is a dry run: it prints the planned change and makes no write call. Uses 'gh api' only (token scopes: repo plus
   administration, i.e. a classic PAT with 'repo', or a fine-grained token with Administration: write).
   Rollback: delete the ruleset (the dry run prints each ruleset id; Settings > Rules > Rulesets, or 'gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>').
@@ -103,7 +102,7 @@ function Get-RulesetPlan {
   $rules = [System.Collections.Generic.List[object]]::new()
   if ($Existing) { foreach ($r in $Existing.rules) { $rules.Add((New-Rule $r.type $r.parameters)) } }
   else { foreach ($t in $ExtraRules) { $rules.Add((New-Rule $t (Get-RuleParams $t))) } }
-  if ($Existing -and $Name -eq 'release' -and -not ($rules | Where-Object { $_.type -eq 'pull_request' })) {
+  if ($Existing -and $MergeMethods.Count -and -not ($rules | Where-Object { $_.type -eq 'pull_request' })) {
     $rules.Add((New-Rule 'pull_request' (Get-RuleParams 'pull_request'))); $changed = $true
   }
   $pr = $rules | Where-Object { $_.type -eq 'pull_request' } | Select-Object -First 1
@@ -168,7 +167,7 @@ foreach ($full in $targets) {
       $plan = Get-RulesetPlan -Existing $existing -Name $s.Name -Include $s.Include -ExtraRules $s.Extra -MergeMethods $s.Methods
       if ($plan.Blocked) {
         $failed++
-        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers; set allowed_merge_methods by hand ($($s.Methods -join ', ')); not changed"
+        Write-Warning "$full ruleset '$($s.Name)' has required_reviewers; ruleset skipped completely, required check '$Context' not added; set allowed_merge_methods by hand ($($s.Methods -join ', ')) and add the check"
         continue
       }
       $verb = if ($existing) { 'update' } else { 'create' }
