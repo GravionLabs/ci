@@ -25,7 +25,7 @@ it('pwsh is installed in CI (the live Sync-ProjectNeeds cases must not be skippe
 //   prs ({"o/r": [head refs]}), ownerType, noNeeds, noStatusOption, noProject, failMutation}.
 const FIELDS = (d: any) => [
   ...(d.onlyNeeds ? [] : [{ id: 101, name: 'Status', data_type: 'single_select',
-    options: d.noStatusOption ? [{ id: 'O-todo', name: { raw: 'Todo' } }] : [{ id: 'O-todo', name: { raw: 'Todo' } }, { id: 'O-ip', name: { raw: 'In Progress' } }] }]),
+    options: d.noStatusOption ? [{ id: 'O-todo', name: { raw: 'Todo' } }] : [{ id: 'O-todo', name: { raw: 'Todo' } }, { id: 'O-ip', name: { raw: 'In Progress' } }, { id: 'O-done', name: { raw: 'Done' } }] }]),
   ...(d.onlyNeeds ? [] : [{ id: 102, name: 'Level', data_type: 'single_select', options: [] }]),
   ...(d.noNeeds ? [] : [{ id: 103, name: 'Needs', data_type: 'single_select',
     options: ['Planning','Ready','In progress','Blocked','Review','Decision','Release review'].map((n) => ({ id: 'O-' + n, name: { raw: n } })) }]),
@@ -56,6 +56,7 @@ const HANDLER = `(call, ctx) => {
     const all = d.items.filter((i) => !q || !i.content || i.content.repository.full_name === q);
     return { rest: list(all) };
   }
+  if (path.startsWith('users/o/repos')) return { rest: list(d.repos || []) };
   let m;
   if ((m = path.match(/^repos\\/([^/]+\\/[^/]+)\\/issues\\/(\\d+)\\/(sub_issues|dependencies\\/blocked_by|dependencies\\/blocking)/))) {
     const map = { sub_issues: d.subIssues, 'dependencies/blocked_by': d.blockedBy, 'dependencies/blocking': d.blocking }[m[3]] || {};
@@ -223,6 +224,48 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
         const { r, calls } = await run({ items: [msItem(1, 'M1', null)] });
         expect(r.status).toBe(0);
         expect(calls.some((c) => restPath(c).includes('/milestones'))).toBe(false);
+      });
+    });
+
+    describe('Status reset and scope report (#169)', () => {
+      it('resets stale In Progress to Todo / Done through REST, keeps the one with a PR, updates Needs', async () => {
+        const { r, mutations } = await run({
+          prs: { 'o/r': ['feat/2-x'] },
+          items: [
+            restItem(1, 'In progress', { status: 'In Progress' }),
+            restItem(2, 'In progress', { status: 'In Progress' }),
+            restItem(3, null, { status: 'In Progress', content: { state: 'closed' } }),
+          ],
+        });
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain('#1: Status In Progress -> Todo');
+        expect(r.stdout).toContain('#3: Status In Progress -> Done');
+        expect(mutations.map((m) => [m.args[3], m.body])).toEqual([
+          ['users/o/projectsV2/1/items/1', { fields: [{ id: 101, value: 'O-todo' }] }],
+          ['users/o/projectsV2/1/items/1', { fields: [{ id: 103, value: 'O-Ready' }] }],
+          ['users/o/projectsV2/1/items/3', { fields: [{ id: 101, value: 'O-done' }] }],
+        ]);
+      });
+
+      it('-DryRun lists the resets and writes nothing', async () => {
+        const { r, mutations } = await run({ items: [restItem(1, 'In progress', { status: 'In Progress' })] }, ['-DryRun']);
+        expect(r.stdout).toContain('#1: Status In Progress -> Todo');
+        expect(mutations).toHaveLength(0);
+      });
+
+      it('reports items without Level per repository and warns about unlinked repositories, exit 0', async () => {
+        const { r } = await run({
+          repos: [{ full_name: 'o/r', open_issues_count: 2 }, { full_name: 'o/lonely', open_issues_count: 5 }],
+          items: [restItem(1, 'Ready', { level: null, content: { title: 'plain' }, status: 'Todo' }), restItem(2, 'Ready')],
+        }, ['-DryRun']);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain('Without Level: o/r: 1 open');
+        expect(r.stderr).toContain('o/lonely');
+      });
+
+      it('with -Repo the repository list is not read', async () => {
+        const { paths } = await run({ items: [restItem(1, 'Ready')] }, ['-Repo', 'o/r', '-DryRun']);
+        expect(paths.some((p) => p.startsWith('users/o/repos'))).toBe(false);
       });
     });
 

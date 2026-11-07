@@ -9,6 +9,7 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 ## [Unreleased]
 
 ### Features
+- **github-project**: `Sync-ProjectNeeds.ps1` resets stale Status `In Progress` (open issue without open PR and label `merged` to Todo, closed issue to Done; `-DryRun` lists them), reports open issues without Level per repository and warns about repositories not linked to the project (#169)
 - **github-project**: Standard views `Milestones` and `Current milestone`; `Release next` leaves the standard and `-RemoveDefaultViews` deletes it; the manual steps recommend "Auto-archive items" (#168)
 
 
