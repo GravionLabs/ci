@@ -10,7 +10,7 @@ const restPath = (c: { args: string[] }) =>
   c.args.find((a) => /^(users|orgs|repos)\//.test(a)) ?? '';
 const SCRIPT = path.resolve(
   __dirname,
-  '../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1',
+  '../../project/github-project/scripts/Sync-ProjectNeeds.ps1',
 );
 
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;

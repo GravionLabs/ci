@@ -1,6 +1,6 @@
 # Project standard
 
-One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `pwsh scripts/Set-ProjectStandard.ps1` of the [github-project skill](../.apm/skills/github-project/SKILL.md) applies it (`/github-project apply|sync <nr>`); always run `-DryRun` first. A second run reports `No changes.`
+One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `pwsh scripts/Set-ProjectStandard.ps1` of the [github-project skill](../project/github-project/SKILL.md) applies it (`/github-project apply|sync <nr>`); always run `-DryRun` first. A second run reports `No changes.`
 
 ## Status and fields
 
@@ -41,7 +41,7 @@ The project comes from `-Owner`/`-Number`, else `.agents/project.json` (`{"owner
 
 ### Needs sync in other repositories
 
-Other repositories of the project keep Needs current with the caller `issue-events.yml` of the reusable `issues.yml` of GravionLabs/ci in `.apm/skills/github-project/templates/`. They need no `project-needs.yml`: the nightly sync of GravionLabs/ci covers their items too (one `project-needs.yml` per project is enough; a second one only repeats the work).
+Other repositories of the project keep Needs current with the caller `issue-events.yml` of the reusable `issues.yml` of GravionLabs/ci in `project/github-project/templates/`. They need no `project-needs.yml`: the nightly sync of GravionLabs/ci covers their items too (one `project-needs.yml` per project is enough; a second one only repeats the work).
 
 1. Copy `issue-events.yml` (label, close and pull request events, `needs: true`) to `.github/workflows/`.
 2. Replace `<owner>` and `<n>` in `project-url` (`https://github.com/users/<owner>/projects/<n>`).
