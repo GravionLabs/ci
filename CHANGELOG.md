@@ -6,15 +6,25 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
-## [Unreleased]
+## [1.9.0] — 2026-11-07
 
-### Breaking changes
-- **github-project**: ⚠️ Removed the sprint mode: the modes `sprints` and `sprint`, the script `Set-Sprint.ps1` and the switches `-Sprints` and `-Today` of `Set-ProjectStandard.ps1` are gone; `-RemoveSprintField` deletes the iteration field Sprint. The owner decided that this ships as a v1 **minor** release (no `@v2`) (#166)
+### Bug Fixes
+- SKILL.md apply row and view count describe the old project standard (#175) (#176)
+- CHANGELOG lacks the #166 breaking change and #167, breaking footer not recognised (#174) (#177)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.8.1 [skip ci]
+
 
 ### Features
-- **github-project**: New project field `Current` (option `Yes`) marks every item whose milestone is the current milestone of its repository; `Sync-ProjectNeeds.ps1` keeps it current and `milestoned`/`demilestoned` trigger the sync (#167)
-- **github-project**: `Sync-ProjectNeeds.ps1` resets stale Status `In Progress` (open issue without open PR and label `merged` to Todo, closed issue to Done; `-DryRun` lists them), reports open issues without Level per repository and warns about repositories not linked to the project (#169)
-- **github-project**: Standard views `Milestones` and `Current milestone`; `Release next` leaves the standard and `-RemoveDefaultViews` deletes it; the manual steps recommend "Auto-archive items" (#168)
+- **github-project**: Field Current marks the current milestone of each repository (#167) (#171)
+- **github-project**: Standard views Milestones and Current milestone, drop Release next (#168) (#172)
+- **github-project**: Sync resets stale In Progress statuses (#169) (#173)
+
+
+### Refactoring
+- ⚠️ **Breaking**: **github-project**: BREAKING, ships as a minor release: remove the sprint mode (#166) (#170)
 
 
 ## [1.8.1] — 2026-11-06
