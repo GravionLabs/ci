@@ -155,6 +155,16 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(JSON.parse(r.stdout)).toMatchObject({ itemsRead: 1, itemsTotal: 1 });
     });
 
+    it('does not plan an archived item and counts it in skippedArchived', () => {
+      const archived = { ...node(2), isArchived: true };
+      archived.content = { ...archived.content, labels: { nodes: [{ name: 'pbi' }] } } as any;
+      const r = sync([{ totalCount: 2, pageInfo: { hasNextPage: false }, nodes: [node(1), archived] }]);
+      expect(r.status, r.stderr).toBe(0);
+      const out = JSON.parse(r.stdout);
+      expect(out.skippedArchived).toBe(1);
+      expect(out.actions.filter((x: Action) => x.number === 2)).toEqual([]);
+    });
+
     it('refuses to report No changes on a short page (nodes empty, hasNextPage false, totalCount higher)', () => {
       const r = sync([
         { totalCount: 3, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node(1)] },

@@ -652,6 +652,14 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(r.status).toBe(0);
       expect(mutations.map(itemNr)).toEqual([1, 2]);
       expect(r.stdout).toContain('skipped (archived): 1');
+      expect(r.stderr + r.stdout).toContain('is archived and cannot be updated; skipped.');
+    });
+
+    it('does not plan an item that is archived at the read (archived_at set)', async () => {
+      const { r, mutations } = await run({ items: [{ ...restItem(1, null), archived_at: '2026-01-01T00:00:00Z' }, restItem(2, null)] });
+      expect(r.status).toBe(0);
+      expect(mutations.map(itemNr)).toEqual([2]);
+      expect(r.stdout).toContain('skipped (archived): 1');
     });
 
     it('exits 1 with one line after 4 failed tries', async () => {

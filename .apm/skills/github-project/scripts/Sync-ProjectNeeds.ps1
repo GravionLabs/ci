@@ -274,6 +274,7 @@ function Read-ProjectItems($Ctx, $FieldIds, [string]$Repo) {
   $query = 'per_page=100' + (@($FieldIds.PSObject.Properties.Value | Where-Object { $_ } | ForEach-Object { "&fields[]=$_" }) -join '') + $(if ($Repo) { "&q=repo:$Repo" } else { '' })
   foreach ($it in @(Invoke-GhList "$($Ctx.seg)/$($Ctx.owner)/projectsV2/$($Ctx.number)/items?$query")) {
     if ((Get-Prop $it 'content_type') -ne 'Issue') { continue }
+    if (Get-Prop $it 'archived_at') { $script:ArchivedSkipped++; continue }  # archived at the read: never planned
     $r = Get-ContentRepo $it.content
     if ($Repo -and $r -ne $Repo) { continue }
     $script:Seen["$r#$($it.content.number)"] = $it
@@ -479,7 +480,7 @@ function Set-NeedsValue($State, $Action) {
   foreach ($try in 1..4) {
     try { Set-ProjectItemField (Get-Prop $State 'ownerKind') $State.owner $State.number $itemDb $field.databaseId $opt; return } catch {
       # Permanent: an item archived between the read and the write (auto-archive). Skip, no retry.
-      if ("$_" -match 'archived') {
+      if ("$_" -match 'item is archived|archived and cannot') {
         $script:ArchivedSkipped++
         Write-Warning "$($Action.issue) is archived and cannot be updated; skipped."
         return

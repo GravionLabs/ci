@@ -351,7 +351,7 @@ function Invoke-Plan($Actions, $State) {
           $out = & gh project item-edit --project-id $State.projectId --id $a.item --field-id $f.id --single-select-option-id $o.id 2>&1
           if ($LASTEXITCODE -eq 0) { break }
           # Permanent: an item archived between the read and the write (auto-archive) never accepts the edit. Skip, no retry.
-          if ("$out" -match 'archived') {
+          if ("$out" -match 'item is archived|archived and cannot') {
             $script:ArchivedSkipped++
             Write-Warning "#$($a.number) is archived and cannot be updated; skipped."
             break
@@ -390,6 +390,7 @@ if ($StateFile) {
   # Optional: 'itemPages' (item connections of the walk) replace 'items'.
   if ($state.itemPages) {
     $raw = Read-ItemNodes (New-PageFetcher $state.itemPages) 0
+    $script:ArchivedSkipped += @($raw | Where-Object { $_.content.__typename -eq 'Issue' -and $_.isArchived }).Count
     $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' -and -not $_.isArchived } | ForEach-Object {
         [ordered]@{ id = $_.id; number = $_.content.number; title = $_.content.title; state = $_.content.state
           labels = @($_.content.labels.nodes | ForEach-Object { $_.name }); status = $_.status.name; level = $_.level.name } })
