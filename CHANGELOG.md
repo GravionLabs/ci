@@ -6,6 +6,27 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.10.0] — 2026-11-07
+
+### Bug Fixes
+- **github-project**: Runs abort when an item is archived during the run (#185) (#192)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.9.0 [skip ci]
+
+
+### Features
+- **versioning**: Close-merged-issues closes the issues merged into a release branch (#180) (#186)
+- **workflows**: Release-branch.yml closes instead of labelling (#181) (#187)
+- **versioning**: Derive the release channel (stable, rc, beta) from the branch in determine-version (#184) (#191)
+
+
+### Refactoring
+- **github-project**: Drop the In release status and the merged label from the project standard (#182) (#188)
+- **versioning**: Close-release-issues only catches leftovers, mark-merged-issues deprecated (#183) (#189)
+
+
 ## [1.9.0] — 2026-11-07
 
 ### Bug Fixes
