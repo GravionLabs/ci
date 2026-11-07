@@ -753,7 +753,7 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 
 Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](.apm/skills/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
-- **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`; dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
+- **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`, `milestoned`, `demilestoned` (the field `Current`); dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
 - **Full mode (`mode: full`):** syncs every item of the calling repository; `schedule` and `workflow_dispatch` events without a mode do this too.
 - **Project mode (`mode: project`):** syncs every item of the project regardless of repository (items are read without the `q=repo:` filter; sub-issue, blocker and pull request lookups use each item's own repository). Wins over `issues`.
 - **Security:** nothing is checked out; the script is read from the action's own repository ref, the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
@@ -1473,14 +1473,14 @@ Reusable workflow for issue and pull request events, three independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
 - **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
-- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
+- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened, milestoned, demilestoned and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**
 
 ```yaml
 on:
   issues:
-    types: [opened, edited, labeled, unlabeled, reopened, transferred, closed]
+    types: [opened, edited, labeled, unlabeled, reopened, transferred, closed, milestoned, demilestoned]
   pull_request_target:
     types: [opened, reopened, closed, ready_for_review]
 permissions:

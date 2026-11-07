@@ -29,6 +29,7 @@ const FIELDS = (d: any) => [
   ...(d.onlyNeeds ? [] : [{ id: 102, name: 'Level', data_type: 'single_select', options: [] }]),
   ...(d.noNeeds ? [] : [{ id: 103, name: 'Needs', data_type: 'single_select',
     options: ['Planning','Ready','In progress','Blocked','Review','Decision','Release review'].map((n) => ({ id: 'O-' + n, name: { raw: n } })) }]),
+  ...(d.withCurrent ? [{ id: 106, name: 'Current', data_type: 'single_select', options: [{ id: 'O-yes', name: { raw: 'Yes' } }] }] : []),
   ...(d.onlyNeeds ? [] : [{ id: 104, name: 'Parent issue', data_type: 'parent_issue', options: null },
     { id: 105, name: 'Linked pull requests', data_type: 'linked_pull_requests', options: null }]),
 ];
@@ -65,6 +66,12 @@ const HANDLER = `(call, ctx) => {
     const t = (d.issueTypes || {})[m[1] + '#' + m[2]];
     return { rest: { number: Number(m[2]), type: t ? { name: t } : null } };
   }
+  if ((m = path.match(/^repos\\/([^/]+\\/[^/]+)\\/milestones/))) {
+    return { rest: list(((d.milestones || {})[m[1]] || []).map((t) => ({ title: t }))) };
+  }
+  if ((m = path.match(/^repos\\/([^/]+\\/[^/]+)\\/tags/))) {
+    return { rest: list(((d.tags || {})[m[1]] || []).map((n) => ({ name: n }))) };
+  }
   if ((m = path.match(/^repos\\/([^/]+\\/[^/]+)\\/pulls/))) {
     return { rest: list(((d.prs || {})[m[1]] || []).map((h) => ({ head: { ref: h } }))) };
   }
@@ -94,6 +101,7 @@ const restItem = (nr: number, needs: string | null, o: Record<string, any> = {})
     { id: 103, name: 'Needs', value: needs ? { name: { raw: needs } } : null },
     { id: 104, name: 'Parent issue', value: o.parent ? { number: o.parent.number, repository_url: URL + (o.parent.repo ?? 'o/r') } : null },
     { id: 105, name: 'Linked pull requests', value: o.linked ?? [] },
+    ...(o.current !== undefined ? [{ id: 106, name: 'Current', value: o.current ? { name: { raw: o.current } } : null }] : []),
   ],
 });
 const dep = (nr: number, repo = 'o/r', state = 'open', labels: string[] = []) => ({
@@ -167,6 +175,55 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(r.stdout).toContain('#1: (none) -> Ready');
       expect(mutations).toHaveLength(1);
       expect(restPath(itemCalls[0])).toBe('users/o/projectsV2/1/items?per_page=100&fields[]=103');
+    });
+
+    describe('field Current (#167)', () => {
+      const msItem = (nr: number, milestone: string | null, current: string | null, state = 'open') =>
+        restItem(nr, state === 'open' ? 'Ready' : null, { current, content: { state, milestone: milestone ? { title: milestone } : null } });
+
+      it('reads milestones once per repository via REST, writes only the changed items, adds no GraphQL call', async () => {
+        const { r, calls, mutations } = await run({
+          withCurrent: true,
+          milestones: { 'o/r': ['M10', 'M2'] },
+          items: [msItem(1, 'M2', null), msItem(2, 'M2', 'Yes'), msItem(3, 'M10', 'Yes'), msItem(4, 'M2', null, 'closed')],
+        });
+        expect(r.status).toBe(0);
+        const ms = calls.filter((c) => restPath(c).includes('/milestones'));
+        expect(ms).toHaveLength(1);
+        expect(restPath(ms[0])).toBe('repos/o/r/milestones?state=open&per_page=100');
+        expect(calls.some((c) => restPath(c).includes('/tags'))).toBe(false);
+        expect(calls.some((c) => c.args.includes('graphql'))).toBe(false);
+        expect(mutations.map((m) => [m.args[3], m.body])).toEqual([
+          ['users/o/projectsV2/1/items/1', { fields: [{ id: 106, value: 'O-yes' }] }],
+          ['users/o/projectsV2/1/items/3', { fields: [{ id: 106, value: null }] }],
+          ['users/o/projectsV2/1/items/4', { fields: [{ id: 106, value: 'O-yes' }] }],
+        ]);
+        expect(r.stdout).toContain('#3: Current Yes -> (clear)');
+      });
+
+      it('reads the tags only when a legacy x.y.z milestone is open', async () => {
+        const { r, calls, mutations } = await run({
+          withCurrent: true,
+          milestones: { 'o/r': ['1.2.0', 'M1'] },
+          tags: { 'o/r': ['v1.2.0', 'v1.1.0'] },
+          items: [msItem(1, 'M1', null), msItem(2, '1.2.0', null)],
+        });
+        expect(r.status).toBe(0);
+        expect(calls.filter((c) => restPath(c).includes('/tags'))).toHaveLength(1);
+        expect(mutations.map((m) => m.args[3])).toEqual(['users/o/projectsV2/1/items/1']);
+      });
+
+      it('-DryRun lists the change and writes nothing', async () => {
+        const { r, mutations } = await run({ withCurrent: true, milestones: { 'o/r': ['M1'] }, items: [msItem(1, 'M1', null)] }, ['-DryRun']);
+        expect(r.stdout).toContain('#1: Current (none) -> Yes');
+        expect(mutations).toHaveLength(0);
+      });
+
+      it('a project without the field Current reads no milestones', async () => {
+        const { r, calls } = await run({ items: [msItem(1, 'M1', null)] });
+        expect(r.status).toBe(0);
+        expect(calls.some((c) => restPath(c).includes('/milestones'))).toBe(false);
+      });
     });
 
     it('makes no GraphQL call at all (reads and writes are REST)', async () => {

@@ -66,6 +66,7 @@ const NEEDS = select(
   'Needs',
   NEEDS_NAMES.map((n) => opt(n))
 );
+const CURRENT = select('Current', [opt('Yes', 'GREEN')]);
 const NEEDS_VIEWS = ['Needs me', 'Ready for loop', 'Blocked'].map((name) => ({
   id: `V-${name}`,
   name,
@@ -100,6 +101,7 @@ const state = (o: Partial<State> & { status?: Opt[] } = {}): State => ({
     select('Status', o.status ?? DEFAULT_STATUS),
     LEVEL,
     NEEDS,
+    CURRENT,
     ...PLAIN,
     ...(o.fields ?? []),
   ],
@@ -213,6 +215,26 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
 
     it('keeps an existing field untouched', () => {
       expect(ofType(plan(state()), 'CreateField')).toHaveLength(0);
+    });
+  });
+
+  describe('Current (#167)', () => {
+    const withoutCurrent = () => {
+      const s = state();
+      s.fields = s.fields.filter((f: any) => f.name !== 'Current');
+      return s;
+    };
+
+    it('creates the single-select field with the option Yes (GREEN) when missing', () => {
+      const [a] = ofType(plan(withoutCurrent()), 'CreateField');
+      expect(a.name).toBe('Current');
+      expect(a.options.map((o: Opt) => `${o.name}:${o.color}`)).toEqual(['Yes:GREEN']);
+    });
+
+    it('keeps an existing field and its option ids untouched', () => {
+      const acts = plan(state());
+      expect(ofType(acts, 'CreateField')).toHaveLength(0);
+      expect(ofType(acts, 'UpdateFieldOptions')).toHaveLength(0);
     });
   });
 
