@@ -11,6 +11,8 @@ DRY_RUN="${DRY_RUN:-false}"
 PROJECT_STATUS="${PROJECT_STATUS:-}"
 PROJECT_TOKEN="${PROJECT_TOKEN:-${GH_TOKEN:-}}"
 LABEL_JSON=$(jq -n --arg l "$LABEL" '$l')
+# Deprecated: versioning/close-merged-issues replaces it (closes the issues at merge, no label). Removed in the next major.
+echo "::warning::versioning/mark-merged-issues is deprecated and will be removed in the next major; use versioning/close-merged-issues."
 CLOSES_RE='\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[: ]+#[0-9]+'
 declare -A MARKED=() LABELLED=() SEEN=() UP=() NO_OPTION=()
 label_ready=false

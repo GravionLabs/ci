@@ -259,7 +259,7 @@ jobs:
             exit 1
           fi
           gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
-      # After a merged release/<x.y> PR: closes the issues it delivered ("Shipped in v...").
+      # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
         with:

@@ -49,8 +49,8 @@ inputs:
     default: ''
   close-issues:
     description: >
-      After the release, close the issues delivered by a merged release/<x.y> PR
-      (versioning/close-release-issues). Needs issues: write and pull-requests: read; without
+      After the release, close the issues delivered by a merged release/<x.y> PR still open
+      (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without
       them the step only prints a warning. A no-op for commits that are not a merged release PR.
     required: false
     default: 'true'
