@@ -57,9 +57,10 @@ const CURRENT = select('Current', ['Yes']);
 const VIEWS = [
   'Hierarchy',
   'Board',
-  'Release next',
   'Backlog',
   'Recently closed',
+  'Milestones',
+  'Current milestone',
   'Needs me',
   'Ready for loop',
   'Blocked',
@@ -248,7 +249,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
 
       it('plans CreateView only for a standard view missing on all pages', async () => {
         const { actions } = await planned(
-          { ...BASE, views: [VIEWS.slice(0, 3), VIEWS.slice(4)] },
+          { ...BASE, views: [VIEWS.slice(0, 2), VIEWS.slice(3)] },
           false
         );
         expect(ofType(actions, 'CreateView').map((a) => a.name)).toEqual(['Backlog']);
