@@ -57,6 +57,7 @@ jobs:
         run: |
           bash tests/determine-version.test.sh
           bash tests/conventional-commits.test.sh
+          bash tests/release-channel.test.sh
 
   test-self-references:
     name: 'Test: self-references follow the major tag'
