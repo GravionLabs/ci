@@ -60,7 +60,7 @@ node/
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 ├── project-needs.yml       # Central nightly Needs sync of the whole project (workflow "Project needs")
-├── release-branch.yml      # Reusable release-branch workflow (release PR, merged label, project Status, Needs sync)
+├── release-branch.yml      # Reusable release-branch workflow (release PR, closes merged issues, Needs sync)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -1599,8 +1599,29 @@ jobs:
 Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
 
 1. `versioning/release-pr` keeps the PR `release: <x.y>` (`release: next` for `release/next`) from the release branch to the default branch open and current (never merges).
-2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
-3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it only prints that it would sync (a dry run labels nothing). Only issues newly labelled in the run are synced: a failed sync is not retried by a rerun, because those issues are then already labelled.
+2. `versioning/close-merged-issues` closes the open issues merged into the branch (it replaces `mark-merged-issues`, which labelled them). Its output `closed` holds the issues closed in the run. The inputs `label` and `project-status` stay for one major as no-ops: a caller that passes them gets a deprecation warning, not a failure.
+3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was closed; on a dry run it only prints that it would sync (a dry run closes nothing). Only issues closed in the run are synced: a failed sync is not retried by a rerun, because those issues are then already closed.
+
+A reverted PR: its issues stay closed; reopen them by hand.
+
+**One-time run (`workflow_dispatch`):** the caller workflow can also trigger on `workflow_dispatch` with a boolean input `dry-run` that it passes on, so each repository can close today's issues that already carry `merged` without a new push:
+
+```sh
+gh workflow run release-branch.yml --ref release/next -f dry-run=true   # prints what would be closed
+gh workflow run release-branch.yml --ref release/next                   # closes them
+```
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        type: boolean
+        default: false
+# ... and in the job: with: { dry-run: "${{ inputs.dry-run || false }}" }
+```
 
 No checkout; `permissions: {}` at the top, the job requests `contents: read`, `issues: write`, `pull-requests: write`, which the calling job must grant.
 
@@ -1629,9 +1650,9 @@ jobs:
 |------------------|----------|---------------|----------------------------------------------------------------------------------------------------------|
 | `release-branch` | No       | `""`          | Release branch, e.g. `release/next`; empty = the triggering ref                                          |
 | `base`           | No       | `""`          | Base branch of the release PR; empty = the repository default branch                                     |
-| `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
-| `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
-| `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
+| `label`          | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
+| `project-status` | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
+| `project-url`    | No       | `""`          | Project URL for the Needs sync of the closed issues; empty disables the sync                           |
 | `require-pat`    | No       | `false`       | Fail instead of warning when neither the app secrets nor `GH_PAT` are set                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 

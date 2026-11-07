@@ -77,7 +77,7 @@ scripts/
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
   project-needs.yml     — Central nightly Needs sync of every item of the project, all repositories (cron `17 3 * * *` + workflow_dispatch, issues.yml with `needs: true`, `mode: project`)
-  release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → mark-merged-issues (`labelled` output) → project/needs for the labelled issues (inputs incl. `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
+  release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → close-merged-issues (`closed` output) → project/needs for the closed issues (inputs incl. deprecated `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
@@ -266,8 +266,8 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 |---|---|---|---|
 | `release-branch` | No | `""` | Release branch; empty = the triggering ref |
 | `base` | No | `""` | Base branch of the release PR; empty = repository default branch |
-| `label` | No | `merged` | Label for issues merged into the release branch |
-| `project-status` | No | `In release` | Project Status of the labelled issues; empty disables it |
+| `label` | No | `""` | Deprecated no-op (warning when set) |
+| `project-status` | No | `""` | Deprecated no-op (warning when set) |
 | `project-url` | No | `""` | Project URL for the Needs sync; empty disables the sync |
 | `require-pat` | No | `false` | Fail instead of warning when neither the app secrets nor `GH_PAT` are set |
 | `dry-run` | No | `false` | Print what would change |
@@ -283,7 +283,8 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 ### Behavior
 
 - One job, no checkout, top-level `permissions: {}`; the calling job must grant `contents: read`, `issues: write`, `pull-requests: write`. `secrets: inherit` works.
-- Steps: mint the app token, check app/`GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which only prints that it would sync, since a dry run labels nothing). Only newly labelled issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
+- Steps: mint the app token, check app/`GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/close-merged-issues` (output `closed` = issues closed in this run; `label` and `project-status` are deprecated no-ops with a warning), then `project/needs` with `issues: <closed>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without closed issues and on `dry-run` (which only prints that it would sync, since a dry run closes nothing). Only newly closed issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
+- A caller can add `workflow_dispatch` with `dry-run` for a one-time run (`gh workflow run release-branch.yml --ref release/next -f dry-run=true`, then without); a reverted PR: reopen its issues by hand.
 - Actions are referenced at `@v1`, the moving major tag (see "Releasing ci").
 - Test: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints it.
 
