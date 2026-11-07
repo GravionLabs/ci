@@ -8,6 +8,7 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 |:--|:--|:--|
 | Status | `Todo`, `In progress`, `In release`, `Done` | `In release` (BLUE) sits before `Done` and mirrors the label `merged`: merged into `release/next`, ships with the next release. |
 | Level | Epic, Feature, PBI, Task, Bug | Hierarchy level. `-Sync` fills an empty Level from the labels, fallback the title prefix. |
+| Current | `Yes` (GREEN) | Marks the items of the current milestone of their repository. Created when missing; `Sync-ProjectNeeds.ps1` sets it (view `Current milestone` filters `current:Yes`). |
 | Needs | see below | What the item waits for. Created when missing; an existing field keeps its options and ids and only gets missing options appended. |
 
 ### Needs
@@ -37,7 +38,7 @@ The sync also resets a stale Status `In Progress` (open issue without open pull 
 
 The project comes from `-Owner`/`-Number`, else `.agents/project.json` (`{"owner": "...", "number": 17}`), else `project-url:` in `.github/workflows/add-to-project.yml`, else in the first other `.github/workflows/*.yml|yaml` (name order) that has one, e.g. `issue-events.yml`. A failing Needs sync prints one warning; the run still exits 0.
 
-`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs on label, close and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it sets to `In release`; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
+`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs and Current on label, close, milestoned, demilestoned and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it sets to `In release`; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
 
 ### Needs sync in other repositories
 

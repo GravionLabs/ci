@@ -147,7 +147,7 @@ jobs:
 
 ## CI token: GitHub App `GravionLabs CI`
 
-Release PR, changelog commit and Renovate use an installation token of the GitHub App (secrets `CI_APP_ID`, `CI_APP_PRIVATE_KEY`, minted with the SHA-pinned `actions/create-github-app-token`; fallback `GH_PAT`, then `github.token`). Project steps keep the classic PAT `PROJECT_TOKEN` (an app cannot access the user-owned project 17; GravionLabs/ci#128 moves it) and read and write through the REST `projectsV2` endpoints (Needs sync, `mark-merged-issues` Status: no GraphQL call); only `actions/add-to-project` (external action), `Set-ProjectStandard.ps1` still use GraphQL. Setup and reasons: README, "GitHub App". Test: `bash tests/ci-app-token.test.sh`.
+Release PR, changelog commit and Renovate use an installation token of the GitHub App (secrets `CI_APP_ID`, `CI_APP_PRIVATE_KEY`, minted with the SHA-pinned `actions/create-github-app-token`; fallback `GH_PAT`, then `github.token`). Project steps keep the classic PAT `PROJECT_TOKEN` (an app cannot access the user-owned project 17; GravionLabs/ci#128 moves it) and read and write through the REST `projectsV2` endpoints (Needs sync, `mark-merged-issues` Status: no GraphQL call); only `actions/add-to-project` (external action) and `Set-ProjectStandard.ps1` still use GraphQL. Setup and reasons: README, "GitHub App". Test: `bash tests/ci-app-token.test.sh`.
 
 ## Reusable Workflow: `docker-package.yml`
 
