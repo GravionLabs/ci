@@ -36,12 +36,12 @@ Always run `-DryRun` first, show the actions to the user, then run without it. `
 - `-Sync` also runs `scripts/Sync-ProjectNeeds.ps1` (forwards `-DryRun`; offline `-StateFile` only lists the action `syncNeeds`). A failing Needs sync is one warning, the run still exits 0. Details: `references/needs-sync.md`.
 - Current: single-select with the option `Yes` (GREEN), created when missing; `Sync-ProjectNeeds.ps1` sets it on the items of the current milestone of each repository (view filter `current:Yes`).
 - Needs: single-select (Planning, Decision, Review, Blocked, Ready, In progress, Release review), created when missing; an existing field keeps its option ids and gets missing options appended.
-- Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
-- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all five standard views exist, and the views `Sprint`, `Sprint next` and `Sprint planning` of the removed sprint mode whenever they exist.
+- Standard views: the five standard views (Hierarchy, Board, Backlog, Recently closed, Milestones), `Current milestone`, and the Needs views. Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
+- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all standard views exist, and `Release next` (left the standard) under the same condition, and the views `Sprint`, `Sprint next` and `Sprint planning` of the removed sprint mode whenever they exist.
 - `-RemoveSprintField` deletes the iteration field `Sprint` of the removed sprint mode (GraphQL `deleteProjectV2Field`, listed in `-DryRun` / `-Json`); without the switch the field stays.
 - A second run reports `No changes.`
 
-Finish by telling the user the printed manual UI steps (no API): "Show hierarchy" in Hierarchy, sort Recently closed by Closed descending, enable the workflow "Item closed → Done".
+Finish by telling the user the printed manual UI steps (no API): "Show hierarchy" in Hierarchy, sort Recently closed by Closed descending, sort Milestones by Milestone ascending, enable the workflow "Item closed → Done" and "Auto-archive items" with `is:closed updated:<@today-14d`.
 
 Other repositories of the project copy `templates/issue-events.yml` and `templates/project-needs.yml` (callers of the reusable `issues.yml` of GravionLabs/ci; replace `<owner>` and `<n>` in `project-url`) to `.github/workflows/` to keep Needs current; tokens: GravionLabs/ci README.
 

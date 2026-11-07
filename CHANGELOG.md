@@ -6,6 +6,12 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [Unreleased]
+
+### Features
+- **github-project**: Standard views `Milestones` and `Current milestone`; `Release next` leaves the standard and `-RemoveDefaultViews` deletes it; the manual steps recommend "Auto-archive items" (#168)
+
+
 ## [1.8.1] — 2026-11-06
 
 ### Bug Fixes

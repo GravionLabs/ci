@@ -13,7 +13,7 @@
 .PARAMETER Number              Project number.
 .PARAMETER Sync                Also run Sync-ProjectNeeds.ps1 (field Needs; offline only the action syncNeeds) and sync items: Level from labels/title, label 'merged' <-> status 'In release' (open issues only); ensure the labels 'planned' and 'needs-review' in the repositories linked to the project.
 .PARAMETER RemoveSprintField   Delete the iteration field 'Sprint' of the removed sprint mode (GraphQL deleteProjectV2Field); without the switch the field stays.
-.PARAMETER RemoveDefaultViews  Delete views named 'View <n>' or 'Probe', only when all five standard views exist afterwards; also the views 'Sprint', 'Sprint next' and 'Sprint planning' of the removed sprint mode, whenever they exist.
+.PARAMETER RemoveDefaultViews  Delete views named 'View <n>' or 'Probe', only when all standard views exist afterwards; also 'Release next' (left the standard) under the same condition; also the views 'Sprint', 'Sprint next' and 'Sprint planning' of the removed sprint mode, whenever they exist.
 .PARAMETER DryRun              Print the actions, change nothing.
 .PARAMETER StateFile           JSON state (projectId, ownerType, fields, views, items) instead of reading from GitHub.
 .PARAMETER Json                Emit {dryRun, actions, needs, manualSteps} as JSON instead of text.
@@ -51,12 +51,14 @@ $script:StandardViews = @(
      fields = @('Title', 'Level', 'Status', 'Sub-issues progress', 'Linked pull requests', 'Labels') },
   @{ name = 'Board'; layout = 'board'; filter = '-label:epic,feature -status:Done'; groupBy = $null; verticalGroupBy = 'Status'
      fields = @('Title', 'Level', 'Linked pull requests', 'Sub-issues progress', 'Parent issue') },
-  @{ name = 'Release next'; layout = 'table'; filter = 'status:"In release"'; groupBy = 'Milestone'; verticalGroupBy = $null
-     fields = @('Title', 'Parent issue', 'Linked pull requests', 'Sub-issues progress') },
   @{ name = 'Backlog'; layout = 'table'; filter = 'is:open -status:"In release" -label:epic,feature'; groupBy = 'Parent issue'; verticalGroupBy = $null
      fields = @('Title', 'Level', 'Status', 'Labels', 'Sub-issues progress') },
   @{ name = 'Recently closed'; layout = 'table'; filter = 'is:closed'; groupBy = $null; verticalGroupBy = $null
-     fields = @('Title', 'Level', 'Parent issue', 'Linked pull requests') })
+     fields = @('Title', 'Level', 'Parent issue', 'Linked pull requests') },
+  @{ name = 'Milestones'; layout = 'table'; filter = 'has:milestone -level:Epic,Task'; groupBy = 'Milestone'; verticalGroupBy = $null
+     fields = @('Title', 'Level', 'Status', 'Repository', 'Linked pull requests') },
+  @{ name = 'Current milestone'; layout = 'board'; filter = 'current:Yes -level:Epic,Task'; groupBy = 'Repository'; verticalGroupBy = 'Status'
+     fields = @('Title', 'Level', 'Milestone', 'Linked pull requests', 'Sub-issues progress') })
 # Views on the field Needs, always created.
 $script:NeedsViews = @(
   @{ name = 'Needs me'; layout = 'board'; filter = 'is:open needs:Planning,Decision,Review,"Release review"'; groupBy = $null; verticalGroupBy = 'Needs'
@@ -68,8 +70,9 @@ $script:NeedsViews = @(
 $script:ManualSteps = @(
   'Hierarchy view: enable "Show hierarchy" (no API).',
   'Recently closed view: sort by Closed, descending (the REST API rejects sort_by with HTTP 400).',
-  'Release next view (created before Milestone grouping): set Group by Milestone (existing views are not updated).',
-  'Project Workflows: enable "Item closed" -> Status Done.')
+  'Milestones view: sort by Milestone, ascending (no API).',
+  'Project Workflows: enable "Item closed" -> Status Done.',
+  'Project Workflows: enable "Auto-archive items" with the filter is:closed updated:<@today-14d (keeps the project small, fewer GraphQL pages per sync); Milestones shows closed items until they are archived.')
 
 function Get-ProjectPlan {
   param($State, [bool]$Sync, [bool]$RemoveDefaultViews, [bool]$RemoveSprintField = $false)
@@ -168,13 +171,19 @@ function Get-ProjectPlan {
     }
   }
 
-  # 5. Default views go only when all five standard views exist afterwards.
+  # 5. Default views go only when all standard views exist afterwards.
   if ($RemoveDefaultViews) {
     $after = @($existing) + @($actions | Where-Object { $_.type -eq 'CreateView' } | ForEach-Object { $_.name })
     $allStandard = -not ($script:StandardViews | Where-Object { $after -notcontains $_.name })
     if ($allStandard) {
       foreach ($v in @($State.views)) {
         if ($v.name -match '^View \d+$' -or $v.name -eq 'Probe') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
+      }
+    }
+    # Release next left the standard (its content is Needs me / Release review); it goes with the new views in place.
+    if ($allStandard) {
+      foreach ($v in @($State.views)) {
+        if ($v.name -eq 'Release next') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
       }
     }
     # Views of the removed sprint mode go whenever they exist.
