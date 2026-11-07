@@ -12,7 +12,12 @@
        label merged or Status 'In release' -> Release review; open PR whose head ref matches (^|/)<nr>- or Status 'In Progress' -> In progress;
        Epic without Feature, Feature without PBI, PBI without Task sub-issues and without label planned -> Planning;
        else Ready for PBI-level items (PBI, Bug, Task, unknown level) and clear for Epics and Features.
-  3. Get-NeedsPlan returns one action {issue, item, from, to} per item whose current Needs differs; unchanged items yield none.
+  3. Status reset (state with statusField, i.e. the project has a Status field): an open issue with Status 'In Progress', no open PR whose head
+     ref matches (^|/)<nr>- (or linked) and without the label merged goes back to Todo; a closed issue with Status 'In Progress' goes to Done
+     (actions carry field = 'Status'; -DryRun lists them; Needs is computed from the new Status). An issue with such a PR keeps 'In Progress'.
+     The run also reports open issues without Level per repository ('Without Level: <repo>: <n> open'; JSON key noLevel) and, when the whole
+     project is in scope, warns about repositories of the owner with open issues but no item in the project (JSON key unlinked); no failure.
+  4. Get-NeedsPlan returns one action {issue, item, from, to} per item whose current Needs differs; unchanged items yield none.
   Reads are REST only (no GraphQL, so no GraphQL budget): GET /users|orgs/<owner>/projectsV2/<n>, /fields and /items?fields[]=<id>&q=repo:<o/r>
   (Status, Level, Needs, Parent issue, Linked pull requests; paginated by gh --paginate --slurp), then per open item in scope only what its
   summaries announce: /issues/<n>/sub_issues, /dependencies/blocked_by, /dependencies/blocking (-IncludeDependents), /issues/<n> (issue type of a
@@ -24,6 +29,11 @@
   item, 4 tries with backoff (15 s * try, env SYNC_PROJECT_NEEDS_BACKOFF overrides the 15). Prints '#<nr>: <from> -> <to>'
   per change and 'Needs: <k> changed, <m> unchanged'. No Needs field: 'Needs sync skipped: field Needs missing ...', exit 0.
   Exit 1 on an unrecoverable error (one line 'Needs sync failed: ...').
+  Field Current (when the project has it): 'Yes' on every item (issues open and closed) whose milestone is the current milestone of its
+  repository (Get-CurrentMilestone, same rule as `github-milestone current`), cleared on all other items; only changed items are written
+  (actions carry field = 'Current'). Milestones: one REST call per repository (milestones?state=open), plus tags when a legacy x.y.z is open.
+  State file additions: currentField {id, options:{Yes:id}}, milestones {'owner/repo': {open:[titles], latestTag}}, items[].milestone (title or null;
+  absent = unknown, left alone), items[].current ('Yes' or null).
   -StateFile never calls gh.
   State file: {owner, number, projectId, needsField:{id, options:{name:id}},
                items:[{itemId, repo, number, state, level, labels[], status, needs, blockedByOpen, subIssueLevels[], prHeads[], parent}]}
@@ -133,16 +143,61 @@ function Get-NeedsPlan {
   }
   $actions = [System.Collections.Generic.List[object]]::new()
   $skipped = [System.Collections.Generic.List[object]]::new()
+  # Field Current (only when the state has currentField): Yes for the items of the current milestone of their repository, else clear.
+  $hasCurrent = [bool](Get-Prop $State 'currentField')
+  $hasStatus = [bool](Get-Prop $State 'statusField')
+  $milestones = Get-Prop $State 'milestones'
+  $currentOf = @{}
   foreach ($it in $items) {
     $id = "$($it.repo)#$($it.number)"
     if (-not $selected.Contains($it)) { $skipped.Add($id); continue }
     $from = Get-Prop $it 'needs'
     if ($from -eq '') { $from = $null }
-    $to = Get-NeedsValue $it
-    if ("$from" -eq "$to") { continue }
-    $actions.Add([ordered]@{ issue = $id; item = Get-Prop $it 'itemId'; from = $from; to = $to })
+    # Status reset (only when the state has statusField): a stale 'In Progress' goes back to Todo (open issue without open PR head
+    # matching (^|/)<nr>- and without label merged) or to Done (closed issue); Needs is then computed from the new Status.
+    $view = $it
+    $statusTo = $null
+    if ($hasStatus -and "$(Get-Prop $it 'status')" -eq 'In Progress') {
+      $nr = [int]$it.number
+      $labels = @(@(Get-Prop $it 'labels') | Where-Object { $_ } | ForEach-Object { "$_".ToLowerInvariant() })
+      $hasPr = @(@(Get-Prop $it 'prHeads') | Where-Object { $_ -and "$_" -match "(^|/)$nr-" }).Count -gt 0
+      if ("$($it.state)" -eq 'CLOSED') { $statusTo = 'Done' }
+      elseif (-not $hasPr -and $labels -notcontains 'merged') { $statusTo = 'Todo' }
+    }
+    if ($statusTo) {
+      $actions.Add([ordered]@{ issue = $id; item = Get-Prop $it 'itemId'; field = 'Status'; from = 'In Progress'; to = $statusTo })
+      $view = $it.PSObject.Copy()
+      $view.status = $statusTo
+    }
+    $to = Get-NeedsValue $view
+    if ("$from" -ne "$to") {
+      $actions.Add([ordered]@{ issue = $id; item = Get-Prop $it 'itemId'; from = $from; to = $to })
+    }
+    # an item without the property milestone (unknown) or of a repository without milestone data is left alone
+    $ms = Get-Prop $milestones "$($it.repo)"
+    if ($hasCurrent -and $ms -and $it.PSObject.Properties['milestone']) {
+      if (-not $currentOf.ContainsKey("$($it.repo)")) { $currentOf["$($it.repo)"] = Get-CurrentMilestone @(Get-Prop $ms 'open') (Get-Prop $ms 'latestTag') }
+      $cur = $currentOf["$($it.repo)"]
+      $m = Get-Prop $it 'milestone'
+      $want = if ($cur -and "$m" -ceq "$cur") { 'Yes' } else { $null }
+      $have = Get-Prop $it 'current'
+      if ($have -eq '') { $have = $null }
+      if ("$have" -ne "$want") {
+        $actions.Add([ordered]@{ issue = $id; item = Get-Prop $it 'itemId'; field = 'Current'; from = $have; to = $want })
+      }
+    }
   }
-  [ordered]@{ actions = @($actions); skipped = @($skipped) }
+  # Open issues in scope without a Level (project field) per repository, and repositories with open issues that have no item in the
+  # project (state.repos [{name, openIssues}], filled by the live read only when the whole project is in scope).
+  $noLevel = [ordered]@{}
+  foreach ($it in $selected) {
+    if ("$($it.state)" -ne 'OPEN' -or -not $it.PSObject.Properties['levelField'] -or (Get-Prop $it 'levelField')) { continue }
+    $noLevel["$($it.repo)"] = 1 + [int]$(if ($noLevel.Contains("$($it.repo)")) { $noLevel["$($it.repo)"] } else { 0 })
+  }
+  $linked = @($items | ForEach-Object { "$($_.repo)" } | Sort-Object -Unique)
+  $unlinked = @(@(Get-Prop $State 'repos' | Where-Object { $_ }) | Where-Object { $linked -notcontains "$(Get-Prop $_ 'name')" -and [int](Get-Prop $_ 'openIssues') -gt 0 } |
+      ForEach-Object { "$(Get-Prop $_ 'name')" } | Sort-Object)
+  [ordered]@{ actions = @($actions); skipped = @($skipped); noLevel = $noLevel; unlinked = @($unlinked) }
 }
 
 # ---- live mode -------------------------------------------------------------------------------------------------
@@ -292,9 +347,24 @@ function ConvertTo-NeedsItem($Ctx, $FieldIds, $Item) {
   }
   $pv = Get-FieldValue $Item $FieldIds.parent
   $parent = if ($pv -and (Get-Prop $pv 'number')) { [ordered]@{ repo = $(Get-RepoOrDefault $pv $repo); number = [int]$pv.number } } else { $null }
-  [ordered]@{ itemId = $(Get-ItemNodeId $Item); itemDatabaseId = $Item.id; repo = $repo; number = $nr; state = $state
-    level = $level; labels = @(Get-LabelNames $c.labels); status = (Get-SelectValue $Item $FieldIds.status); needs = (Get-SelectValue $Item $FieldIds.needs)
+  $out = [ordered]@{ itemId = $(Get-ItemNodeId $Item); itemDatabaseId = $Item.id; repo = $repo; number = $nr; state = $state
+    level = $level; levelField = (Get-SelectValue $Item $FieldIds.level); labels = @(Get-LabelNames $c.labels); status = (Get-SelectValue $Item $FieldIds.status); needs = (Get-SelectValue $Item $FieldIds.needs)
+    current = (Get-SelectValue $Item $FieldIds.current)
     blockedByOpen = $blocked; subIssueLevels = @($subs); prHeads = @($heads); parent = $parent }
+  # the milestone title comes from the issue of the project item (no extra call); absent in the content = unknown, Current stays untouched
+  if ($c.PSObject.Properties['milestone']) { $out['milestone'] = $(if ($c.milestone) { "$($c.milestone.title)" } else { $null }) }
+  $out
+}
+
+# Open milestones (and the latest release tag, read only when a legacy x.y.z title is open) of a repository: REST, once per repository.
+function Get-RepoMilestones([string]$RepoName) {
+  $titles = @(@(Invoke-GhList "repos/$RepoName/milestones?state=open&per_page=100") | ForEach-Object { "$($_.title)" })
+  $tag = $null
+  if (@($titles | Where-Object { $_ -match '^[0-9]+\.[0-9]+\.[0-9]+$' }).Count -gt 0) {
+    $tag = @(@(Invoke-GhList "repos/$RepoName/tags?per_page=100") | ForEach-Object { "$($_.name)" } | Where-Object { $_ -match '^v[0-9]+\.[0-9]+\.[0-9]+$' } |
+        Sort-Object { [version]$_.Substring(1) }) | Select-Object -Last 1
+  }
+  [ordered]@{ open = @($titles); latestTag = $tag }
 }
 
 function Get-OpenPrHeads([string]$RepoName) {
@@ -314,7 +384,10 @@ function Get-NeedsState {
   $ids = @{ needs = $field.id
     status = (Get-Prop (Get-SelectField $fields 'Status') 'id'); level = (Get-Prop (Get-SelectField $fields 'Level') 'id')
     parent = (Get-Prop (@($fields) | Where-Object { $_ -and (Get-Prop $_ 'data_type') -eq 'parent_issue' } | Select-Object -First 1) 'id')
-    linked = (Get-Prop (@($fields) | Where-Object { $_ -and (Get-Prop $_ 'data_type') -eq 'linked_pull_requests' } | Select-Object -First 1) 'id') }
+    linked = (Get-Prop (@($fields) | Where-Object { $_ -and (Get-Prop $_ 'data_type') -eq 'linked_pull_requests' } | Select-Object -First 1) 'id')
+    current = (Get-Prop (Get-SelectField $fields 'Current') 'id') }
+  $currentField = Get-SelectField $fields 'Current'
+  $statusField = Get-SelectField $fields 'Status'
   $fieldIds = [pscustomobject]$ids
 
   $dependents = @{}
@@ -366,7 +439,32 @@ function Get-NeedsState {
     $nr = $it.number
     $it.prHeads = @($it.prHeads) + @($heads[$it.repo] | Where-Object { $_ -match "(^|/)$nr-" })
   }
-  [pscustomobject][ordered]@{ owner = $Owner; number = $Number; ownerKind = $ctx.ownerKind; needsField = [ordered]@{ id = $field.id; databaseId = $field.id; options = $options }
+  $currentState = $null
+  $milestones = [ordered]@{}
+  if ($currentField) {
+    $copts = [ordered]@{}
+    foreach ($o in $currentField.options) { $copts[(ConvertTo-OptionText $o.name)] = $o.id }
+    $currentState = [ordered]@{ id = $currentField.id; databaseId = $currentField.id; options = $copts }
+    foreach ($r in @($items | ForEach-Object { $_.repo } | Sort-Object -Unique)) {
+      try { $milestones[$r] = Get-RepoMilestones $r } catch { Write-Warning "Current: milestones of $r not read: $_" }
+    }
+  }
+  $statusState = $null
+  if ($statusField) {
+    $sopts = [ordered]@{}
+    foreach ($o in $statusField.options) { $sopts[(ConvertTo-OptionText $o.name)] = $o.id }
+    $statusState = [ordered]@{ id = $statusField.id; databaseId = $statusField.id; options = $sopts }
+  }
+  # repositories of the owner with open issues, to name those without an item in the project (whole project in scope only)
+  $repos = @()
+  if (-not $Repo -and $refs.Count -eq 0) {
+    try {
+      $repos = @(@(Invoke-GhList "$($ctx.seg)/$Owner/repos?per_page=100") | Where-Object { -not (Get-Prop $_ 'archived') } |
+          ForEach-Object { [ordered]@{ name = "$($_.full_name)"; openIssues = [int](Get-Prop $_ 'open_issues_count') } })
+    } catch { Write-Warning "Repositories of $Owner not read: $_" }
+  }
+  [pscustomobject][ordered]@{ owner = $Owner; number = $Number; ownerKind = $ctx.ownerKind; statusField = $statusState; repos = @(ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject @($repos) -Depth 4)); needsField = [ordered]@{ id = $field.id; databaseId = $field.id; options = $options }
+    currentField = $currentState; milestones = (ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject $milestones -Depth 5))
     # objects (not dictionaries) like a -StateFile, so Get-Prop sees every property
     items = @(ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject @($items) -Depth 8)) }
 }
@@ -382,11 +480,12 @@ function Set-ProjectItemField([string]$OwnerKind, [string]$Owner, [int]$Number, 
 }
 
 function Set-NeedsValue($State, $Action) {
-  $field = $State.needsField
+  $fname = if ($Action.Contains('field')) { "$($Action.field)" } else { 'Needs' }
+  $field = switch ($fname) { 'Current' { $State.currentField } 'Status' { $State.statusField } default { $State.needsField } }
   $opt = $null
   if ($Action.to) {
     $opt = $field.options[$Action.to]
-    if (-not $opt) { throw "Option '$($Action.to)' not found in field Needs." }
+    if (-not $opt) { throw "Option '$($Action.to)' not found in field $fname." }
   }
   $item = @($State.items | Where-Object { (Get-Prop $_ 'itemId') -eq $Action.item }) | Select-Object -First 1
   $itemDb = if ($item) { Get-Prop $item 'itemDatabaseId' } else { $null }
@@ -394,7 +493,7 @@ function Set-NeedsValue($State, $Action) {
   $backoff = [double]($env:SYNC_PROJECT_NEEDS_BACKOFF ?? 15)
   foreach ($try in 1..4) {
     try { Set-ProjectItemField (Get-Prop $State 'ownerKind') $State.owner $State.number $itemDb $field.databaseId $opt; return } catch {
-      if ($try -eq 4) { throw "Needs update failed for $($Action.issue): $_" }
+      if ($try -eq 4) { throw "$fname update failed for $($Action.issue): $_" }
       Start-Sleep -Seconds ($backoff * $try)
     }
   }
@@ -459,12 +558,16 @@ if ($live) {
 
 $plan = Get-NeedsPlan -State $state -Repo $Repo -Issue $Issue -IncludeParents ([bool]$IncludeParents) -IncludeDependents ([bool]$IncludeDependents)
 if ($Json) {
-  [ordered]@{ project = [ordered]@{ owner = $ref.owner; number = $ref.number }; actions = $plan.actions; skipped = $plan.skipped } |
+  [ordered]@{ project = [ordered]@{ owner = $ref.owner; number = $ref.number }; actions = $plan.actions; skipped = $plan.skipped; noLevel = $plan.noLevel; unlinked = $plan.unlinked } |
     ConvertTo-Json -Depth 6
   if (-not $live -or $DryRun) { exit 0 }
 }
+function Write-ScopeReport($Plan) {
+  foreach ($k in $Plan.noLevel.Keys) { Write-Output ("Without Level: {0}: {1} open" -f $k, $Plan.noLevel[$k]) }
+  if (@($Plan.unlinked).Count -gt 0) { Write-Warning ("Repositories with open issues but no item in the project (not linked?): {0}" -f (@($Plan.unlinked) -join ', ')) }
+}
 if ($live) {
-  $fmt = { param($a) "#{0}: {1} -> {2}" -f ($a.issue -replace '^.*#', ''), $(if ($a.from) { $a.from } else { '(none)' }), $(if ($a.to) { $a.to } else { '(clear)' }) }
+  $fmt = { param($a) "#{0}: {1}{2} -> {3}" -f ($a.issue -replace '^.*#', ''), $(if ($a.Contains('field')) { "$($a.field) " } else { '' }), $(if ($a.from) { $a.from } else { '(none)' }), $(if ($a.to) { $a.to } else { '(clear)' }) }
   $inScope = @($state.items).Count - @($plan.skipped).Count
   try {
     foreach ($a in $plan.actions) {
@@ -473,7 +576,9 @@ if ($live) {
     }
   } catch { Write-Output "Needs sync failed: $_"; exit 1 }
   if (-not $Json) { Write-Output ("Needs: {0} {1}, {2} unchanged{3}" -f @($plan.actions).Count, $(if ($DryRun) { 'to change' } else { 'changed' }), ($inScope - @($plan.actions).Count), $(if ($DryRun) { ' (dry run)' } else { '' })) }
+  if (-not $Json) { Write-ScopeReport $plan }
   exit 0
 }
-if ($plan.actions.Count -eq 0) { Write-Output "Needs in sync ($($ref.owner)/$($ref.number)): no changes."; exit 0 }
-foreach ($a in $plan.actions) { Write-Output ("{0}: Needs {1} -> {2}" -f $a.issue, $(if ($a.from) { $a.from } else { '(none)' }), $(if ($a.to) { $a.to } else { '(clear)' })) }
+if ($plan.actions.Count -eq 0) { Write-Output "Needs in sync ($($ref.owner)/$($ref.number)): no changes." }
+foreach ($a in $plan.actions) { Write-Output ("{0}: {1} {2} -> {3}" -f $a.issue, $(if ($a.Contains('field')) { $a.field } else { 'Needs' }), $(if ($a.from) { $a.from } else { '(none)' }), $(if ($a.to) { $a.to } else { '(clear)' })) }
+Write-ScopeReport $plan

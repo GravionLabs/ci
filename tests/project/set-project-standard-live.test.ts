@@ -53,12 +53,14 @@ const NEEDS_ALL = [
   'Release review',
 ];
 const NEEDS = select('Needs', NEEDS_ALL);
+const CURRENT = select('Current', ['Yes']);
 const VIEWS = [
   'Hierarchy',
   'Board',
-  'Release next',
   'Backlog',
   'Recently closed',
+  'Milestones',
+  'Current milestone',
   'Needs me',
   'Ready for loop',
   'Blocked',
@@ -132,7 +134,7 @@ const handler = (c: Config) => `(call) => {
   throw new Error('unexpected gh call: ' + JSON.stringify(call));
 }`;
 
-const BASE: Config = { fields: [[STATUS, LEVEL, NEEDS, ...PLAIN]], views: [VIEWS] };
+const BASE: Config = { fields: [[STATUS, LEVEL, NEEDS, CURRENT, ...PLAIN]], views: [VIEWS] };
 type Action = { type: string; [k: string]: unknown };
 
 describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.platform === 'win32')(
@@ -222,7 +224,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
             ...BASE,
             fields: [
               [STATUS, ...PLAIN],
-              [LEVEL, NEEDS],
+              [LEVEL, NEEDS, CURRENT],
             ],
           },
           false
@@ -247,7 +249,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
 
       it('plans CreateView only for a standard view missing on all pages', async () => {
         const { actions } = await planned(
-          { ...BASE, views: [VIEWS.slice(0, 3), VIEWS.slice(4)] },
+          { ...BASE, views: [VIEWS.slice(0, 2), VIEWS.slice(3)] },
           false
         );
         expect(ofType(actions, 'CreateView').map((a) => a.name)).toEqual(['Backlog']);
@@ -326,7 +328,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
     describe('executor', () => {
       it('UpdateFieldOptions sends the existing option ids plus the missing options, then re-reads the fields', async () => {
         const { r, calls } = await run(
-          { ...BASE, fields: [[STATUS, LEVEL, select('Needs', ['Planning', 'Review']), ...PLAIN]] },
+          { ...BASE, fields: [[STATUS, LEVEL, select('Needs', ['Planning', 'Review']), CURRENT, ...PLAIN]] },
           []
         );
         expect(r.status, r.stderr + r.stdout).toBe(0);

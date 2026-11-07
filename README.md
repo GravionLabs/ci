@@ -753,7 +753,7 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 
 Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](.apm/skills/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
-- **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`; dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
+- **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`, `milestoned`, `demilestoned` (the field `Current`); dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
 - **Full mode (`mode: full`):** syncs every item of the calling repository; `schedule` and `workflow_dispatch` events without a mode do this too.
 - **Project mode (`mode: project`):** syncs every item of the project regardless of repository (items are read without the `q=repo:` filter; sub-issue, blocker and pull request lookups use each item's own repository). Wins over `issues`.
 - **Security:** nothing is checked out; the script is read from the action's own repository ref, the calling repository and PR code are never checked out, and event data (head ref, label) reaches the script through the environment only.
@@ -1463,7 +1463,7 @@ Setup (maintainer, once):
 4. Add the app as bypass actor to the rulesets `main` (changelog commit on the default branch requires a pull request) and, where release PRs are created, as needed.
 5. Delete the secret `GH_PAT` once every repository runs on the app (it stays supported as a fallback until then).
 
-Project steps keep a classic PAT: project 17 belongs to the user `GravionLabs`, and a GitHub App cannot access user-owned projects (only organization projects; moving to an organization is GravionLabs/ci#128). `PROJECT_TOKEN` is therefore used for `add-to-project`, the Needs sync and the project Status. The Needs sync and the project Status read and write through the REST `projectsV2` endpoints (`GET /users|orgs/<owner>/projectsV2/<n>/fields` and `/items?fields[]=<id>&q=repo:<o/r>`, `PATCH .../items/<id>`) plus the REST issue endpoints (`sub_issues`, `dependencies/blocked_by`, `dependencies/blocking`, `pulls`), so they draw on the REST budget only and make no GraphQL call. What stays on GraphQL: `actions/add-to-project` (external action) and the field/option/view administration of `Set-ProjectStandard.ps1` and the sprint reads of `Set-Sprint.ps1` (no REST update endpoint for single-select options; not part of the CI steps).
+Project steps keep a classic PAT: project 17 belongs to the user `GravionLabs`, and a GitHub App cannot access user-owned projects (only organization projects; moving to an organization is GravionLabs/ci#128). `PROJECT_TOKEN` is therefore used for `add-to-project`, the Needs sync and the project Status. The Needs sync and the project Status read and write through the REST `projectsV2` endpoints (`GET /users|orgs/<owner>/projectsV2/<n>/fields` and `/items?fields[]=<id>&q=repo:<o/r>`, `PATCH .../items/<id>`) plus the REST issue endpoints (`sub_issues`, `dependencies/blocked_by`, `dependencies/blocking`, `pulls`), so they draw on the REST budget only and make no GraphQL call. What stays on GraphQL: `actions/add-to-project` (external action) and the field/option/view administration of `Set-ProjectStandard.ps1` (no REST update endpoint for single-select options; not part of the CI steps).
 
 Renovate (`renovate.yml`) runs as the app, not as the PAT: it has its own rate limit, its pull requests are authored by the bot (the maintainer can approve them) and, unlike with the `GITHUB_TOKEN`, they trigger the PR checks. It needs the Workflows permission.
 
@@ -1473,14 +1473,14 @@ Reusable workflow for issue and pull request events, three independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
 - **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
-- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
+- **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened, milestoned, demilestoned and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**
 
 ```yaml
 on:
   issues:
-    types: [opened, edited, labeled, unlabeled, reopened, transferred, closed]
+    types: [opened, edited, labeled, unlabeled, reopened, transferred, closed, milestoned, demilestoned]
   pull_request_target:
     types: [opened, reopened, closed, ready_for_review]
 permissions:

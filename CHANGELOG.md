@@ -6,6 +6,17 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [Unreleased]
+
+### Breaking changes
+- **github-project**: ⚠️ Removed the sprint mode: the modes `sprints` and `sprint`, the script `Set-Sprint.ps1` and the switches `-Sprints` and `-Today` of `Set-ProjectStandard.ps1` are gone; `-RemoveSprintField` deletes the iteration field Sprint. The owner decided that this ships as a v1 **minor** release (no `@v2`) (#166)
+
+### Features
+- **github-project**: New project field `Current` (option `Yes`) marks every item whose milestone is the current milestone of its repository; `Sync-ProjectNeeds.ps1` keeps it current and `milestoned`/`demilestoned` trigger the sync (#167)
+- **github-project**: `Sync-ProjectNeeds.ps1` resets stale Status `In Progress` (open issue without open PR and label `merged` to Todo, closed issue to Done; `-DryRun` lists them), reports open issues without Level per repository and warns about repositories not linked to the project (#169)
+- **github-project**: Standard views `Milestones` and `Current milestone`; `Release next` leaves the standard and `-RemoveDefaultViews` deletes it; the manual steps recommend "Auto-archive items" (#168)
+
+
 ## [1.8.1] — 2026-11-06
 
 ### Bug Fixes

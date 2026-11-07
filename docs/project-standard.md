@@ -8,8 +8,8 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 |:--|:--|:--|
 | Status | `Todo`, `In progress`, `In release`, `Done` | `In release` (BLUE) sits before `Done` and mirrors the label `merged`: merged into `release/next`, ships with the next release. |
 | Level | Epic, Feature, PBI, Task, Bug | Hierarchy level. `-Sync` fills an empty Level from the labels, fallback the title prefix. |
+| Current | `Yes` (GREEN) | Marks the items of the current milestone of their repository. Created when missing; `Sync-ProjectNeeds.ps1` sets it (view `Current milestone` filters `current:Yes`). |
 | Needs | see below | What the item waits for. Created when missing; an existing field keeps its options and ids and only gets missing options appended. |
-| Sprint | ISO weeks `YYYY-Www` | Weekly iteration field, only with `-Sprints` (12 weeks from the current one). |
 
 ### Needs
 
@@ -34,9 +34,11 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 7. Epic without Feature, Feature without PBI, PBI without Task and without label `planned`: Planning.
 8. Otherwise Ready (Epics and Features: cleared).
 
+The sync also resets a stale Status `In Progress` (open issue without open pull request head `(^|/)<nr>-` and without label `merged`: Todo; closed issue: Done), reports open issues without Level per repository and warns about repositories with open issues that are not in the project; none of these fails the run.
+
 The project comes from `-Owner`/`-Number`, else `.agents/project.json` (`{"owner": "...", "number": 17}`), else `project-url:` in `.github/workflows/add-to-project.yml`, else in the first other `.github/workflows/*.yml|yaml` (name order) that has one, e.g. `issue-events.yml`. A failing Needs sync prints one warning; the run still exits 0.
 
-`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs on label, close and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it sets to `In release`; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
+`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs and Current on label, close, milestoned, demilestoned and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it sets to `In release`; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
 
 ### Needs sync in other repositories
 
@@ -54,16 +56,15 @@ Views are matched by name. Missing ones are created, existing ones are never tou
 |:--|:--|:--|:--|:--|
 | Hierarchy | table | `is:open` | none | Epic to Task tree of everything open. |
 | Board | board | `-label:epic,feature -status:Done` | columns: Status | Day-to-day board. |
-| Release next | table | `status:"In release"` | rows: Milestone | Content of `release/next`, per milestone. |
 | Backlog | table | `is:open -status:"In release" -label:epic,feature` | rows: Parent issue | Open work not yet merged. |
 | Recently closed | table | `is:closed` | none | Audit trail. |
+| Milestones | table | `has:milestone -level:Epic,Task` | rows: Milestone | Items per milestone, open and closed. |
+| Current milestone | board | `current:Yes -level:Epic,Task` | columns: Status, rows: Repository | Done versus all items of the current milestone per repository. |
 | Needs me | board | `is:open needs:Planning,Decision,Review,"Release review"` | columns: Needs | Everything that waits for the owner. |
 | Ready for loop | table | `is:open needs:Ready -level:Epic,Feature,Task` | rows: Parent issue | PBIs and Bugs the loop may take. |
 | Blocked | table | `is:open needs:Blocked` | none | Blocked items. |
-| Sprint | board | `sprint:@current -level:Epic,Feature,Task` | columns: Status, rows: Repository | `-Sprints` only: the current week. |
-| Sprint next | board | `sprint:@next -level:Epic,Feature,Task` | columns: Status, rows: Repository | `-Sprints` only: the next week. |
 
-`-Sprints` adds the field `Sprint` and the two sprint views. Pick PBIs for `Set-Sprint.ps1` from `Backlog` or `Ready for loop`. The earlier view `Sprint planning` is replaced by `Sprint next`. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all five standard views exist) and `Sprint planning` (only when `Needs me`, `Ready for loop` and `Sprint next` exist or are created in the same run). Without that switch `Sprint planning` stays.
+The sprint mode was removed. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all standard views exist) and `Release next` (left the standard) and the old views `Sprint`, `Sprint next` and `Sprint planning` (whenever they exist). `-RemoveSprintField` deletes the iteration field `Sprint`; without it the field stays.
 
 ### Manual steps
 
@@ -71,7 +72,8 @@ The script prints them; the API cannot do them:
 
 - Hierarchy: enable "Show hierarchy".
 - Recently closed: sort by Closed, descending.
-- Release next, when it was created before the Milestone grouping: set Group by Milestone (existing views are not updated).
+- Milestones: sort by Milestone, ascending.
+- Project Workflows: enable "Auto-archive items" with `is:closed updated:<@today-14d` (keeps the project small; Milestones shows closed items until archived).
 - Project Workflows: enable "Item closed" to Status `Done`.
 
 ## Labels

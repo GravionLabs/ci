@@ -2,7 +2,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level and Needs, eight views, optional item and label sync.
+  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level, Needs and Current, nine views, optional item and label sync.
 .DESCRIPTION
   1. Reads the state (fields with options, views, issue items) via 'gh api graphql', or from -StateFile (no gh call at all).
   2. A pure function (Get-ProjectPlan) computes the action list.
@@ -12,9 +12,8 @@
 .PARAMETER Owner               User or organization login that owns the project.
 .PARAMETER Number              Project number.
 .PARAMETER Sync                Also run Sync-ProjectNeeds.ps1 (field Needs; offline only the action syncNeeds) and sync items: Level from labels/title, label 'merged' <-> status 'In release' (open issues only); ensure the labels 'planned' and 'needs-review' in the repositories linked to the project.
-.PARAMETER Sprints             Also add the weekly iteration field 'Sprint' (titles 'YYYY-Www', ISO week) and the views 'Sprint' and 'Sprint next'.
-.PARAMETER Today               Date that decides the first sprint (default: today); only for tests.
-.PARAMETER RemoveDefaultViews  Delete views named 'View <n>' or 'Probe', only when all five standard views exist afterwards; also 'Sprint planning' (replaced by 'Sprint next') when 'Needs me' and 'Ready for loop' exist afterwards.
+.PARAMETER RemoveSprintField   Delete the iteration field 'Sprint' of the removed sprint mode (GraphQL deleteProjectV2Field); without the switch the field stays.
+.PARAMETER RemoveDefaultViews  Delete views named 'View <n>' or 'Probe', only when all standard views exist afterwards; also 'Release next' (left the standard) under the same condition; also the views 'Sprint', 'Sprint next' and 'Sprint planning' of the removed sprint mode, whenever they exist.
 .PARAMETER DryRun              Print the actions, change nothing.
 .PARAMETER StateFile           JSON state (projectId, ownerType, fields, views, items) instead of reading from GitHub.
 .PARAMETER Json                Emit {dryRun, actions, needs, manualSteps} as JSON instead of text.
@@ -25,8 +24,7 @@ param(
   [int]$Number,
   [switch]$Sync,
   [switch]$RemoveDefaultViews,
-  [switch]$Sprints,
-  [datetime]$Today = (Get-Date),
+  [switch]$RemoveSprintField,
   [switch]$DryRun,
   [string]$StateFile,
   [switch]$Json
@@ -41,6 +39,8 @@ $script:NeedsOptions = @(
   @{ name = 'Planning'; color = 'BLUE' }, @{ name = 'Decision'; color = 'ORANGE' }, @{ name = 'Review'; color = 'YELLOW' },
   @{ name = 'Blocked'; color = 'RED' }, @{ name = 'Ready'; color = 'GREEN' }, @{ name = 'In progress'; color = 'PURPLE' },
   @{ name = 'Release review'; color = 'PINK' })
+# Field Current: marks the items of the current milestone of their repository (kept by Sync-ProjectNeeds.ps1).
+$script:CurrentOptions = @(@{ name = 'Yes'; color = 'GREEN' })
 # Labels ensured per linked repository under -Sync; colour/description of 'planned' equal issue-planning references/publish.md § 5.
 $script:StandardLabels = @(
   @{ name = 'planned'; color = '0E8A16'; description = 'Task breakdown published or single-task plan approved' },
@@ -51,12 +51,14 @@ $script:StandardViews = @(
      fields = @('Title', 'Level', 'Status', 'Sub-issues progress', 'Linked pull requests', 'Labels') },
   @{ name = 'Board'; layout = 'board'; filter = '-label:epic,feature -status:Done'; groupBy = $null; verticalGroupBy = 'Status'
      fields = @('Title', 'Level', 'Linked pull requests', 'Sub-issues progress', 'Parent issue') },
-  @{ name = 'Release next'; layout = 'table'; filter = 'status:"In release"'; groupBy = 'Milestone'; verticalGroupBy = $null
-     fields = @('Title', 'Parent issue', 'Linked pull requests', 'Sub-issues progress') },
   @{ name = 'Backlog'; layout = 'table'; filter = 'is:open -status:"In release" -label:epic,feature'; groupBy = 'Parent issue'; verticalGroupBy = $null
      fields = @('Title', 'Level', 'Status', 'Labels', 'Sub-issues progress') },
   @{ name = 'Recently closed'; layout = 'table'; filter = 'is:closed'; groupBy = $null; verticalGroupBy = $null
-     fields = @('Title', 'Level', 'Parent issue', 'Linked pull requests') })
+     fields = @('Title', 'Level', 'Parent issue', 'Linked pull requests') },
+  @{ name = 'Milestones'; layout = 'table'; filter = 'has:milestone -level:Epic,Task'; groupBy = 'Milestone'; verticalGroupBy = $null
+     fields = @('Title', 'Level', 'Status', 'Repository', 'Linked pull requests') },
+  @{ name = 'Current milestone'; layout = 'board'; filter = 'current:Yes -level:Epic,Task'; groupBy = 'Repository'; verticalGroupBy = 'Status'
+     fields = @('Title', 'Level', 'Milestone', 'Linked pull requests', 'Sub-issues progress') })
 # Views on the field Needs, always created.
 $script:NeedsViews = @(
   @{ name = 'Needs me'; layout = 'board'; filter = 'is:open needs:Planning,Decision,Review,"Release review"'; groupBy = $null; verticalGroupBy = 'Needs'
@@ -65,24 +67,15 @@ $script:NeedsViews = @(
      fields = @('Title', 'Repository', 'Level', 'Milestone', 'Parent issue') },
   @{ name = 'Blocked'; layout = 'table'; filter = 'is:open needs:Blocked'; groupBy = $null; verticalGroupBy = $null
      fields = @('Title', 'Repository', 'Level', 'Parent issue', 'Labels') })
-# Opt-in (-Sprints): one iteration field and two views for the weekly sprint board; the standard five stay as they are.
-$script:SprintWeeks = 12
-$script:SprintViews = @(
-  @{ name = 'Sprint'; layout = 'board'; filter = 'sprint:@current -level:Epic,Feature,Task'; groupBy = 'Repository'; verticalGroupBy = 'Status'
-     fields = @('Title', 'Level', 'Repository', 'Linked pull requests', 'Sub-issues progress') },
-  @{ name = 'Sprint next'; layout = 'board'; filter = 'sprint:@next -level:Epic,Feature,Task'; groupBy = 'Repository'; verticalGroupBy = 'Status'
-     fields = @('Title', 'Level', 'Repository', 'Linked pull requests', 'Sub-issues progress') })
 $script:ManualSteps = @(
   'Hierarchy view: enable "Show hierarchy" (no API).',
   'Recently closed view: sort by Closed, descending (the REST API rejects sort_by with HTTP 400).',
-  'Release next view (created before Milestone grouping): set Group by Milestone (existing views are not updated).',
-  'Project Workflows: enable "Item closed" -> Status Done.')
-
-# ISO 8601 week title 'YYYY-Www' (week-year, not calendar year: 2027-01-01 is 2026-W53).
-function Get-SprintTitle([datetime]$Date) { '{0}-W{1:00}' -f [System.Globalization.ISOWeek]::GetYear($Date), [System.Globalization.ISOWeek]::GetWeekOfYear($Date) }
+  'Milestones view: sort by Milestone, ascending (no API).',
+  'Project Workflows: enable "Item closed" -> Status Done.',
+  'Project Workflows: enable "Auto-archive items" with the filter is:closed updated:<@today-14d (keeps the project small, fewer GraphQL pages per sync); Milestones shows closed items until they are archived.')
 
 function Get-ProjectPlan {
-  param($State, [bool]$Sync, [bool]$RemoveDefaultViews, [bool]$Sprints = $false, [datetime]$Today = (Get-Date))
+  param($State, [bool]$Sync, [bool]$RemoveDefaultViews, [bool]$RemoveSprintField = $false)
   $actions = [System.Collections.Generic.List[object]]::new()
   $status = @($State.fields) | Where-Object { $_.name -eq 'Status' } | Select-Object -First 1
   if (-not $status) { throw "Project has no 'Status' field." }
@@ -124,15 +117,16 @@ function Get-ProjectPlan {
     }
   }
 
-  # 2b. Sprint: weekly iterations from this week on; an existing field is never touched.
-  $hasSprint = [bool](@($State.fields) | Where-Object { $_.name -eq 'Sprint' })
-  if ($Sprints -and -not $hasSprint) {
-    $first = [System.Globalization.ISOWeek]::ToDateTime([System.Globalization.ISOWeek]::GetYear($Today), [System.Globalization.ISOWeek]::GetWeekOfYear($Today), [DayOfWeek]::Monday)
-    $iterations = foreach ($i in 0..($script:SprintWeeks - 1)) {
-      $start = $first.AddDays(7 * $i)
-      [ordered]@{ title = Get-SprintTitle $start; startDate = $start.ToString('yyyy-MM-dd'); duration = 7 }
-    }
-    $actions.Add([ordered]@{ type = 'CreateIterationField'; name = 'Sprint'; startDate = $first.ToString('yyyy-MM-dd'); duration = 7; iterations = @($iterations) })
+  # 2a2. Current: created when missing; an existing field stays untouched (keeps its option ids).
+  if (-not (@($State.fields) | Where-Object { $_.name -eq 'Current' })) {
+    $actions.Add([ordered]@{ type = 'CreateField'; name = 'Current'
+        options = @($script:CurrentOptions | ForEach-Object { [ordered]@{ name = $_.name; color = $_.color; description = '' } }) })
+  }
+
+  # 2b. Sprint field of the removed sprint mode: deleted only on request.
+  if ($RemoveSprintField) {
+    $sprintField = @($State.fields) | Where-Object { $_.name -eq 'Sprint' } | Select-Object -First 1
+    if ($sprintField) { $actions.Add([ordered]@{ type = 'DeleteField'; name = 'Sprint'; id = $sprintField.id }) }
   }
 
   # 3. Sync: Level for every issue (Recently closed shows it), Status for open issues only
@@ -177,16 +171,7 @@ function Get-ProjectPlan {
     }
   }
 
-  if ($Sprints) {
-    foreach ($v in $script:SprintViews) {
-      if ($existing -notcontains $v.name) {
-        $actions.Add([ordered]@{ type = 'CreateView'; name = $v.name; layout = $v.layout; filter = $v.filter
-            visibleFields = $v.fields; groupBy = $v.groupBy; verticalGroupBy = $v.verticalGroupBy })
-      }
-    }
-  }
-
-  # 5. Default views go only when all five standard views exist afterwards.
+  # 5. Default views go only when all standard views exist afterwards.
   if ($RemoveDefaultViews) {
     $after = @($existing) + @($actions | Where-Object { $_.type -eq 'CreateView' } | ForEach-Object { $_.name })
     $allStandard = -not ($script:StandardViews | Where-Object { $after -notcontains $_.name })
@@ -195,12 +180,15 @@ function Get-ProjectPlan {
         if ($v.name -match '^View \d+$' -or $v.name -eq 'Probe') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
       }
     }
-    # Sprint planning goes only when its replacement and the Needs views exist (or are planned), so -Sprints must be present or Sprint next already there.
-    $needsViews = -not ('Needs me', 'Ready for loop', 'Sprint next' | Where-Object { $after -notcontains $_ })
-    if ($needsViews) {
+    # Release next left the standard (its content is Needs me / Release review); it goes with the new views in place.
+    if ($allStandard) {
       foreach ($v in @($State.views)) {
-        if ($v.name -eq 'Sprint planning') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
+        if ($v.name -eq 'Release next') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
       }
+    }
+    # Views of the removed sprint mode go whenever they exist.
+    foreach ($v in @($State.views)) {
+      if ($v.name -in 'Sprint', 'Sprint next', 'Sprint planning') { $actions.Add([ordered]@{ type = 'DeleteView'; name = $v.name; id = $v.id }) }
     }
   }
   , @($actions)
@@ -211,11 +199,11 @@ function Format-Action($a) {
     'UpdateFieldOptions' { "$($a.field): options -> $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
     'UpdateStatusOptions' { "Status: options -> $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
     'CreateField' { "Create field $($a.name): $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
-    'CreateIterationField' { "Create field $($a.name): $($a.iterations.Count) weekly iterations $($a.iterations[0].title) .. $($a.iterations[-1].title)" }
     'SetItem' { "#$($a.number) $($a.field) -> $($a.option)" }
     'CreateView' { "Create view $($a.name) ($($a.layout), filter: $($a.filter))" }
     'EnsureLabel' { "Label $($a.repo): $($a.name) ($($a.color))" }
     'DeleteView' { "Delete view $($a.name)" }
+    'DeleteField' { "Delete field $($a.name)" }
     'syncNeeds' { "Sync Needs: Sync-ProjectNeeds.ps1 -Owner $($a.owner) -Number $($a.number)" }
   }
 }
@@ -350,11 +338,6 @@ function Invoke-Plan($Actions, $State) {
         Invoke-Graphql 'mutation($i: CreateProjectV2FieldInput!) { createProjectV2Field(input: $i) { clientMutationId } }' @{ i = @{ projectId = $State.projectId; dataType = 'SINGLE_SELECT'; name = $a.name; singleSelectOptions = $a.options } } | Out-Null
         $State.fields = @((Get-ProjectState $false).fields)
       }
-      'CreateIterationField' {
-        $cfg = @{ startDate = $a.startDate; duration = $a.duration; iterations = @($a.iterations) }
-        Invoke-Graphql 'mutation($i: CreateProjectV2FieldInput!) { createProjectV2Field(input: $i) { clientMutationId } }' @{ i = @{ projectId = $State.projectId; dataType = 'ITERATION'; name = $a.name; iterationConfiguration = $cfg } } | Out-Null
-        $State.fields = @((Get-ProjectState $false).fields)
-      }
       'SetItem' {
         $f = & $field $a.field
         $o = $f.options | Where-Object { $_.name -eq $a.option } | Select-Object -First 1
@@ -380,6 +363,10 @@ function Invoke-Plan($Actions, $State) {
         # A repository without write access must not abort the remaining actions: warn, continue, fail at the end.
         if ($LASTEXITCODE -ne 0) { $labelFailures.Add("gh label create $($a.name) --repo $($a.repo) failed: $out"); Write-Warning $labelFailures[-1] }
       }
+      'DeleteField' {
+        Invoke-Graphql 'mutation($i: DeleteProjectV2FieldInput!) { deleteProjectV2Field(input: $i) { clientMutationId } }' @{ i = @{ fieldId = $a.id } } | Out-Null
+        $State.fields = @((Get-ProjectState $false).fields)
+      }
       'DeleteView' {
         Invoke-Graphql 'mutation($i: DeleteProjectV2ViewInput!) { deleteProjectV2View(input: $i) { clientMutationId } }' @{ i = @{ viewId = $a.id } } | Out-Null
       }
@@ -400,13 +387,13 @@ if ($StateFile) {
   }
   $DryRun = $true  # a state file never reaches GitHub
 } else {
-  if (-not $Owner -or $Number -lt 1) { throw 'Usage: Set-ProjectStandard.ps1 -Owner <login> -Number <n> [-Sync] [-RemoveDefaultViews] [-Sprints] [-DryRun] [-StateFile <json>] [-Json]' }
+  if (-not $Owner -or $Number -lt 1) { throw 'Usage: Set-ProjectStandard.ps1 -Owner <login> -Number <n> [-Sync] [-RemoveDefaultViews] [-RemoveSprintField] [-DryRun] [-StateFile <json>] [-Json]' }
   $state = Get-ProjectState $Sync.IsPresent
 }
 # -Sync: the plan is only as good as the item list. Log both counts; an incomplete list fails the run (never 'No changes.', never a partial apply).
 $incomplete = $Sync -and $null -ne $script:ItemsTotal -and $script:ItemsRead -lt $script:ItemsTotal
 if ($Sync -and $null -ne $script:ItemsTotal -and -not $Json) { "Read $($script:ItemsRead) of $($script:ItemsTotal) project items." }
-$actions = Get-ProjectPlan -State $state -Sync $Sync.IsPresent -RemoveDefaultViews $RemoveDefaultViews.IsPresent -Sprints $Sprints.IsPresent -Today $Today
+$actions = Get-ProjectPlan -State $state -Sync $Sync.IsPresent -RemoveDefaultViews $RemoveDefaultViews.IsPresent -RemoveSprintField $RemoveSprintField.IsPresent
 if ($incomplete) {
   [Console]::Error.WriteLine("Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items; nothing applied and no 'No changes.' reported. Run again later.")
   exit 1

@@ -88,4 +88,18 @@ function Get-IssueNeedsItem {
   }
 }
 
-Export-ModuleMember -Function Get-Prop, Get-NeedsValue, Test-BlockerUnresolved, Get-IssueNeedsItem
+# Current milestone of a repository: mirrors `github-milestone current` (Get-Milestones.ps1 of GravionLabs/skills).
+# $Titles: titles of the OPEN milestones; $LatestTag: latest release tag v<x.y.z> or $null. Returns the title or $null.
+# A legacy open x.y.z above the latest tag comes first (lowest first); legacy at or below the tag is stale, never current.
+# Else the lowest open M<n>[.<m>...] by numeric parts (topic ignored; M2 < M3 < M3.1 < M10).
+function Get-CurrentMilestone([string[]]$Titles, [string]$LatestTag) {
+  $semver = '^([0-9]+)\.([0-9]+)\.([0-9]+)$'
+  $floor = if ($LatestTag -and $LatestTag -match '^v?([0-9]+\.[0-9]+\.[0-9]+)$') { [version]$Matches[1] } else { [version]'0.0.0' }
+  $legacy = @(@($Titles) | Where-Object { $_ -match $semver -and [version]$_ -gt $floor } | Sort-Object { [version]$_ }) | Select-Object -First 1
+  if ($legacy) { return $legacy }
+  $rx = '^M([0-9]{1,8}(?:\.[0-9]{1,8}){0,7})(?: ([^()]+?))?(?: \(([0-9]+\.[0-9]+\.[0-9]+)\))?$'
+  $key = { param($t) $p = @($t -replace $rx, '$1' -split '\.'); (0..7 | ForEach-Object { if ($_ -lt $p.Count) { $p[$_].PadLeft(8, '0') } else { '00000000' } }) -join '' }
+  @(@($Titles) | Where-Object { $_ -cmatch $rx } | Sort-Object { & $key $_ }) | Select-Object -First 1
+}
+
+Export-ModuleMember -Function Get-CurrentMilestone, Get-Prop, Get-NeedsValue, Test-BlockerUnresolved, Get-IssueNeedsItem

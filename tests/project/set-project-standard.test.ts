@@ -49,7 +49,7 @@ const LEVEL = select(
   'Level',
   ['Epic', 'Feature', 'PBI', 'Task', 'Bug'].map((n) => opt(n))
 );
-const STANDARD_VIEWS = ['Hierarchy', 'Board', 'Release next', 'Backlog', 'Recently closed'].map(
+const STANDARD_VIEWS = ['Hierarchy', 'Board', 'Backlog', 'Recently closed', 'Milestones', 'Current milestone'].map(
   (name) => ({ id: `V-${name}`, name })
 );
 
@@ -66,6 +66,7 @@ const NEEDS = select(
   'Needs',
   NEEDS_NAMES.map((n) => opt(n))
 );
+const CURRENT = select('Current', [opt('Yes', 'GREEN')]);
 const NEEDS_VIEWS = ['Needs me', 'Ready for loop', 'Blocked'].map((name) => ({
   id: `V-${name}`,
   name,
@@ -100,6 +101,7 @@ const state = (o: Partial<State> & { status?: Opt[] } = {}): State => ({
     select('Status', o.status ?? DEFAULT_STATUS),
     LEVEL,
     NEEDS,
+    CURRENT,
     ...PLAIN,
     ...(o.fields ?? []),
   ],
@@ -213,6 +215,26 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
 
     it('keeps an existing field untouched', () => {
       expect(ofType(plan(state()), 'CreateField')).toHaveLength(0);
+    });
+  });
+
+  describe('Current (#167)', () => {
+    const withoutCurrent = () => {
+      const s = state();
+      s.fields = s.fields.filter((f: any) => f.name !== 'Current');
+      return s;
+    };
+
+    it('creates the single-select field with the option Yes (GREEN) when missing', () => {
+      const [a] = ofType(plan(withoutCurrent()), 'CreateField');
+      expect(a.name).toBe('Current');
+      expect(a.options.map((o: Opt) => `${o.name}:${o.color}`)).toEqual(['Yes:GREEN']);
+    });
+
+    it('keeps an existing field and its option ids untouched', () => {
+      const acts = plan(state());
+      expect(ofType(acts, 'CreateField')).toHaveLength(0);
+      expect(ofType(acts, 'UpdateFieldOptions')).toHaveLength(0);
     });
   });
 
@@ -390,21 +412,36 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(creates[1]).toMatchObject({ layout: 'table', groupBy: 'Parent issue' });
     });
 
-    it('creates the Needs views and groups Release next by Milestone', () => {
+    it('creates the milestone views and the Needs views, but not Release next', () => {
       const s = state({ views: [] });
       const creates = ofType(plan(s), 'CreateView');
       const by = (n: string) => creates.find((c) => c.name === n)!;
       expect(creates.map((c) => c.name)).toEqual([
         'Hierarchy',
         'Board',
-        'Release next',
         'Backlog',
         'Recently closed',
+        'Milestones',
+        'Current milestone',
         'Needs me',
         'Ready for loop',
         'Blocked',
       ]);
-      expect(by('Release next')).toMatchObject({ groupBy: 'Milestone' });
+      expect(creates.map((c) => c.name)).not.toContain('Release next');
+      expect(by('Milestones')).toMatchObject({
+        layout: 'table',
+        filter: 'has:milestone -level:Epic,Task',
+        groupBy: 'Milestone',
+        verticalGroupBy: null,
+        visibleFields: ['Title', 'Level', 'Status', 'Repository', 'Linked pull requests'],
+      });
+      expect(by('Current milestone')).toMatchObject({
+        layout: 'board',
+        filter: 'current:Yes -level:Epic,Task',
+        groupBy: 'Repository',
+        verticalGroupBy: 'Status',
+        visibleFields: ['Title', 'Level', 'Milestone', 'Linked pull requests', 'Sub-issues progress'],
+      });
       expect(by('Needs me')).toMatchObject({
         layout: 'board',
         filter: 'is:open needs:Planning,Decision,Review,"Release review"',
@@ -426,15 +463,19 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       });
     });
 
-    it('lists the Release next manual step', () => {
+    it('lists the sorting and auto-archive manual steps', () => {
       const file = path.join(dir, 'm.json');
       fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state() }));
       const r = spawnSync('pwsh', ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-Json'], {
         encoding: 'utf8',
       });
-      expect(JSON.parse(r.stdout).manualSteps).toContain(
-        'Release next view (created before Milestone grouping): set Group by Milestone (existing views are not updated).'
-      );
+      const steps: string[] = JSON.parse(r.stdout).manualSteps;
+      expect(steps).toContain('Milestones view: sort by Milestone, ascending (no API).');
+      expect(steps).toContain('Project Workflows: enable "Item closed" -> Status Done.');
+      expect(
+        steps.some((t) => t.includes('Auto-archive items') && t.includes('is:closed updated:<@today-14d'))
+      ).toBe(true);
+      expect(steps.some((t) => t.includes('Release next'))).toBe(false);
     });
 
     it('never deletes foreign views', () => {
@@ -460,9 +501,23 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(ofType(a, 'DeleteView').map((d) => d.id)).toEqual(['V1', 'V2', 'V3', 'V4']);
     });
 
+    it('deletes Release next only with the flag and the new views in place', () => {
+      const RN = { id: 'V-rn', name: 'Release next' };
+      const ids = (views: { id: string; name: string }[], flag = '-RemoveDefaultViews') =>
+        ofType(plan(state({ views }), flag), 'DeleteView').map((d) => d.id);
+      expect(ids([...ALL_VIEWS, RN])).toEqual(['V-rn']);
+      expect(ids([...ALL_VIEWS, RN], '')).toEqual([]);
+      const noMilestones = [...ALL_VIEWS, RN].filter((v) => v.name !== 'Milestones');
+      const a = plan(state({ views: noMilestones }), '-RemoveDefaultViews');
+      expect(ofType(a, 'CreateView').map((c) => c.name)).toEqual(['Milestones']);
+      expect(a.findIndex((x) => x.type === 'CreateView')).toBeLessThan(
+        a.findIndex((x) => x.type === 'DeleteView')
+      );
+    });
+
     it('plans the missing standard view before any deletion (it counts as existing afterwards)', () => {
       const guard = plan(
-        state({ views: [...ALL_VIEWS.slice(0, 4), ...ALL_VIEWS.slice(5), ...defaults] }),
+        state({ views: [...ALL_VIEWS.slice(0, 3), ...ALL_VIEWS.slice(4), ...defaults] }),
         '-RemoveDefaultViews'
       );
       expect(guard.findIndex((a) => a.type === 'CreateView')).toBeLessThan(
@@ -472,35 +527,37 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(ofType(guard, 'DeleteView')).toHaveLength(4);
     });
 
-    describe('Sprint planning', () => {
-      const SP = { id: 'V-sp', name: 'Sprint planning' };
-      const del = (views: { id: string; name: string }[], ...flags: string[]) =>
-        ofType(plan(state({ views }), '-RemoveDefaultViews', ...flags), 'DeleteView').map(
-          (d) => d.id
+    describe('views of the removed sprint mode', () => {
+      const SV = [
+        { id: 'V-s', name: 'Sprint' },
+        { id: 'V-sn', name: 'Sprint next' },
+        { id: 'V-sp', name: 'Sprint planning' },
+      ];
+      const del = (views: { id: string; name: string }[]) =>
+        ofType(plan(state({ views }), '-RemoveDefaultViews'), 'DeleteView').map(
+          (d) => d.id,
         );
 
-      it('is deleted when both Needs views exist', () => {
-        expect(del([...ALL_VIEWS, SP], '-Sprints')).toEqual(['V-sp']);
+      it('deletes Sprint, Sprint next and Sprint planning', () => {
+        expect(del([...ALL_VIEWS, ...SV])).toEqual(['V-s', 'V-sn', 'V-sp']);
       });
 
-      it('is deleted when the Needs views are only planned', () => {
-        expect(del([...STANDARD_VIEWS, SP], '-Sprints')).toEqual(['V-sp']);
+      it('deletes them without precondition on the other views', () => {
+        expect(del([...SV])).toEqual(['V-s', 'V-sn', 'V-sp']);
       });
 
-      it('is kept when Sprint next does not exist and -Sprints is absent', () => {
-        expect(del([...ALL_VIEWS, SP])).toEqual([]);
-      });
-
-      it('is deleted when Sprint next already exists, without -Sprints', () => {
-        expect(del([...ALL_VIEWS, { id: 'V-sn', name: 'Sprint next' }, SP])).toEqual(['V-sp']);
+      it('deletes only the ones that exist', () => {
+        expect(del([...ALL_VIEWS, SV[2]])).toEqual(['V-sp']);
       });
 
       it('is kept without the flag', () => {
-        expect(ofType(plan(state({ views: [...ALL_VIEWS, SP] })), 'DeleteView')).toHaveLength(0);
+        expect(
+          ofType(plan(state({ views: [...ALL_VIEWS, ...SV] })), 'DeleteView'),
+        ).toHaveLength(0);
       });
 
       it('never deletes Backlog, Hierarchy or Release next', () => {
-        const ids = del([...ALL_VIEWS, SP], '-Sprints');
+        const ids = del([...ALL_VIEWS, ...SV]);
         expect(ids).not.toContain('V-Backlog');
         expect(ids).not.toContain('V-Hierarchy');
         expect(ids).not.toContain('V-Release next');
@@ -514,22 +571,43 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
     });
   });
 
-  describe('-Sprints', () => {
-    const SPRINT = { id: 'F-Sprint', name: 'Sprint', databaseId: 99, dataType: 'ITERATION' };
-    const sprints = (s: unknown) => plan(s, '-Sprints', '-Today', '2026-10-22');
+  describe('-RemoveSprintField', () => {
+    const SPRINT = {
+      id: 'F-Sprint',
+      name: 'Sprint',
+      databaseId: 99,
+      dataType: 'ITERATION',
+    };
 
-    it('creates 12 weekly iterations titled by ISO week, starting on this Monday', () => {
-      const [a] = ofType(sprints(state()), 'CreateIterationField');
-      expect(a).toMatchObject({ name: 'Sprint', startDate: '2026-10-19', duration: 7 });
-      expect(a.iterations).toHaveLength(12);
-      expect(a.iterations[0]).toEqual({ title: '2026-W43', startDate: '2026-10-19', duration: 7 });
-      expect(a.iterations[10].title).toBe('2026-W53');
-      expect(a.iterations[11].title).toBe('2027-W01');
+    it('plans the deletion of the iteration field Sprint', () => {
+      const a = plan(state({ fields: [SPRINT] }), '-RemoveSprintField');
+      expect(ofType(a, 'DeleteField')).toEqual([
+        { type: 'DeleteField', name: 'Sprint', id: 'F-Sprint' },
+      ]);
     });
 
-    it('titles by ISO week-year across New Year', () => {
-      const file = path.join(dir, 'ny.json');
-      fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state() }));
+    it('keeps the field without the switch', () => {
+      expect(
+        ofType(plan(state({ fields: [SPRINT] })), 'DeleteField'),
+      ).toHaveLength(0);
+    });
+
+    it('plans nothing when the field is absent', () => {
+      expect(
+        ofType(plan(state(), '-RemoveSprintField'), 'DeleteField'),
+      ).toHaveLength(0);
+    });
+
+    it('is listed in the text dry run', () => {
+      const file = path.join(dir, 'sf.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          projectId: 'P',
+          ownerType: 'User',
+          ...state({ fields: [SPRINT] }),
+        }),
+      );
       const r = spawnSync(
         'pwsh',
         [
@@ -538,55 +616,13 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
           SCRIPT,
           '-StateFile',
           file,
-          '-Sprints',
-          '-Today',
-          '2027-01-01',
-          '-Json',
+          '-RemoveSprintField',
         ],
-        { encoding: 'utf8' }
+        {
+          encoding: 'utf8',
+        },
       );
-      const [a] = ofType(JSON.parse(r.stdout).actions, 'CreateIterationField');
-      expect(a.iterations.slice(0, 2).map((i: any) => i.title)).toEqual(['2026-W53', '2027-W01']);
-    });
-
-    it('adds the Sprint board and the Sprint next board, behind the field', () => {
-      const a = sprints(state());
-      const creates = ofType(a, 'CreateView');
-      expect(creates.map((c) => c.name)).toEqual(['Sprint', 'Sprint next']);
-      expect(creates[0]).toMatchObject({
-        layout: 'board',
-        filter: 'sprint:@current -level:Epic,Feature,Task',
-        groupBy: 'Repository',
-        verticalGroupBy: 'Status',
-      });
-      expect(creates[1]).toMatchObject({
-        layout: 'board',
-        filter: 'sprint:@next -level:Epic,Feature,Task',
-        groupBy: 'Repository',
-        verticalGroupBy: 'Status',
-      });
-      expect(a.findIndex((x) => x.type === 'CreateIterationField')).toBeLessThan(
-        a.findIndex((x) => x.type === 'CreateView')
-      );
-    });
-
-    it('is idempotent and leaves an existing Sprint field and views alone', () => {
-      const views = [
-        ...ALL_VIEWS,
-        { id: 'V-s', name: 'Sprint' },
-        { id: 'V-p', name: 'Sprint next' },
-      ];
-      expect(
-        sprints(
-          state({ status: [opt('Todo'), opt('In release'), opt('Done')], fields: [SPRINT], views })
-        )
-      ).toEqual([]);
-    });
-
-    it('adds nothing without the flag', () => {
-      const a = plan(state());
-      expect(ofType(a, 'CreateIterationField')).toHaveLength(0);
-      expect(ofType(a, 'CreateView').map((c) => c.name)).not.toContain('Sprint');
+      expect(r.stdout).toContain('Delete field Sprint');
     });
   });
 

@@ -30,6 +30,11 @@ trim = true
 conventional_commits = true
 filter_unconventional = true
 split_commits = false
+# The squash commit of #166 has its BREAKING CHANGE footer mid-body, so git-cliff does not
+# flag it. The owner decided it ships as a v1 minor (#174); mark it in the generated entry.
+commit_preprocessors = [
+  { pattern = "remove the sprint mode \\(#166\\)", replace = "BREAKING, ships as a minor release: remove the sprint mode (#166)" },
+]
 commit_parsers = [
   { message = "^feat", group = "Features" },
   { message = "^fix", group = "Bug Fixes" },

@@ -10,7 +10,7 @@ name: Issue events
 
 on:
   issues:
-    types: [opened, reopened, transferred, edited, labeled, unlabeled, closed]
+    types: [opened, reopened, transferred, edited, labeled, unlabeled, closed, milestoned, demilestoned]
   pull_request_target:
     types: [opened, reopened, closed, ready_for_review]
 

@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: 'Bring a GitHub Project (v2) to the standard (In release, Level, Needs, eight views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
+description: 'Bring a GitHub Project (v2) to the standard (In release, Level, Needs, Current, nine views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
 disable-model-invocation: true
 metadata:
   opencode/autoinvoke: 'false'
@@ -16,11 +16,9 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 
 | Invocation | Does |
 |:--|:--|
-| `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level` and `Needs`; the five standard views plus `Needs me`, `Ready for loop`, `Blocked`. |
+| `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level`, `Needs` and `Current`; the five standard views plus `Current milestone`, `Needs me`, `Ready for loop`, `Blocked` (nine views). |
 | `sync <project-nr>` | `apply` plus item sync (Level, `merged` ⇄ `In release`) and the labels `planned`, `needs-review` in the repositories linked to the project. |
 | `new <repo>` | Copy the template project, link it to the repo, run `sync`. |
-| `sprints <project-nr>` | `apply` plus the weekly iteration field `Sprint` and the views `Sprint` and `Sprint next` (opt-in, `-Sprints`). |
-| `sprint <project-nr> <owner/repo#n>...` | Put PBIs of any repository into a sprint and check the limits. |
 
 ## apply / sync
 
@@ -36,35 +34,17 @@ Always run `-DryRun` first, show the actions to the user, then run without it. `
 - Level: created (Epic, Feature, PBI, Task, Bug) only when missing.
 - Sync, open issues only: Level from labels `epic|feature|pbi|task|bug` (first match in that order), fallback title prefix `[Epic]`, `[Feature]`, `[PBI]`, `[Task]`, only where Level is empty. Label `merged` → `In release`; `In release` without `merged` → `Todo`. Closed items are untouched.
 - `-Sync` also runs `scripts/Sync-ProjectNeeds.ps1` (forwards `-DryRun`; offline `-StateFile` only lists the action `syncNeeds`). A failing Needs sync is one warning, the run still exits 0. Details: `references/needs-sync.md`.
+- Status reset and scope report: `Sync-ProjectNeeds.ps1` resets `In Progress` to `Todo` (open issue without an open PR head matching `(^|/)<nr>-` and without label `merged`) or `Done` (closed issue), reports open issues without Level per repository and warns about repositories not linked to the project (`references/needs-sync.md`).
+- Current: single-select with the option `Yes` (GREEN), created when missing; `Sync-ProjectNeeds.ps1` sets it on the items of the current milestone of each repository (view filter `current:Yes`).
 - Needs: single-select (Planning, Decision, Review, Blocked, Ready, In progress, Release review), created when missing; an existing field keeps its option ids and gets missing options appended.
-- Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
-- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all five standard views exist; `Sprint planning` (old) only when `Needs me`, `Ready for loop` and `Sprint next` exist or are planned.
+- Standard views: the five standard views (Hierarchy, Board, Backlog, Recently closed, Milestones), `Current milestone`, and the Needs views. Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
+- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all standard views exist, and `Release next` (left the standard) under the same condition, and the views `Sprint`, `Sprint next` and `Sprint planning` of the removed sprint mode whenever they exist.
+- `-RemoveSprintField` deletes the iteration field `Sprint` of the removed sprint mode (GraphQL `deleteProjectV2Field`, listed in `-DryRun` / `-Json`); without the switch the field stays.
 - A second run reports `No changes.`
 
-Finish by telling the user the printed manual UI steps (no API): "Show hierarchy" in Hierarchy, sort Recently closed by Closed descending, enable the workflow "Item closed → Done".
+Finish by telling the user the printed manual UI steps (no API): "Show hierarchy" in Hierarchy, sort Recently closed by Closed descending, sort Milestones by Milestone ascending, enable the workflow "Item closed → Done" and "Auto-archive items" with `is:closed updated:<@today-14d`.
 
 Other repositories of the project copy `templates/issue-events.yml` and `templates/project-needs.yml` (callers of the reusable `issues.yml` of GravionLabs/ci; replace `<owner>` and `<n>` in `project-url`) to `.github/workflows/` to keep Needs current; tokens: GravionLabs/ci README.
-
-## sprints
-
-One project for all repositories, one weekly sprint for all of them. Titles are ISO weeks `YYYY-Www` (`2026-W43`; the ISO year, so 2027-01-01 is `2026-W53`). `-Sprints` creates 12 iterations from this week (Monday start, 7 days) and the views `Sprint` (board, `sprint:@current`, no Epic/Feature/Task, rows per repository) and `Sprint next` (same for `sprint:@next`). Pick PBIs for `Set-Sprint.ps1` from `Backlog` or `Ready for loop`. An existing field or view is never touched; more iterations are added in the project settings.
-
-```powershell
-pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -Sprints -DryRun
-pwsh scripts/Set-Sprint.ps1 -Owner <login> -Number <n> -Issue 'org/a#12,org/b#7' [-Sprint 2026-W44] [-DryRun] [-Force]
-```
-
-`Set-Sprint.ps1` is all or nothing (exit 1, nothing assigned) and counts open PBIs and Bugs only:
-
-| Limit | Default | Parameter |
-|:--|:--|:--|
-| per sprint, all repositories | 30 | `-MaxPerSprint` |
-| per sprint and repository | 10 | `-MaxPerRepo` |
-| `In release` per repository, any sprint | 10 | `-MaxInRelease` (full: cut the release first, `github-release`) |
-
-The issues must already be items of the project with Level PBI or Bug (`sync` sets it). `-Force` assigns despite a violation and still reports it.
-
-Dependency order: a PBI with an open native blocked-by link (the links `orchestrator next` reads) enters only when the blocker is already in this sprint or an earlier one, or is assigned in the same run (violation `Blocked`). A `Blocked by #n` line in the body alone is not seen: set the native link (`issue-planning` `references/publish.md` § 3).
 
 ## new
 

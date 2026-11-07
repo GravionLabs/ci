@@ -385,4 +385,211 @@ describe.skipIf(!hasPwsh)('Sync-ProjectNeeds', () => {
       expect(r.stderr).toContain('exactly one -Issue');
     });
   });
+
+  describe('field Current (#167)', () => {
+    type Ms = Record<string, { open: string[]; latestTag?: string | null }>;
+    const currentActions = async (items: Item[], milestones: Ms, args: string[] = []) => {
+      const file = path.join(tmp, 'state-current.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          owner: 'o',
+          number: 1,
+          currentField: { id: 'F-cur', options: { Yes: 'O-yes' } },
+          milestones,
+          items,
+        })
+      );
+      const r = await worker.run(['-StateFile', file, '-Json', ...args], { cwd: tmp });
+      expect(r.stderr).toBe('');
+      expect(r.status).toBe(0);
+      return (JSON.parse(r.stdout).actions as Record<string, unknown>[]).filter(
+        (a) => a.field === 'Current'
+      );
+    };
+    const it0 = (number: number, milestone: string | null, over: Item = {}) =>
+      base({ number, needs: 'Ready', milestone, current: null, ...over });
+
+    it.each([
+      ['M2 before M10', ['M10', 'M2'], 2],
+      ['M3.1 after M3', ['M3.1', 'M3'], 2],
+      ['M3.1 before M4', ['M4', 'M3.1'], 2],
+      ['topic is ignored', ['M10 Late', 'M2 Early'], 2],
+    ])('%s', async (_n, open, winner) => {
+      const items = open.map((m, i) => it0(i + 1, m));
+      const acts = await currentActions(items, { 'o/r': { open } });
+      expect(acts).toEqual([
+        { issue: `o/r#${winner}`, item: `I-${winner}`, field: 'Current', from: null, to: 'Yes' },
+      ]);
+    });
+
+    it('legacy x.y.z above the latest tag comes first', async () => {
+      const acts = await currentActions([it0(1, 'M1'), it0(2, '1.3.0')], {
+        'o/r': { open: ['M1', '1.3.0'], latestTag: 'v1.2.0' },
+      });
+      expect(acts.map((a) => a.issue)).toEqual(['o/r#2']);
+    });
+
+    it('legacy x.y.z at or below the latest tag is stale, M<n> is current', async () => {
+      const acts = await currentActions([it0(1, 'M1'), it0(2, '1.2.0')], {
+        'o/r': { open: ['M1', '1.2.0'], latestTag: 'v1.2.0' },
+      });
+      expect(acts.map((a) => a.issue)).toEqual(['o/r#1']);
+    });
+
+    it('a repository without an open milestone marks nothing and clears the stale mark', async () => {
+      const acts = await currentActions([it0(1, null), it0(2, 'M1', { current: 'Yes' })], {
+        'o/r': { open: [] },
+      });
+      expect(acts).toEqual([
+        { issue: 'o/r#2', item: 'I-2', field: 'Current', from: 'Yes', to: null },
+      ]);
+    });
+
+    it('an item moving to another milestone is cleared; closed items count', async () => {
+      const acts = await currentActions(
+        [
+          it0(1, 'M3', { current: 'Yes' }),
+          it0(2, 'M2', { state: 'CLOSED', level: 'Bug' }),
+          it0(3, 'M2', { current: 'Yes' }),
+        ],
+        { 'o/r': { open: ['M2', 'M3'] } }
+      );
+      expect(acts).toEqual([
+        { issue: 'o/r#1', item: 'I-1', field: 'Current', from: 'Yes', to: null },
+        { issue: 'o/r#2', item: 'I-2', field: 'Current', from: null, to: 'Yes' },
+      ]);
+    });
+
+    it('each repository has its own current milestone; unchanged items yield no action', async () => {
+      const acts = await currentActions(
+        [it0(1, 'M12', { repo: 'o/a', current: 'Yes' }), it0(1, 'M7', { repo: 'o/b' })],
+        { 'o/a': { open: ['M12', 'M13'] }, 'o/b': { open: ['M7'] } }
+      );
+      expect(acts).toEqual([
+        { issue: 'o/b#1', item: 'I-1', field: 'Current', from: null, to: 'Yes' },
+      ]);
+    });
+
+    it('an item with unknown milestone or a repository without milestone data is left alone', async () => {
+      const { milestone: _m, ...unknown } = it0(1, null, { current: 'Yes' });
+      const acts = await currentActions([unknown, it0(2, 'M1', { repo: 'o/x' })], {
+        'o/r': { open: ['M1'] },
+      });
+      expect(acts).toEqual([]);
+    });
+
+    it('no currentField in the state: no Current action (project without the field)', async () => {
+      const { actions } = await run([it0(1, 'M1')]);
+      expect(actions).toEqual([]);
+    });
+
+    it('-Issue scope applies: only the selected issue is evaluated', async () => {
+      const acts = await currentActions(
+        [it0(1, 'M1'), it0(2, 'M1')],
+        { 'o/r': { open: ['M1'] } },
+        ['-Issue', 'o/r#2']
+      );
+      expect(acts.map((a) => a.issue)).toEqual(['o/r#2']);
+    });
+
+    it('text output names the field of a Current change', async () => {
+      const file = path.join(tmp, 's.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          owner: 'o',
+          number: 1,
+          currentField: { id: 'F', options: { Yes: 'Y' } },
+          milestones: { 'o/r': { open: ['M1'] } },
+          items: [it0(5, 'M1')],
+        })
+      );
+      const r = await worker.run(['-StateFile', file], { cwd: tmp });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain('o/r#5: Current (none) -> Yes');
+    });
+  });
+  describe('Status reset and scope report', () => {
+    const runState = async (items: Item[], extra: Record<string, unknown>, args: string[] = ['-Json']) => {
+      const file = path.join(tmp, 'state.json');
+      fs.writeFileSync(file, JSON.stringify({ owner: 'o', number: 1, statusField: { id: 'F-st', options: { Todo: 'T', Done: 'D' } }, ...extra, items }));
+      return worker.run(['-StateFile', file, ...args], { cwd: tmp });
+    };
+    const statusActions = async (items: Item[], extra: Record<string, unknown> = {}) => {
+      const r = await runState(items, extra);
+      expect(r.status).toBe(0);
+      const j = JSON.parse(r.stdout);
+      return { all: j.actions as any[], status: (j.actions as any[]).filter((a) => a.field === 'Status'), json: j };
+    };
+    const ip = (over: Item): Item => base({ status: 'In Progress', ...over });
+
+    it('open issue without PR goes back to Todo and Needs follows the new Status', async () => {
+      const { all } = await statusActions([ip({ number: 5, needs: 'In progress' })]);
+      expect(all).toEqual([
+        { issue: 'o/r#5', item: 'I-5', field: 'Status', from: 'In Progress', to: 'Todo' },
+        { issue: 'o/r#5', item: 'I-5', from: 'In progress', to: 'Ready' },
+      ]);
+    });
+    it('an open PR whose head matches keeps In Progress', async () => {
+      const { status } = await statusActions([ip({ number: 5, needs: 'In progress', prHeads: ['feat/5-x'] })]);
+      expect(status).toEqual([]);
+    });
+    it('a PR head of another issue does not keep In Progress', async () => {
+      const { status } = await statusActions([ip({ number: 5, prHeads: ['feat/15-x'] })]);
+      expect(status.map((a) => a.to)).toEqual(['Todo']);
+    });
+    it('label merged keeps In Progress', async () => {
+      const { status } = await statusActions([ip({ number: 5, labels: ['Merged'] })]);
+      expect(status).toEqual([]);
+    });
+    it('closed issue with In Progress goes to Done', async () => {
+      const { status } = await statusActions([ip({ number: 5, state: 'CLOSED' })]);
+      expect(status.map((a) => [a.issue, a.to])).toEqual([['o/r#5', 'Done']]);
+    });
+    it('other Status values are left alone', async () => {
+      const { status } = await statusActions([base({ number: 1, status: 'Todo' }), base({ number: 2, status: 'In release' }), base({ number: 3, status: null })]);
+      expect(status).toEqual([]);
+    });
+    it('no statusField in the state: no Status action', async () => {
+      const file = path.join(tmp, 'state.json');
+      fs.writeFileSync(file, JSON.stringify({ owner: 'o', number: 1, items: [ip({ number: 5 })] }));
+      const r = await worker.run(['-StateFile', file, '-Json'], { cwd: tmp });
+      expect(JSON.parse(r.stdout).actions.filter((a: any) => a.field === 'Status')).toEqual([]);
+    });
+    it('-Issue limits the reset to the selected issue', async () => {
+      const r = await runState([ip({ number: 5 }), ip({ number: 6 })], {}, ['-Json', '-Issue', '6']);
+      const status = JSON.parse(r.stdout).actions.filter((a: any) => a.field === 'Status');
+      expect(status.map((a: any) => a.issue)).toEqual(['o/r#6']);
+    });
+    it('text output lists the reset (dry run)', async () => {
+      const r = await runState([ip({ number: 5 })], {}, ['-DryRun']);
+      expect(r.stdout.split('\n')).toContain('o/r#5: Status In Progress -> Todo');
+    });
+
+    it('reports open issues without Level per repository', async () => {
+      const { json } = await statusActions([
+        base({ number: 1, levelField: null }),
+        base({ number: 2, levelField: null }),
+        base({ number: 3, levelField: 'PBI' }),
+        base({ number: 4, repo: 'o/x', levelField: null }),
+        base({ number: 5, state: 'CLOSED', levelField: null }),
+        base({ number: 6 }),
+      ]);
+      expect(json.noLevel).toEqual({ 'o/r': 2, 'o/x': 1 });
+    });
+    it('prints the Level report in text mode', async () => {
+      const r = await runState([base({ number: 1, levelField: null })], {}, ['-DryRun']);
+      expect(r.stdout.split('\n')).toContain('Without Level: o/r: 1 open');
+    });
+    it('names repositories with open issues that are not linked to the project (warning, exit 0)', async () => {
+      const repos = [{ name: 'o/r', openIssues: 3 }, { name: 'o/lonely', openIssues: 4 }, { name: 'o/empty', openIssues: 0 }];
+      const { json } = await statusActions([base({ number: 1 })], { repos });
+      expect(json.unlinked).toEqual(['o/lonely']);
+      const t = await runState([base({ number: 1 })], { repos }, ['-DryRun']);
+      expect(t.status).toBe(0);
+      expect(t.stderr).toContain('o/lonely');
+      expect(t.stderr).not.toContain('o/empty');
+    });
+  });
 });
