@@ -41,7 +41,8 @@ const PLAIN = [
   'Repository',
   'Milestone',
 ].map((n, i) => plain(n, i + 1));
-const STATUS = select('Status', ['Todo', 'In release', 'Done']);
+const STATUS = select('Status', ['Todo', 'In Progress', 'Done']);
+const OLD_STATUS = select('Status', ['Todo', 'In release', 'Done']);
 const LEVEL = select('Level', ['Epic', 'Feature', 'PBI', 'Task', 'Bug']);
 const NEEDS_ALL = [
   'Planning',
@@ -77,7 +78,8 @@ const NEEDS_REVIEW = {
 };
 
 type Label = { name: string; color?: string; description?: string };
-type Item = { number: number; status: string | null; labels: Label[][] }; // label pages, cursor `l<i>`
+// label pages, cursor `l<i>`; state defaults to OPEN, level to PBI (null: no Level)
+type Item = { number: number; status: string | null; labels: Label[][]; state?: string; level?: string | null };
 type Config = {
   fields: object[][]; // pages; page i > 0 is answered for cursor `f<i>`
   views: object[][]; // cursor `v<i>`
@@ -114,8 +116,9 @@ const handler = (c: Config) => `(call) => {
     const p = page(itemPages, v.cursor, 'i');
     return { node: { items: { pageInfo: p.pageInfo,
       nodes: p.nodes.map((it) => ({ id: 'PVTI-' + it.number, content: { __typename: 'Issue', id: 'I-' + it.number, number: it.number,
-        title: 'issue ' + it.number, state: 'OPEN', labels: page(it.labels, null, 'l') },
-        status: it.status ? { name: it.status } : null, level: { name: 'PBI' } })) } } };
+        title: 'issue ' + it.number, state: it.state || 'OPEN', labels: page(it.labels, null, 'l') },
+        status: it.status ? { name: it.status } : null,
+        level: it.level === undefined ? { name: 'PBI' } : it.level ? { name: it.level } : null })) } } };
   }
   if (q.includes('... on Issue { labels')) {
     const it = items.find((x) => 'I-' + x.number === v.id);
@@ -255,13 +258,13 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         expect(ofType(actions, 'CreateView').map((a) => a.name)).toEqual(['Backlog']);
       });
 
-      it('reads the further label pages of an issue: merged on page 2 moves it to In release', async () => {
+      it('reads the further label pages of an issue: pbi on page 2 sets its Level', async () => {
         const { actions, calls } = await planned({
           ...BASE,
-          items: [{ number: 7, status: 'Todo', labels: [[{ name: 'pbi' }], [{ name: 'merged' }]] }],
+          items: [{ number: 7, status: 'Todo', level: null, labels: [[{ name: 'x' }], [{ name: 'pbi' }]] }],
         });
         expect(ofType(actions, 'SetItem')).toEqual([
-          { type: 'SetItem', item: 'PVTI-7', number: 7, field: 'Status', option: 'In release' },
+          { type: 'SetItem', item: 'PVTI-7', number: 7, field: 'Level', option: 'PBI' },
         ]);
         expect(queries(calls, '... on Issue { labels').map((c) => c.variables)).toEqual([
           { id: 'I-7', cursor: 'l1' },
@@ -272,8 +275,8 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         const { actions, calls } = await planned({
           ...BASE,
           itemPages: [
-            [{ number: 7, status: 'Todo', labels: [[{ name: 'pbi' }], [{ name: 'merged' }]] }],
-            [{ number: 8, status: 'Todo', labels: [[{ name: 'task' }], [], [{ name: 'merged' }]] }],
+            [{ number: 7, status: 'Todo', level: null, labels: [[{ name: 'x' }], [{ name: 'pbi' }]] }],
+            [{ number: 8, status: 'Todo', level: null, labels: [[{ name: 'x' }], [], [{ name: 'task' }]] }],
           ],
         });
         expect(queries(calls, 'items(first: 100').map((c) => c.variables)).toEqual([
@@ -287,7 +290,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         ]);
         expect(
           ofType(actions, 'SetItem').map((a) => `#${a.number} ${a.field} ${a.option}`)
-        ).toEqual(['#7 Status In release', '#8 Status In release']);
+        ).toEqual(['#7 Level PBI', '#8 Level Task']);
       });
 
       // Replies without pageInfo, with null nodes or without a nested connection end the paging instead of failing.
@@ -298,8 +301,8 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         if (q.includes('projectV2(number')) return { repositoryOwner: { __typename: 'User', projectV2: { id: 'P1',
           fields: { nodes: [...${JSON.stringify(BASE.fields[0])}, null] }, views: { nodes: ${JSON.stringify(VIEWS)} } } } };
         if (q.includes('items(first: 100')) return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null },
-          nodes: [{ id: 'PVTI-9', content: { __typename: 'Issue', id: 'I-9', number: 9, title: 'issue 9', state: 'OPEN', labels: null },
-            status: { name: 'In release' }, level: { name: 'PBI' } }] } } };
+          nodes: [{ id: 'PVTI-9', content: { __typename: 'Issue', id: 'I-9', number: 9, title: '[Task] issue 9', state: 'OPEN', labels: null },
+            status: { name: 'In release' }, level: null }] } } };
         if (q.includes('repositories(first')) return { node: { repositories: { nodes: [{ id: 'R-o/a', nameWithOwner: 'o/a' }, null] } } };
         throw new Error('unexpected gh call: ' + q);
       }`;
@@ -313,7 +316,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         ]);
         expect(
           ofType(actions, 'SetItem').map((a) => `#${a.number} ${a.field} ${a.option}`)
-        ).toEqual(['#9 Status Todo']);
+        ).toEqual(['#9 Level Task']);
         expect(queries(calls, 'repositories(first')).toHaveLength(1);
         const followUps = [
           'fields(first: 50, after',
@@ -349,6 +352,53 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
           },
         });
         expect(calls.slice(idx + 1).some((c) => c.query?.includes('projectV2(number'))).toBe(true);
+      });
+
+      it('-RemoveInReleaseStatus moves the items first, then deletes the option keeping the other ids (#182)', async () => {
+        const { r, calls } = await run(
+          {
+            ...BASE,
+            fields: [[OLD_STATUS, LEVEL, NEEDS, CURRENT, ...PLAIN]],
+            items: [
+              { number: 7, status: 'In release', labels: [[]] },
+              { number: 8, status: 'In release', state: 'CLOSED', labels: [[]] },
+              { number: 9, status: 'Todo', labels: [[]] },
+            ],
+          },
+          ['-RemoveInReleaseStatus']
+        );
+        expect(r.status, r.stderr + r.stdout).toBe(0);
+        const steps = calls
+          .filter((c) => (c.args[0] === 'project' && c.args[1] === 'item-edit') || c.query?.includes('updateProjectV2Field'))
+          .map((c) => (c.args[0] === 'project' ? `edit ${c.args[5]} ${c.args[9]}` : c.variables));
+        expect(steps).toEqual([
+          'edit PVTI-7 id-Todo',
+          'edit PVTI-8 id-Done',
+          {
+            i: {
+              fieldId: 'F-Status',
+              singleSelectOptions: [
+                { id: 'id-Todo', name: 'Todo', color: 'GRAY', description: '' },
+                { id: 'id-Done', name: 'Done', color: 'GRAY', description: '' },
+              ],
+            },
+          },
+        ]);
+      });
+
+      it('-RemoveInReleaseStatus -DryRun changes nothing', async () => {
+        const { r, calls } = await run(
+          {
+            ...BASE,
+            fields: [[OLD_STATUS, LEVEL, NEEDS, CURRENT, ...PLAIN]],
+            items: [{ number: 7, status: 'In release', labels: [[]] }],
+          },
+          ['-RemoveInReleaseStatus', '-DryRun']
+        );
+        expect(r.status, r.stderr + r.stdout).toBe(0);
+        expect(r.stdout).toContain('#7 Status -> Todo');
+        expect(r.stdout).toContain('Status: remove option In release (options -> Todo, Done)');
+        expect(calls.filter((c) => c.args[0] === 'project' || c.query?.includes('mutation'))).toEqual([]);
       });
 
       const labelCalls = (calls: GhCall[]) => calls.filter((c) => c.args[0] === 'label');
@@ -409,7 +459,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
         const { r, calls } = spawnRun(
           {
             ...twoRepos,
-            items: [{ number: 7, status: 'Todo', labels: [[{ name: 'merged' }]] }],
+            items: [{ number: 7, status: 'Todo', level: null, labels: [[{ name: 'pbi' }]] }],
             labelFail: ['planned o/a'],
           },
           ['-Sync']
@@ -440,9 +490,9 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
             '--id',
             'PVTI-7',
             '--field-id',
-            'F-Status',
+            'F-Level',
             '--single-select-option-id',
-            'id-In release',
+            'id-PBI',
           ],
         ]);
       });

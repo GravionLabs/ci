@@ -545,7 +545,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       content: { issue_dependencies_summary: { blocked_by: n, total_blocked_by: n, blocking: 0, total_blocking: 0 } },
     });
 
-    it('resolves blockers from the labels of the blocker and the Status of items already read', async () => {
+    // #182: a blocker blocks while open; the Status of its item plays no part. An open blocker with the label merged
+    // counts as resolved during the migration.
+    it('resolves blockers from their state and the label merged, never from the Status of their item', async () => {
       const items = [
         restItem(30, null),
         restItem(31, null, { status: 'In release' }),
@@ -564,12 +566,12 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       });
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#21: (none) -> Ready');
-      expect(r.stdout).toContain('#22: (none) -> Ready');
+      expect(r.stdout).toContain('#22: (none) -> Blocked');
       expect(r.stdout).toContain('#23: (none) -> Blocked');
       expect(itemCalls).toHaveLength(1);
     });
 
-    it('reads the items of a blocker repository once, only when a blocker needs its Status', async () => {
+    it('never reads the items of a blocker repository outside the scope', async () => {
       const items = [
         restItem(1, null, { repo: 'o/other' }),
         restItem(2, null, { repo: 'o/other', status: 'In release' }),
@@ -591,11 +593,11 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       );
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#41: (none) -> Ready');
-      expect(r.stdout).toContain('#42: (none) -> Ready');
+      expect(r.stdout).toContain('#42: (none) -> Blocked');
       expect(r.stdout).toContain('#43: (none) -> Blocked');
       expect(r.stdout).toContain('#44: (none) -> Blocked');
       expect(r.stdout).toContain('#45: (none) -> Ready');
-      expect(itemCalls.map((c) => restPath(c).match(/q=repo:(\S+)/)![1])).toEqual(['o/r', 'o/other']);
+      expect(itemCalls.map((c) => restPath(c).match(/q=repo:(\S+)/)![1])).toEqual(['o/r']);
     });
 
     it('takes sub-issue levels from title, type or the Level of items already read', async () => {

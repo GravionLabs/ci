@@ -2,7 +2,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level, Needs and Current, nine views, optional item and label sync.
+  Brings a GitHub Project (v2) to the GravionLabs standard: fields Level, Needs and Current, nine views, optional item and label sync.
 .DESCRIPTION
   1. Reads the state (fields with options, views, issue items) via 'gh api graphql', or from -StateFile (no gh call at all).
   2. A pure function (Get-ProjectPlan) computes the action list.
@@ -11,7 +11,10 @@
   The owner may be a user or an organization.
 .PARAMETER Owner               User or organization login that owns the project.
 .PARAMETER Number              Project number.
-.PARAMETER Sync                Also run Sync-ProjectNeeds.ps1 (field Needs; offline only the action syncNeeds) and sync items: Level from labels/title, label 'merged' <-> status 'In release' (open issues only); ensure the labels 'planned' and 'needs-review' in the repositories linked to the project.
+.PARAMETER Sync                Also run Sync-ProjectNeeds.ps1 (field Needs; offline only the action syncNeeds) and sync items: Level from labels/title; ensure the labels 'planned' and 'needs-review' in the repositories linked to the project.
+.PARAMETER RemoveInReleaseStatus  Remove the Status option 'In release' of the old standard: its items go to 'Done' (closed) or 'Todo' (open; first
+                               other option when Todo is missing), then the option is deleted (the other options keep their ids). Reads all items;
+                               an incomplete item walk fails the run. With -DryRun only the plan is printed.
 .PARAMETER RemoveSprintField   Delete the iteration field 'Sprint' of the removed sprint mode (GraphQL deleteProjectV2Field); without the switch the field stays.
 .PARAMETER RemoveDefaultViews  Delete views named 'View <n>' or 'Probe', only when all standard views exist afterwards; also 'Release next' (left the standard) under the same condition; also the views 'Sprint', 'Sprint next' and 'Sprint planning' of the removed sprint mode, whenever they exist.
 .PARAMETER DryRun              Print the actions, change nothing.
@@ -25,6 +28,7 @@ param(
   [switch]$Sync,
   [switch]$RemoveDefaultViews,
   [switch]$RemoveSprintField,
+  [switch]$RemoveInReleaseStatus,
   [switch]$DryRun,
   [string]$StateFile,
   [switch]$Json
@@ -45,13 +49,12 @@ $script:CurrentOptions = @(@{ name = 'Yes'; color = 'GREEN' })
 $script:StandardLabels = @(
   @{ name = 'planned'; color = '0E8A16'; description = 'Task breakdown published or single-task plan approved' },
   @{ name = 'needs-review'; color = 'FBCA04'; description = 'Waiting for an owner review' })
-$script:InReleaseDescription = 'Merged into a release branch, ships with the next release (label merged)'
 $script:StandardViews = @(
   @{ name = 'Hierarchy'; layout = 'table'; filter = 'is:open'; groupBy = $null; verticalGroupBy = $null
      fields = @('Title', 'Level', 'Status', 'Sub-issues progress', 'Linked pull requests', 'Labels') },
   @{ name = 'Board'; layout = 'board'; filter = '-label:epic,feature -status:Done'; groupBy = $null; verticalGroupBy = 'Status'
      fields = @('Title', 'Level', 'Linked pull requests', 'Sub-issues progress', 'Parent issue') },
-  @{ name = 'Backlog'; layout = 'table'; filter = 'is:open -status:"In release" -label:epic,feature'; groupBy = 'Parent issue'; verticalGroupBy = $null
+  @{ name = 'Backlog'; layout = 'table'; filter = 'is:open -label:epic,feature'; groupBy = 'Parent issue'; verticalGroupBy = $null
      fields = @('Title', 'Level', 'Status', 'Labels', 'Sub-issues progress') },
   @{ name = 'Recently closed'; layout = 'table'; filter = 'is:closed'; groupBy = $null; verticalGroupBy = $null
      fields = @('Title', 'Level', 'Parent issue', 'Linked pull requests') },
@@ -75,23 +78,26 @@ $script:ManualSteps = @(
   'Project Workflows: enable "Auto-archive items" with the filter is:closed updated:<@today-14d (keeps the project small, fewer GraphQL pages per sync); Milestones shows closed items until they are archived.')
 
 function Get-ProjectPlan {
-  param($State, [bool]$Sync, [bool]$RemoveDefaultViews, [bool]$RemoveSprintField = $false)
+  param($State, [bool]$Sync, [bool]$RemoveDefaultViews, [bool]$RemoveSprintField = $false, [bool]$RemoveInReleaseStatus = $false)
   $actions = [System.Collections.Generic.List[object]]::new()
   $status = @($State.fields) | Where-Object { $_.name -eq 'Status' } | Select-Object -First 1
   if (-not $status) { throw "Project has no 'Status' field." }
 
-  # 1. Status: 'In release' directly before 'Done'; all existing options are sent back with their ids.
-  $statusNames = @($status.options | ForEach-Object { $_.name })
-  if ($statusNames -notcontains 'In release') {
-    $new = [ordered]@{ name = 'In release'; color = 'BLUE'; description = $script:InReleaseDescription }
-    $opts = [System.Collections.Generic.List[object]]::new()
-    foreach ($o in @($status.options)) {
-      if ($o.name -eq 'Done' -and $new) { $opts.Add($new); $new = $null }
-      $opts.Add([ordered]@{ id = $o.id; name = $o.name; color = $o.color; description = [string]$o.description })
+  # 1. Status option 'In release' of the old standard: removed only on request. Its items move first (closed -> Done,
+  #    open -> Todo), then RemoveStatusOption sends the other options back with their ids, which deletes 'In release'.
+  if ($RemoveInReleaseStatus -and @($status.options | Where-Object { $_.name -eq 'In release' })) {
+    $keep = @($status.options | Where-Object { $_.name -ne 'In release' })
+    $names = @($keep | ForEach-Object { $_.name })
+    if ($names.Count -eq 0) { throw "Status has no option besides 'In release'." }
+    $todo = if ($names -contains 'Todo') { 'Todo' } else { @($names | Where-Object { $_ -ne 'Done' } | Select-Object -First 1)[0] }
+    $done = if ($names -contains 'Done') { 'Done' } else { $names[-1] }
+    if (-not $todo) { $todo = $done }
+    foreach ($item in @($State.items | Where-Object { $_ -and $_.status -eq 'In release' })) {
+      $to = if ("$($item.state)".ToUpperInvariant() -eq 'OPEN') { $todo } else { $done }
+      $actions.Add([ordered]@{ type = 'SetItem'; item = $item.id; number = $item.number; field = 'Status'; option = $to })
     }
-    if ($new) { $opts.Add($new) }
-    $actions.Add([ordered]@{ type = 'UpdateStatusOptions'; field = 'Status'; options = @($opts) })
-    $statusNames = @($opts | ForEach-Object { $_.name })
+    $actions.Add([ordered]@{ type = 'RemoveStatusOption'; field = 'Status'; option = 'In release'
+        options = @($keep | ForEach-Object { [ordered]@{ id = $_.id; name = $_.name; color = $_.color; description = [string]$_.description } }) })
   }
 
   # 2. Level: created when missing, an existing field stays untouched.
@@ -129,9 +135,8 @@ function Get-ProjectPlan {
     if ($sprintField) { $actions.Add([ordered]@{ type = 'DeleteField'; name = 'Sprint'; id = $sprintField.id }) }
   }
 
-  # 3. Sync: Level for every issue (Recently closed shows it), Status for open issues only
+  # 3. Sync: Level for every issue (Recently closed shows it); the Status is never synced.
   if ($Sync) {
-    $todo = if ($statusNames -contains 'Todo') { 'Todo' } else { $statusNames[0] }
     $levelNames = @{ epic = 'Epic'; feature = 'Feature'; pbi = 'PBI'; task = 'Task'; bug = 'Bug' }
     foreach ($item in @($State.items)) {
       $labels = @($item.labels | ForEach-Object { "$_".ToLowerInvariant() })
@@ -140,12 +145,6 @@ function Get-ProjectPlan {
         foreach ($k in 'epic', 'feature', 'pbi', 'task', 'bug') { if ($labels -contains $k) { $lvl = $levelNames[$k]; break } }
         if (-not $lvl -and "$($item.title)" -match '^\s*\[(Epic|Feature|PBI|Task)\]') { $lvl = $Matches[1] }
         if ($lvl) { $actions.Add([ordered]@{ type = 'SetItem'; item = $item.id; number = $item.number; field = 'Level'; option = $lvl }) }
-      }
-      if ($item.state -ne 'OPEN') { continue }
-      if ($labels -contains 'merged') {
-        if ($item.status -ne 'In release') { $actions.Add([ordered]@{ type = 'SetItem'; item = $item.id; number = $item.number; field = 'Status'; option = 'In release' }) }
-      } elseif ($item.status -eq 'In release') {
-        $actions.Add([ordered]@{ type = 'SetItem'; item = $item.id; number = $item.number; field = 'Status'; option = $todo })
       }
     }
   }
@@ -197,7 +196,7 @@ function Get-ProjectPlan {
 function Format-Action($a) {
   switch ($a.type) {
     'UpdateFieldOptions' { "$($a.field): options -> $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
-    'UpdateStatusOptions' { "Status: options -> $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
+    'RemoveStatusOption' { "Status: remove option $($a.option) (options -> $(($a.options | ForEach-Object { $_.name }) -join ', '))" }
     'CreateField' { "Create field $($a.name): $(($a.options | ForEach-Object { $_.name }) -join ', ')" }
     'SetItem' { "#$($a.number) $($a.field) -> $($a.option)" }
     'CreateView' { "Create view $($a.name) ($($a.layout), filter: $($a.filter))" }
@@ -320,11 +319,14 @@ function Get-ProjectState {
 function Invoke-Plan($Actions, $State) {
   $field = { param($name) (@($State.fields) | Where-Object { $_.name -eq $name } | Select-Object -First 1) }
   # Fields and views first: a failing item edit must not leave the project without its views.
-  $ordered = @($Actions | Where-Object { $_.type -ne 'SetItem' }) + @($Actions | Where-Object { $_.type -eq 'SetItem' })
+  # RemoveStatusOption last: the items of the option are moved before it is deleted (a failed move keeps the option).
+  $last = 'SetItem', 'RemoveStatusOption'
+  $ordered = @($Actions | Where-Object { $_.type -notin $last }) + @($Actions | Where-Object { $_.type -eq 'SetItem' }) +
+    @($Actions | Where-Object { $_.type -eq 'RemoveStatusOption' })
   $labelFailures = [System.Collections.Generic.List[string]]::new()
   foreach ($a in $ordered) {
     switch ($a.type) {
-      'UpdateStatusOptions' {
+      'RemoveStatusOption' {
         $f = & $field 'Status'
         Invoke-Graphql 'mutation($i: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $i) { clientMutationId } }' @{ i = @{ fieldId = $f.id; singleSelectOptions = $a.options } } | Out-Null
         $State.fields = @((Get-ProjectState $false).fields)
@@ -387,13 +389,15 @@ if ($StateFile) {
   }
   $DryRun = $true  # a state file never reaches GitHub
 } else {
-  if (-not $Owner -or $Number -lt 1) { throw 'Usage: Set-ProjectStandard.ps1 -Owner <login> -Number <n> [-Sync] [-RemoveDefaultViews] [-RemoveSprintField] [-DryRun] [-StateFile <json>] [-Json]' }
-  $state = Get-ProjectState $Sync.IsPresent
+  if (-not $Owner -or $Number -lt 1) { throw 'Usage: Set-ProjectStandard.ps1 -Owner <login> -Number <n> [-Sync] [-RemoveDefaultViews] [-RemoveSprintField] [-RemoveInReleaseStatus] [-DryRun] [-StateFile <json>] [-Json]' }
+  $state = Get-ProjectState ($Sync.IsPresent -or $RemoveInReleaseStatus.IsPresent)
 }
-# -Sync: the plan is only as good as the item list. Log both counts; an incomplete list fails the run (never 'No changes.', never a partial apply).
-$incomplete = $Sync -and $null -ne $script:ItemsTotal -and $script:ItemsRead -lt $script:ItemsTotal
-if ($Sync -and $null -ne $script:ItemsTotal -and -not $Json) { "Read $($script:ItemsRead) of $($script:ItemsTotal) project items." }
-$actions = Get-ProjectPlan -State $state -Sync $Sync.IsPresent -RemoveDefaultViews $RemoveDefaultViews.IsPresent -RemoveSprintField $RemoveSprintField.IsPresent
+# -Sync / -RemoveInReleaseStatus: the plan is only as good as the item list. Log both counts; an incomplete list fails the run
+# (never 'No changes.', never a partial apply; deleting 'In release' would otherwise drop the Status of the items not read).
+$withItems = $Sync -or $RemoveInReleaseStatus
+$incomplete = $withItems -and $null -ne $script:ItemsTotal -and $script:ItemsRead -lt $script:ItemsTotal
+if ($withItems -and $null -ne $script:ItemsTotal -and -not $Json) { "Read $($script:ItemsRead) of $($script:ItemsTotal) project items." }
+$actions = Get-ProjectPlan -State $state -Sync $Sync.IsPresent -RemoveDefaultViews $RemoveDefaultViews.IsPresent -RemoveSprintField $RemoveSprintField.IsPresent -RemoveInReleaseStatus $RemoveInReleaseStatus.IsPresent
 if ($incomplete) {
   [Console]::Error.WriteLine("Project item walk ended early: read $($script:ItemsRead) of $($script:ItemsTotal) items; nothing applied and no 'No changes.' reported. Run again later.")
   exit 1

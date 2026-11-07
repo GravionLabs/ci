@@ -24,18 +24,32 @@ ConvertTo-Json -InputObject @($b | ForEach-Object { [bool](Test-BlockerUnresolve
 };
 
 describe.skipIf(!hasPwsh)('Test-BlockerUnresolved', () => {
-  it('blocks only for an open blocker that is not merged', () => {
+  it('blocks while the blocker is open, whatever its project Status', () => {
     const out = run([
       { state: 'open', labels: [{ name: 'bug' }] },
-      { state: 'OPEN', labels: ['merged'] },
-      { state: 'open', labels: [{ name: 'Merged' }] },
       { state: 'OPEN', status: 'In release' },
       { state: 'OPEN', status: 'In Progress' },
-      { state: 'closed', labels: [] },
-      { state: 'CLOSED', labels: ['merged'] },
+      { state: 'OPEN', status: 'Done' },
       { state: 'OPEN' },
-      {},
+      { state: 'OPEN', labels: [] },
     ]);
-    expect(out).toEqual([true, false, false, false, true, false, false, true, false]);
+    expect(out).toEqual([true, true, true, true, true, true]);
+  });
+
+  it('a closed blocker or one without state is resolved', () => {
+    expect(
+      run([{ state: 'closed', labels: [] }, { state: 'CLOSED', status: 'In Progress' }, {}, { state: '' }])
+    ).toEqual([false, false, false, false]);
+  });
+
+  // Migration (#182): issues delivered before they closed on merge still carry merged; they count as resolved.
+  it('an open blocker that still carries the label merged is resolved during the migration', () => {
+    const out = run([
+      { state: 'OPEN', labels: ['merged'] },
+      { state: 'open', labels: [{ name: 'Merged' }] },
+      { state: 'CLOSED', labels: ['merged'] },
+      { state: 'OPEN', labels: ['merged-elsewhere', { name: 'unmerged' }] },
+    ]);
+    expect(out).toEqual([false, false, false, true]);
   });
 });
