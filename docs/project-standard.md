@@ -53,14 +53,15 @@ Views are matched by name. Missing ones are created, existing ones are never tou
 |:--|:--|:--|:--|:--|
 | Hierarchy | table | `is:open` | none | Epic to Task tree of everything open. |
 | Board | board | `-label:epic,feature -status:Done` | columns: Status | Day-to-day board. |
-| Release next | table | `status:"In release"` | rows: Milestone | Content of `release/next`, per milestone. |
 | Backlog | table | `is:open -status:"In release" -label:epic,feature` | rows: Parent issue | Open work not yet merged. |
 | Recently closed | table | `is:closed` | none | Audit trail. |
+| Milestones | table | `has:milestone -level:Epic,Task` | rows: Milestone | Items per milestone, open and closed. |
+| Current milestone | board | `current:Yes -level:Epic,Task` | columns: Status, rows: Repository | Done versus all items of the current milestone per repository. |
 | Needs me | board | `is:open needs:Planning,Decision,Review,"Release review"` | columns: Needs | Everything that waits for the owner. |
 | Ready for loop | table | `is:open needs:Ready -level:Epic,Feature,Task` | rows: Parent issue | PBIs and Bugs the loop may take. |
 | Blocked | table | `is:open needs:Blocked` | none | Blocked items. |
 
-The sprint mode was removed. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all five standard views exist) and the old views `Sprint`, `Sprint next` and `Sprint planning` (whenever they exist). `-RemoveSprintField` deletes the iteration field `Sprint`; without it the field stays.
+The sprint mode was removed. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all standard views exist) and `Release next` (left the standard) and the old views `Sprint`, `Sprint next` and `Sprint planning` (whenever they exist). `-RemoveSprintField` deletes the iteration field `Sprint`; without it the field stays.
 
 ### Manual steps
 
@@ -68,7 +69,8 @@ The script prints them; the API cannot do them:
 
 - Hierarchy: enable "Show hierarchy".
 - Recently closed: sort by Closed, descending.
-- Release next, when it was created before the Milestone grouping: set Group by Milestone (existing views are not updated).
+- Milestones: sort by Milestone, ascending.
+- Project Workflows: enable "Auto-archive items" with `is:closed updated:<@today-14d` (keeps the project small; Milestones shows closed items until archived).
 - Project Workflows: enable "Item closed" to Status `Done`.
 
 ## Labels

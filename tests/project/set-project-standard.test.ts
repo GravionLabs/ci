@@ -49,7 +49,7 @@ const LEVEL = select(
   'Level',
   ['Epic', 'Feature', 'PBI', 'Task', 'Bug'].map((n) => opt(n))
 );
-const STANDARD_VIEWS = ['Hierarchy', 'Board', 'Release next', 'Backlog', 'Recently closed'].map(
+const STANDARD_VIEWS = ['Hierarchy', 'Board', 'Backlog', 'Recently closed', 'Milestones', 'Current milestone'].map(
   (name) => ({ id: `V-${name}`, name })
 );
 
@@ -412,21 +412,36 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(creates[1]).toMatchObject({ layout: 'table', groupBy: 'Parent issue' });
     });
 
-    it('creates the Needs views and groups Release next by Milestone', () => {
+    it('creates the milestone views and the Needs views, but not Release next', () => {
       const s = state({ views: [] });
       const creates = ofType(plan(s), 'CreateView');
       const by = (n: string) => creates.find((c) => c.name === n)!;
       expect(creates.map((c) => c.name)).toEqual([
         'Hierarchy',
         'Board',
-        'Release next',
         'Backlog',
         'Recently closed',
+        'Milestones',
+        'Current milestone',
         'Needs me',
         'Ready for loop',
         'Blocked',
       ]);
-      expect(by('Release next')).toMatchObject({ groupBy: 'Milestone' });
+      expect(creates.map((c) => c.name)).not.toContain('Release next');
+      expect(by('Milestones')).toMatchObject({
+        layout: 'table',
+        filter: 'has:milestone -level:Epic,Task',
+        groupBy: 'Milestone',
+        verticalGroupBy: null,
+        visibleFields: ['Title', 'Level', 'Status', 'Repository', 'Linked pull requests'],
+      });
+      expect(by('Current milestone')).toMatchObject({
+        layout: 'board',
+        filter: 'current:Yes -level:Epic,Task',
+        groupBy: 'Repository',
+        verticalGroupBy: 'Status',
+        visibleFields: ['Title', 'Level', 'Milestone', 'Linked pull requests', 'Sub-issues progress'],
+      });
       expect(by('Needs me')).toMatchObject({
         layout: 'board',
         filter: 'is:open needs:Planning,Decision,Review,"Release review"',
@@ -448,15 +463,19 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       });
     });
 
-    it('lists the Release next manual step', () => {
+    it('lists the sorting and auto-archive manual steps', () => {
       const file = path.join(dir, 'm.json');
       fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state() }));
       const r = spawnSync('pwsh', ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-Json'], {
         encoding: 'utf8',
       });
-      expect(JSON.parse(r.stdout).manualSteps).toContain(
-        'Release next view (created before Milestone grouping): set Group by Milestone (existing views are not updated).'
-      );
+      const steps: string[] = JSON.parse(r.stdout).manualSteps;
+      expect(steps).toContain('Milestones view: sort by Milestone, ascending (no API).');
+      expect(steps).toContain('Project Workflows: enable "Item closed" -> Status Done.');
+      expect(
+        steps.some((t) => t.includes('Auto-archive items') && t.includes('is:closed updated:<@today-14d'))
+      ).toBe(true);
+      expect(steps.some((t) => t.includes('Release next'))).toBe(false);
     });
 
     it('never deletes foreign views', () => {
@@ -482,9 +501,23 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(ofType(a, 'DeleteView').map((d) => d.id)).toEqual(['V1', 'V2', 'V3', 'V4']);
     });
 
+    it('deletes Release next only with the flag and the new views in place', () => {
+      const RN = { id: 'V-rn', name: 'Release next' };
+      const ids = (views: { id: string; name: string }[], flag = '-RemoveDefaultViews') =>
+        ofType(plan(state({ views }), flag), 'DeleteView').map((d) => d.id);
+      expect(ids([...ALL_VIEWS, RN])).toEqual(['V-rn']);
+      expect(ids([...ALL_VIEWS, RN], '')).toEqual([]);
+      const noMilestones = [...ALL_VIEWS, RN].filter((v) => v.name !== 'Milestones');
+      const a = plan(state({ views: noMilestones }), '-RemoveDefaultViews');
+      expect(ofType(a, 'CreateView').map((c) => c.name)).toEqual(['Milestones']);
+      expect(a.findIndex((x) => x.type === 'CreateView')).toBeLessThan(
+        a.findIndex((x) => x.type === 'DeleteView')
+      );
+    });
+
     it('plans the missing standard view before any deletion (it counts as existing afterwards)', () => {
       const guard = plan(
-        state({ views: [...ALL_VIEWS.slice(0, 4), ...ALL_VIEWS.slice(5), ...defaults] }),
+        state({ views: [...ALL_VIEWS.slice(0, 3), ...ALL_VIEWS.slice(4), ...defaults] }),
         '-RemoveDefaultViews'
       );
       expect(guard.findIndex((a) => a.type === 'CreateView')).toBeLessThan(
