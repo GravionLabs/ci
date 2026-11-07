@@ -53,6 +53,7 @@ const NEEDS_ALL = [
   'Release review',
 ];
 const NEEDS = select('Needs', NEEDS_ALL);
+const CURRENT = select('Current', ['Yes']);
 const VIEWS = [
   'Hierarchy',
   'Board',
@@ -132,7 +133,7 @@ const handler = (c: Config) => `(call) => {
   throw new Error('unexpected gh call: ' + JSON.stringify(call));
 }`;
 
-const BASE: Config = { fields: [[STATUS, LEVEL, NEEDS, ...PLAIN]], views: [VIEWS] };
+const BASE: Config = { fields: [[STATUS, LEVEL, NEEDS, CURRENT, ...PLAIN]], views: [VIEWS] };
 type Action = { type: string; [k: string]: unknown };
 
 describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.platform === 'win32')(
@@ -222,7 +223,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
             ...BASE,
             fields: [
               [STATUS, ...PLAIN],
-              [LEVEL, NEEDS],
+              [LEVEL, NEEDS, CURRENT],
             ],
           },
           false
@@ -326,7 +327,7 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
     describe('executor', () => {
       it('UpdateFieldOptions sends the existing option ids plus the missing options, then re-reads the fields', async () => {
         const { r, calls } = await run(
-          { ...BASE, fields: [[STATUS, LEVEL, select('Needs', ['Planning', 'Review']), ...PLAIN]] },
+          { ...BASE, fields: [[STATUS, LEVEL, select('Needs', ['Planning', 'Review']), CURRENT, ...PLAIN]] },
           []
         );
         expect(r.status, r.stderr + r.stdout).toBe(0);

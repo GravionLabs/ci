@@ -69,7 +69,7 @@ eq "secrets" 'GH_PAT,PROJECT_TOKEN' "$(q '.on.workflow_call.secrets | keys | sor
 # --- needs job ---
 needs_if=$(q "$NEEDS.if")
 case "$needs_if" in "inputs.needs && inputs.project-url != '' &&"*) ok "needs off unless inputs.needs and project-url" ;; *) fail "needs off unless inputs.needs and project-url" ;; esac
-eq "needs issue types" 'closed,labeled,reopened,unlabeled' "$(events issues "$needs_if")"
+eq "needs issue types" 'closed,demilestoned,labeled,milestoned,reopened,unlabeled' "$(events issues "$needs_if")"
 eq "needs PR types" 'closed,opened,ready_for_review' "$(events pull_request_target "$needs_if")"
 for branch in "inputs.mode == 'full'" "inputs.mode == 'project'" "github.event_name == 'schedule'" "github.event_name == 'workflow_dispatch'"; do
   case "$needs_if" in *"$branch ||"*) ok "needs runs on $branch" ;; *) fail "needs runs on $branch" ;; esac
@@ -89,7 +89,7 @@ eq "add-to-project skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dis
 eq "conventions skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dispatch|inputs\.mode" <<<"$(q "$CONV.if")")"
 
 # --- caller ---
-eq "caller issue types are the union" 'closed,edited,labeled,opened,reopened,transferred,unlabeled' "$(q '.on.issues.types | sort | join(",")' "$CALLER")"
+eq "caller issue types are the union" 'closed,demilestoned,edited,labeled,milestoned,opened,reopened,transferred,unlabeled' "$(q '.on.issues.types | sort | join(",")' "$CALLER")"
 eq "caller PR types are the union" 'closed,opened,ready_for_review,reopened' "$(q '.on.pull_request_target.types | sort | join(",")' "$CALLER")"
 eq "caller calls issues.yml" './.github/workflows/issues.yml' "$(q '.jobs.issues.uses' "$CALLER")"
 eq "caller top-level permissions empty" '{}' "$(qj '.permissions' "$CALLER")"

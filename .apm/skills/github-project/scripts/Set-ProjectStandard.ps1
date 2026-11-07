@@ -2,7 +2,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level and Needs, eight views, optional item and label sync.
+  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level, Needs and Current, eight views, optional item and label sync.
 .DESCRIPTION
   1. Reads the state (fields with options, views, issue items) via 'gh api graphql', or from -StateFile (no gh call at all).
   2. A pure function (Get-ProjectPlan) computes the action list.
@@ -39,6 +39,8 @@ $script:NeedsOptions = @(
   @{ name = 'Planning'; color = 'BLUE' }, @{ name = 'Decision'; color = 'ORANGE' }, @{ name = 'Review'; color = 'YELLOW' },
   @{ name = 'Blocked'; color = 'RED' }, @{ name = 'Ready'; color = 'GREEN' }, @{ name = 'In progress'; color = 'PURPLE' },
   @{ name = 'Release review'; color = 'PINK' })
+# Field Current: marks the items of the current milestone of their repository (kept by Sync-ProjectNeeds.ps1).
+$script:CurrentOptions = @(@{ name = 'Yes'; color = 'GREEN' })
 # Labels ensured per linked repository under -Sync; colour/description of 'planned' equal issue-planning references/publish.md § 5.
 $script:StandardLabels = @(
   @{ name = 'planned'; color = '0E8A16'; description = 'Task breakdown published or single-task plan approved' },
@@ -110,6 +112,12 @@ function Get-ProjectPlan {
       foreach ($m in $missing) { $opts.Add([ordered]@{ name = $m.name; color = $m.color; description = '' }) }
       $actions.Add([ordered]@{ type = 'UpdateFieldOptions'; field = 'Needs'; options = @($opts) })
     }
+  }
+
+  # 2a2. Current: created when missing; an existing field stays untouched (keeps its option ids).
+  if (-not (@($State.fields) | Where-Object { $_.name -eq 'Current' })) {
+    $actions.Add([ordered]@{ type = 'CreateField'; name = 'Current'
+        options = @($script:CurrentOptions | ForEach-Object { [ordered]@{ name = $_.name; color = $_.color; description = '' } }) })
   }
 
   # 2b. Sprint field of the removed sprint mode: deleted only on request.
