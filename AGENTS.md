@@ -61,7 +61,7 @@ tauri/
 node/
   setup/ build/ test/ ci/ publish/ — Node.js actions; `publish` takes `publish-directory` / `publish-directories`
 
-project/github-project/  — the skill `github-project`: the user-invoked skill (`apply|sync|new`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
+project/github-project/  — `scripts/Sync-ProjectNeeds.ps1` and `NeedsRules.psm1`, run by `project/needs`. ci is their source; the skill `github-project` (`apply|sync|new`, Set-ProjectStandard, caller templates) lives in GravionLabs/skills `skills/github/github-project` and carries copies of both; the standard is described in `docs/project-standard.md`
 
 scripts/
   Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`

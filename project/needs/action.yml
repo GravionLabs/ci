@@ -1,6 +1,6 @@
 name: Project needs
 description: >-
-  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of the github-project skill in this repository
+  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of this repository
   (project/github-project/scripts, resolved from the action path of the same ref).
   Run it on issues, pull_request_target, schedule or workflow_dispatch events. The calling repository and PR code are
   never checked out, and event data reaches the script through the environment only. No token: one warning and a green step.

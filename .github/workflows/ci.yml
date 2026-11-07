@@ -256,7 +256,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Vitest (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules; pwsh is preinstalled)
+      - name: Vitest (Sync-ProjectNeeds, NeedsRules; pwsh is preinstalled)
         shell: bash
         run: CI=true npm test
 

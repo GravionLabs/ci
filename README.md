@@ -33,7 +33,7 @@ versioning/
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
-├── github-project/         # Skill github-project: Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules, caller templates
+├── github-project/         # Sync-ProjectNeeds.ps1 and NeedsRules.psm1 (run by needs; the skill lives in GravionLabs/skills)
 └── needs/                  # Keep the project field Needs current (Sync-ProjectNeeds.ps1 of the github-project skill)
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
@@ -810,7 +810,7 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 
 ### `project/needs`
 
-Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](project/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` from `project/github-project/scripts` of this repository (the skill [`github-project`](https://github.com/GravionLabs/skills/tree/main/skills/github/github-project) of GravionLabs/skills carries a copy) (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
 - **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`, `milestoned`, `demilestoned` (the field `Current`); dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
 - **Full mode (`mode: full`):** syncs every item of the calling repository; `schedule` and `workflow_dispatch` events without a mode do this too.
