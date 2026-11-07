@@ -22,16 +22,9 @@ Always created. They filter on the single-select field `Needs` (Planning, Decisi
 
 A Release next view created before the Milestone grouping stays grouped by Level; set Group by Milestone by hand (manual step).
 
-## Sprint views (opt-in `-Sprints`)
+## Removed sprint mode
 
-Not part of the five, so `-RemoveDefaultViews` ignores them. Field `Sprint` is an iteration field named by ISO week (`2026-W43`).
-
-| View | Layout | Filter | Group | Why |
-|:--|:--|:--|:--|:--|
-| Sprint | board | `sprint:@current -level:Epic,Feature,Task` | columns: Status, rows: Repository | The week at a glance over all repositories: Todo, In release, Done. |
-| Sprint next | board | `sprint:@next -level:Epic,Feature,Task` | columns: Status, rows: Repository | The coming week; assign PBIs to it with `Set-Sprint.ps1`. |
-
-`-RemoveDefaultViews` deletes `View <n>` and `Probe` through GraphQL `deleteProjectV2View`, only when all five views above exist. It also deletes the old view `Sprint planning` (replaced by `Sprint next`), only when `Needs me`, `Ready for loop` and `Sprint next` exist or are planned; without the switch `Sprint planning` stays.
+The sprint mode no longer exists. `-RemoveDefaultViews` deletes `View <n>` and `Probe` through GraphQL `deleteProjectV2View`, only when all five views above exist, and the old views `Sprint`, `Sprint next` and `Sprint planning` whenever they exist. `-RemoveSprintField` deletes the iteration field `Sprint` (`deleteProjectV2Field`); without it the field stays.
 
 ## Why `In release` mirrors `merged`
 

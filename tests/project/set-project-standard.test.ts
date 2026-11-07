@@ -472,35 +472,37 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(ofType(guard, 'DeleteView')).toHaveLength(4);
     });
 
-    describe('Sprint planning', () => {
-      const SP = { id: 'V-sp', name: 'Sprint planning' };
-      const del = (views: { id: string; name: string }[], ...flags: string[]) =>
-        ofType(plan(state({ views }), '-RemoveDefaultViews', ...flags), 'DeleteView').map(
-          (d) => d.id
+    describe('views of the removed sprint mode', () => {
+      const SV = [
+        { id: 'V-s', name: 'Sprint' },
+        { id: 'V-sn', name: 'Sprint next' },
+        { id: 'V-sp', name: 'Sprint planning' },
+      ];
+      const del = (views: { id: string; name: string }[]) =>
+        ofType(plan(state({ views }), '-RemoveDefaultViews'), 'DeleteView').map(
+          (d) => d.id,
         );
 
-      it('is deleted when both Needs views exist', () => {
-        expect(del([...ALL_VIEWS, SP], '-Sprints')).toEqual(['V-sp']);
+      it('deletes Sprint, Sprint next and Sprint planning', () => {
+        expect(del([...ALL_VIEWS, ...SV])).toEqual(['V-s', 'V-sn', 'V-sp']);
       });
 
-      it('is deleted when the Needs views are only planned', () => {
-        expect(del([...STANDARD_VIEWS, SP], '-Sprints')).toEqual(['V-sp']);
+      it('deletes them without precondition on the other views', () => {
+        expect(del([...SV])).toEqual(['V-s', 'V-sn', 'V-sp']);
       });
 
-      it('is kept when Sprint next does not exist and -Sprints is absent', () => {
-        expect(del([...ALL_VIEWS, SP])).toEqual([]);
-      });
-
-      it('is deleted when Sprint next already exists, without -Sprints', () => {
-        expect(del([...ALL_VIEWS, { id: 'V-sn', name: 'Sprint next' }, SP])).toEqual(['V-sp']);
+      it('deletes only the ones that exist', () => {
+        expect(del([...ALL_VIEWS, SV[2]])).toEqual(['V-sp']);
       });
 
       it('is kept without the flag', () => {
-        expect(ofType(plan(state({ views: [...ALL_VIEWS, SP] })), 'DeleteView')).toHaveLength(0);
+        expect(
+          ofType(plan(state({ views: [...ALL_VIEWS, ...SV] })), 'DeleteView'),
+        ).toHaveLength(0);
       });
 
       it('never deletes Backlog, Hierarchy or Release next', () => {
-        const ids = del([...ALL_VIEWS, SP], '-Sprints');
+        const ids = del([...ALL_VIEWS, ...SV]);
         expect(ids).not.toContain('V-Backlog');
         expect(ids).not.toContain('V-Hierarchy');
         expect(ids).not.toContain('V-Release next');
@@ -514,22 +516,43 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
     });
   });
 
-  describe('-Sprints', () => {
-    const SPRINT = { id: 'F-Sprint', name: 'Sprint', databaseId: 99, dataType: 'ITERATION' };
-    const sprints = (s: unknown) => plan(s, '-Sprints', '-Today', '2026-10-22');
+  describe('-RemoveSprintField', () => {
+    const SPRINT = {
+      id: 'F-Sprint',
+      name: 'Sprint',
+      databaseId: 99,
+      dataType: 'ITERATION',
+    };
 
-    it('creates 12 weekly iterations titled by ISO week, starting on this Monday', () => {
-      const [a] = ofType(sprints(state()), 'CreateIterationField');
-      expect(a).toMatchObject({ name: 'Sprint', startDate: '2026-10-19', duration: 7 });
-      expect(a.iterations).toHaveLength(12);
-      expect(a.iterations[0]).toEqual({ title: '2026-W43', startDate: '2026-10-19', duration: 7 });
-      expect(a.iterations[10].title).toBe('2026-W53');
-      expect(a.iterations[11].title).toBe('2027-W01');
+    it('plans the deletion of the iteration field Sprint', () => {
+      const a = plan(state({ fields: [SPRINT] }), '-RemoveSprintField');
+      expect(ofType(a, 'DeleteField')).toEqual([
+        { type: 'DeleteField', name: 'Sprint', id: 'F-Sprint' },
+      ]);
     });
 
-    it('titles by ISO week-year across New Year', () => {
-      const file = path.join(dir, 'ny.json');
-      fs.writeFileSync(file, JSON.stringify({ projectId: 'P', ownerType: 'User', ...state() }));
+    it('keeps the field without the switch', () => {
+      expect(
+        ofType(plan(state({ fields: [SPRINT] })), 'DeleteField'),
+      ).toHaveLength(0);
+    });
+
+    it('plans nothing when the field is absent', () => {
+      expect(
+        ofType(plan(state(), '-RemoveSprintField'), 'DeleteField'),
+      ).toHaveLength(0);
+    });
+
+    it('is listed in the text dry run', () => {
+      const file = path.join(dir, 'sf.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          projectId: 'P',
+          ownerType: 'User',
+          ...state({ fields: [SPRINT] }),
+        }),
+      );
       const r = spawnSync(
         'pwsh',
         [
@@ -538,55 +561,13 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
           SCRIPT,
           '-StateFile',
           file,
-          '-Sprints',
-          '-Today',
-          '2027-01-01',
-          '-Json',
+          '-RemoveSprintField',
         ],
-        { encoding: 'utf8' }
+        {
+          encoding: 'utf8',
+        },
       );
-      const [a] = ofType(JSON.parse(r.stdout).actions, 'CreateIterationField');
-      expect(a.iterations.slice(0, 2).map((i: any) => i.title)).toEqual(['2026-W53', '2027-W01']);
-    });
-
-    it('adds the Sprint board and the Sprint next board, behind the field', () => {
-      const a = sprints(state());
-      const creates = ofType(a, 'CreateView');
-      expect(creates.map((c) => c.name)).toEqual(['Sprint', 'Sprint next']);
-      expect(creates[0]).toMatchObject({
-        layout: 'board',
-        filter: 'sprint:@current -level:Epic,Feature,Task',
-        groupBy: 'Repository',
-        verticalGroupBy: 'Status',
-      });
-      expect(creates[1]).toMatchObject({
-        layout: 'board',
-        filter: 'sprint:@next -level:Epic,Feature,Task',
-        groupBy: 'Repository',
-        verticalGroupBy: 'Status',
-      });
-      expect(a.findIndex((x) => x.type === 'CreateIterationField')).toBeLessThan(
-        a.findIndex((x) => x.type === 'CreateView')
-      );
-    });
-
-    it('is idempotent and leaves an existing Sprint field and views alone', () => {
-      const views = [
-        ...ALL_VIEWS,
-        { id: 'V-s', name: 'Sprint' },
-        { id: 'V-p', name: 'Sprint next' },
-      ];
-      expect(
-        sprints(
-          state({ status: [opt('Todo'), opt('In release'), opt('Done')], fields: [SPRINT], views })
-        )
-      ).toEqual([]);
-    });
-
-    it('adds nothing without the flag', () => {
-      const a = plan(state());
-      expect(ofType(a, 'CreateIterationField')).toHaveLength(0);
-      expect(ofType(a, 'CreateView').map((c) => c.name)).not.toContain('Sprint');
+      expect(r.stdout).toContain('Delete field Sprint');
     });
   });
 

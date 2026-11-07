@@ -60,7 +60,7 @@ tauri/
 node/
   setup/ build/ test/ ci/ publish/ — Node.js actions; `publish` takes `publish-directory` / `publish-directories`
 
-.apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new|sprints|sprint`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, Set-Sprint, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
+.apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
 scripts/
   Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
@@ -147,7 +147,7 @@ jobs:
 
 ## CI token: GitHub App `GravionLabs CI`
 
-Release PR, changelog commit and Renovate use an installation token of the GitHub App (secrets `CI_APP_ID`, `CI_APP_PRIVATE_KEY`, minted with the SHA-pinned `actions/create-github-app-token`; fallback `GH_PAT`, then `github.token`). Project steps keep the classic PAT `PROJECT_TOKEN` (an app cannot access the user-owned project 17; GravionLabs/ci#128 moves it) and read and write through the REST `projectsV2` endpoints (Needs sync, `mark-merged-issues` Status: no GraphQL call); only `actions/add-to-project` (external action), `Set-ProjectStandard.ps1` and `Set-Sprint.ps1` still use GraphQL. Setup and reasons: README, "GitHub App". Test: `bash tests/ci-app-token.test.sh`.
+Release PR, changelog commit and Renovate use an installation token of the GitHub App (secrets `CI_APP_ID`, `CI_APP_PRIVATE_KEY`, minted with the SHA-pinned `actions/create-github-app-token`; fallback `GH_PAT`, then `github.token`). Project steps keep the classic PAT `PROJECT_TOKEN` (an app cannot access the user-owned project 17; GravionLabs/ci#128 moves it) and read and write through the REST `projectsV2` endpoints (Needs sync, `mark-merged-issues` Status: no GraphQL call); only `actions/add-to-project` (external action), `Set-ProjectStandard.ps1` still use GraphQL. Setup and reasons: README, "GitHub App". Test: `bash tests/ci-app-token.test.sh`.
 
 ## Reusable Workflow: `docker-package.yml`
 
