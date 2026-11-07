@@ -15,6 +15,7 @@ versioning/
   release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)
+  close-merged-issues/  — On every push to release/*, closes the open issues merged into it as completed with one comment `Merged into <branch> in #<pr>, ships with <milestone>` (Closes/Fixes/Resolves #n in merged PRs and commit footers, never Refs; complete pbi/feature parents, never epics; removes `merged`; output `closed`)
 
 pr-checks/
   readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
@@ -373,6 +374,13 @@ jobs:
 Output `labelled`: space-separated numbers of the issues newly labelled in the run. The reusable workflow `release-branch.yml` wraps this action with `release-pr` and a Needs sync.
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true [PROJECT_STATUS='In release' PROJECT_TOKEN=<pat>] bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
+
+### `versioning/close-merged-issues`
+
+Run it on every push to `release/**`: it closes (`--reason completed`) every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into the branch since it left the base and in the footer lines (not the subject) of the commit messages of `base...branch`; `Refs #n` never closes (partial deliveries use it with `## Not delivered`). Pull requests and closed issues are skipped. Each closed issue gets one comment ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (no milestone: `the next release`; a commit without `(#n)` in its subject is named by its short SHA). Parents labeled `pbi` or `feature` (same repository) whose sub-issues are all closed are closed too, repeating upwards; `epic` never; an open sub-issue in another repository blocks. The label `merged` is removed from the issues it closes. The comment is posted only after the close succeeded, so a rerun closes and comments nothing. Missing permissions only warn (exit 0).
+Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `token`, `dry-run` (prints `would close #n: <comment>`). Output `closed`: space-separated issues closed in the run (empty on a dry run). Needs `contents: read`, `issues: write`, `pull-requests: read`.
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests in `bash tests/versioning.test.sh`.
 
 ### `versioning/create-version-tag`
 

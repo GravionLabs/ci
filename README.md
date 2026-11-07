@@ -28,7 +28,8 @@ versioning/
 ├── create-version-tag/     # Create and push a git tag
 ├── gh-release/             # Create the GitHub Release; optionally recreate release/next afterwards
 ├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
-└── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+└── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -605,6 +606,53 @@ steps:
 |------------|-------------------------------------------------------------------------------------------------------|
 | `labelled` | Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run) |
 <!-- /action-docs:outputs -->
+
+### `versioning/close-merged-issues`
+
+On every push to a `release/*` branch (incl. `release/next`), closes the open issues delivered to it as completed and comments once on each: ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (without a milestone: `ships with the next release`; a commit without PR number is named by its short SHA).
+
+- **Closing references:** `Closes`, `Fixes` and `Resolves #n` in the bodies of the PRs merged into the branch since it left the base, and in the footer lines of the commit messages of `base...branch` (not the subject line). `Refs #n` never closes: partial deliveries use it with `## Not delivered`. Pull requests and closed issues are skipped.
+- **Parents** labeled `pbi` or `feature` (same repository) whose sub-issues are all closed are closed too, repeating upwards; an `epic` never.
+- The label `merged` (set by `mark-merged-issues`) is removed from every issue it closes, so issues labelled before are closed on the first run through the same references.
+- Idempotent: a closed issue is skipped, and the comment is written only after the close succeeded, so a rerun closes and comments nothing. Missing permissions only warn (exit 0).
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`, `pull-requests: read`.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+steps:
+  - uses: GravionLabs/ci/versioning/close-merged-issues@v1
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/close-merged-issues/action.yml" -->
+| Name             | Description                                                                 | Required | Default             |
+|------------------|-----------------------------------------------------------------------------|----------|---------------------|
+| `release-branch` | Release branch (release/*); defaults to the ref that triggered the workflow | No       |                     |
+| `base`           | Base branch the release lands on; defaults to the repository default branch | No       |                     |
+| `token`          | GitHub token used for the gh CLI                                            | No       | ${{ github.token }} |
+| `dry-run`        | Print the issues that would be closed without changing anything             | No       | false               |
+<!-- /action-docs:inputs -->
+
+**Outputs**
+
+<!-- action-docs:outputs source="versioning/close-merged-issues/action.yml" -->
+| Name     | Description                                                                                   |
+|----------|-----------------------------------------------------------------------------------------------|
+| `closed` | Space-separated numbers of the issues closed in this run (empty when none, also on a dry run) |
+<!-- /action-docs:outputs -->
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
 
 ---
 
