@@ -19,8 +19,6 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 | `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level` and `Needs`; the five standard views plus `Needs me`, `Ready for loop`, `Blocked`. |
 | `sync <project-nr>` | `apply` plus item sync (Level, `merged` ⇄ `In release`) and the labels `planned`, `needs-review` in the repositories linked to the project. |
 | `new <repo>` | Copy the template project, link it to the repo, run `sync`. |
-| `sprints <project-nr>` | `apply` plus the weekly iteration field `Sprint` and the views `Sprint` and `Sprint next` (opt-in, `-Sprints`). |
-| `sprint <project-nr> <owner/repo#n>...` | Put PBIs of any repository into a sprint and check the limits. |
 
 ## apply / sync
 
@@ -38,33 +36,13 @@ Always run `-DryRun` first, show the actions to the user, then run without it. `
 - `-Sync` also runs `scripts/Sync-ProjectNeeds.ps1` (forwards `-DryRun`; offline `-StateFile` only lists the action `syncNeeds`). A failing Needs sync is one warning, the run still exits 0. Details: `references/needs-sync.md`.
 - Needs: single-select (Planning, Decision, Review, Blocked, Ready, In progress, Release review), created when missing; an existing field keeps its option ids and gets missing options appended.
 - Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
-- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all five standard views exist; `Sprint planning` (old) only when `Needs me`, `Ready for loop` and `Sprint next` exist or are planned.
+- `-RemoveDefaultViews` deletes `View <n>` and `Probe` views, only when all five standard views exist, and the views `Sprint`, `Sprint next` and `Sprint planning` of the removed sprint mode whenever they exist.
+- `-RemoveSprintField` deletes the iteration field `Sprint` of the removed sprint mode (GraphQL `deleteProjectV2Field`, listed in `-DryRun` / `-Json`); without the switch the field stays.
 - A second run reports `No changes.`
 
 Finish by telling the user the printed manual UI steps (no API): "Show hierarchy" in Hierarchy, sort Recently closed by Closed descending, enable the workflow "Item closed → Done".
 
 Other repositories of the project copy `templates/issue-events.yml` and `templates/project-needs.yml` (callers of the reusable `issues.yml` of GravionLabs/ci; replace `<owner>` and `<n>` in `project-url`) to `.github/workflows/` to keep Needs current; tokens: GravionLabs/ci README.
-
-## sprints
-
-One project for all repositories, one weekly sprint for all of them. Titles are ISO weeks `YYYY-Www` (`2026-W43`; the ISO year, so 2027-01-01 is `2026-W53`). `-Sprints` creates 12 iterations from this week (Monday start, 7 days) and the views `Sprint` (board, `sprint:@current`, no Epic/Feature/Task, rows per repository) and `Sprint next` (same for `sprint:@next`). Pick PBIs for `Set-Sprint.ps1` from `Backlog` or `Ready for loop`. An existing field or view is never touched; more iterations are added in the project settings.
-
-```powershell
-pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -Sprints -DryRun
-pwsh scripts/Set-Sprint.ps1 -Owner <login> -Number <n> -Issue 'org/a#12,org/b#7' [-Sprint 2026-W44] [-DryRun] [-Force]
-```
-
-`Set-Sprint.ps1` is all or nothing (exit 1, nothing assigned) and counts open PBIs and Bugs only:
-
-| Limit | Default | Parameter |
-|:--|:--|:--|
-| per sprint, all repositories | 30 | `-MaxPerSprint` |
-| per sprint and repository | 10 | `-MaxPerRepo` |
-| `In release` per repository, any sprint | 10 | `-MaxInRelease` (full: cut the release first, `github-release`) |
-
-The issues must already be items of the project with Level PBI or Bug (`sync` sets it). `-Force` assigns despite a violation and still reports it.
-
-Dependency order: a PBI with an open native blocked-by link (the links `orchestrator next` reads) enters only when the blocker is already in this sprint or an earlier one, or is assigned in the same run (violation `Blocked`). A `Blocked by #n` line in the body alone is not seen: set the native link (`issue-planning` `references/publish.md` § 3).
 
 ## new
 

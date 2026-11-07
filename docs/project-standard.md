@@ -9,7 +9,6 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 | Status | `Todo`, `In progress`, `In release`, `Done` | `In release` (BLUE) sits before `Done` and mirrors the label `merged`: merged into `release/next`, ships with the next release. |
 | Level | Epic, Feature, PBI, Task, Bug | Hierarchy level. `-Sync` fills an empty Level from the labels, fallback the title prefix. |
 | Needs | see below | What the item waits for. Created when missing; an existing field keeps its options and ids and only gets missing options appended. |
-| Sprint | ISO weeks `YYYY-Www` | Weekly iteration field, only with `-Sprints` (12 weeks from the current one). |
 
 ### Needs
 
@@ -60,10 +59,8 @@ Views are matched by name. Missing ones are created, existing ones are never tou
 | Needs me | board | `is:open needs:Planning,Decision,Review,"Release review"` | columns: Needs | Everything that waits for the owner. |
 | Ready for loop | table | `is:open needs:Ready -level:Epic,Feature,Task` | rows: Parent issue | PBIs and Bugs the loop may take. |
 | Blocked | table | `is:open needs:Blocked` | none | Blocked items. |
-| Sprint | board | `sprint:@current -level:Epic,Feature,Task` | columns: Status, rows: Repository | `-Sprints` only: the current week. |
-| Sprint next | board | `sprint:@next -level:Epic,Feature,Task` | columns: Status, rows: Repository | `-Sprints` only: the next week. |
 
-`-Sprints` adds the field `Sprint` and the two sprint views. Pick PBIs for `Set-Sprint.ps1` from `Backlog` or `Ready for loop`. The earlier view `Sprint planning` is replaced by `Sprint next`. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all five standard views exist) and `Sprint planning` (only when `Needs me`, `Ready for loop` and `Sprint next` exist or are created in the same run). Without that switch `Sprint planning` stays.
+The sprint mode was removed. With `-RemoveDefaultViews` the script deletes `View <n>` and `Probe` (only when all five standard views exist) and the old views `Sprint`, `Sprint next` and `Sprint planning` (whenever they exist). `-RemoveSprintField` deletes the iteration field `Sprint`; without it the field stays.
 
 ### Manual steps
 

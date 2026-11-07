@@ -1,12 +1,11 @@
 name: github-project
 version: 1.0.0
-description: "GitHub Project standard: fields Status, Level, Needs and Sprint, views, label sync and sprint assignment (skill github-project)."
+description: "GitHub Project standard: fields Status, Level and Needs, views and label sync (skill github-project)."
 author:
   name: Gravion
 license: MIT
 keywords:
   - github
   - project
-  - sprint
 skills:
   - github-project
