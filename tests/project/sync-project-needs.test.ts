@@ -6,7 +6,7 @@ import { PwshWorker } from '../helpers/pwsh-worker';
 
 const SCRIPT = path.resolve(
   __dirname,
-  '../../.apm/skills/github-project/scripts/Sync-ProjectNeeds.ps1'
+  '../../project/github-project/scripts/Sync-ProjectNeeds.ps1'
 );
 
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;

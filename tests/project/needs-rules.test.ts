@@ -5,7 +5,7 @@ import * as path from 'path';
 
 const MODULE = path.resolve(
   __dirname,
-  '../../.apm/skills/github-project/scripts/NeedsRules.psm1'
+  '../../project/github-project/scripts/NeedsRules.psm1'
 );
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;
 
