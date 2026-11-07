@@ -195,7 +195,7 @@ proj 1 Board true
 run_mark
 [ "$code" = 0 ] && ok "exit 0 without project items" || fail "exit $code"
 hasnt "issue without project item not written" "-X PATCH" "$log"
-hasnt "no warning" "::warning::" "$out"
+hasnt "no warning besides the deprecation" "::warning::" "$(grep -v deprecated <<<"$out")"
 
 status_fixture
 proj 1 Board true; pitem 1 10 Todo "o/x"
@@ -476,6 +476,37 @@ has "continues after a comment failure" "gh issue close 14" "$log"
 close_merged_fixture; touch "$GH_FIX/GET_repos_o_r_issues_10.fail"; run_close_merged
 has "unreadable issue skipped" "#10 cannot be read; skipped." "$out"
 hasnt "unreadable issue not closed" "close 10" "$log"
+
+echo "# close-release-issues (safety net): leftovers of the release PR, one still open and one already closed"
+setup
+fix GET_repos_o_r_commits_abc_pulls '[{"number":50,"head":{"ref":"release/1.0"}}]'
+fix pr-view-50 '{"headRefName":"release/1.0","body":"Closes #12\nFixes #13"}'
+fix pr-list '[]'
+issue 12 open pbi,merged; issue 13 closed pbi,merged
+out=$(GITHUB_SHA=abc VERSION=1.0.0 bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "leftover: exit 0" || fail "leftover: exit $code: $out"
+has "leftover: closes the open #12" "gh issue close 12 -R o/r --reason completed --comment Shipped in v1.0.0 (release PR #50)." "$log"
+has "leftover: removes the merged label of #12" "gh api -X DELETE repos/o/r/issues/12/labels/merged" "$log"
+hasnt "leftover: does not close the already closed #13" "gh issue close 13" "$log"
+has "leftover: removes the merged label of the closed #13" "gh api -X DELETE repos/o/r/issues/13/labels/merged" "$log"
+
+echo "# close-release-issues (safety net): rerun after the leftovers are closed changes nothing"
+setup
+fix GET_repos_o_r_commits_abc_pulls '[{"number":50,"head":{"ref":"release/1.0"}}]'
+fix pr-view-50 '{"headRefName":"release/1.0","body":"Closes #12"}'
+fix pr-list '[]'
+issue 12 closed pbi
+out=$(GITHUB_SHA=abc VERSION=1.0.0 bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "rerun: exit 0" || fail "rerun: exit $code: $out"
+hasnt "rerun: closes nothing" "gh issue close" "$log"
+
+echo "# mark-merged-issues: deprecation warning"
+mark_fixture; run_mark
+has "deprecation warning when used" "::warning::versioning/mark-merged-issues is deprecated" "$out"
+has "deprecation warning names the replacement" "close-merged-issues" "$out"
+setup
+out=$(RELEASE_BRANCH=feature/x bash "$MARK" 2>&1)
+has "deprecation warning also on a no-op run" "::warning::versioning/mark-merged-issues is deprecated" "$out"
 
 echo "# release-pr: recreated branch without commits ahead opens no PR"
 RELEASE_PR="$ROOT/versioning/release-pr/release-pr.sh"

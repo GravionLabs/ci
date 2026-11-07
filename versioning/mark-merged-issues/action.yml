@@ -1,5 +1,7 @@
 name: 'Mark Merged Issues'
 description: >
+  DEPRECATED: replaced by versioning/close-merged-issues, which closes the issues when they merge
+  into the release branch instead of labelling them; removed in the next major. Prints a warning when used.
   On a push to a release/* branch (incl. release/next), labels the open issues delivered to that
   branch: Closes/Fixes/Resolves #n in the PRs merged into it since it left the base, plus Closes…
   and "Refs #n" footer lines in the commit messages of base...branch. Each newly labelled issue

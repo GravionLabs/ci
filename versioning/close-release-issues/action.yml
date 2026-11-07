@@ -1,7 +1,8 @@
 name: 'Close Release Issues'
 description: >
-  After a release/<x.y> branch was merged into the default branch, closes every issue the
-  release delivered: issues referenced with Closes/Fixes/Resolves #n in the merged PRs of the
+  Safety net on the release merge (versioning/close-merged-issues already closes the issues at merge):
+  after a release/<x.y> branch was merged into the default branch, closes every issue the release
+  delivered that is still open, e.g. one referenced only in the release PR: issues referenced with Closes/Fixes/Resolves #n in the merged PRs of the
   release branch and in the release PR, their open sub-issues, and parents labeled pbi or
   feature whose sub-issues are all closed. Epics are never closed. Removes the label set by
   mark-merged-issues from the issues it closes and from referenced issues already closed.
