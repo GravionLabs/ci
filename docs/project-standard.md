@@ -73,6 +73,7 @@ The script prints them; the API cannot do them:
 - Recently closed: sort by Closed, descending.
 - Milestones: sort by Milestone, ascending.
 - Project Workflows: enable "Auto-archive items" with `is:closed updated:<@today-14d` (keeps the project small; Milestones shows closed items until archived).
+- Archived items cannot be edited: `Set-ProjectStandard.ps1` does not plan them, and one archived between read and write is skipped with a warning (no retry); `Sync-ProjectNeeds.ps1` skips it the same way. Both end with `skipped (archived): <n>`.
 - Project Workflows: enable "Item closed" to Status `Done`.
 
 ## Labels

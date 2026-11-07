@@ -79,7 +79,7 @@ const NEEDS_REVIEW = {
 
 type Label = { name: string; color?: string; description?: string };
 // label pages, cursor `l<i>`; state defaults to OPEN, level to PBI (null: no Level)
-type Item = { number: number; status: string | null; labels: Label[][]; state?: string; level?: string | null };
+type Item = { number: number; status: string | null; labels: Label[][]; state?: string; level?: string | null; archived?: boolean };
 type Config = {
   fields: object[][]; // pages; page i > 0 is answered for cursor `f<i>`
   views: object[][]; // cursor `v<i>`
@@ -87,6 +87,7 @@ type Config = {
   itemPages?: Item[][]; // item pages (cursor `i<i>`), instead of items
   repos?: { name: string; labels: Label[][] }[][]; // repository pages (cursor `c<i>`), label pages per repo (cursor `l<i>`)
   labelFail?: string[]; // `<name> <repo>` of `gh label create` calls that fail
+  editArchived?: string[]; // item ids whose `gh project item-edit` fails with the archived error
 };
 
 // One fake gh for all reads of Set-ProjectStandard.ps1 and Sync-ProjectNeeds.ps1 (subIssues: no items, so it changes nothing).
@@ -103,6 +104,7 @@ const handler = (c: Config) => `(call) => {
     if ((C.labelFail || []).includes(call.args[2] + ' ' + call.args[4])) throw new Error('HTTP 403: no write access');
     return { rest: {} };
   }
+  if (call.args[0] === 'project' && (C.editArchived || []).includes(call.args[5])) throw new Error('GraphQL: The item is archived and cannot be updated (updateProjectV2ItemFieldValue)');
   if (!call.query) return { rest: {} };
   if (q.includes('mutation')) return {};
   if (q.includes('subIssues')) return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } };
@@ -115,7 +117,7 @@ const handler = (c: Config) => `(call) => {
   if (q.includes('items(first: 100')) {
     const p = page(itemPages, v.cursor, 'i');
     return { node: { items: { pageInfo: p.pageInfo,
-      nodes: p.nodes.map((it) => ({ id: 'PVTI-' + it.number, content: { __typename: 'Issue', id: 'I-' + it.number, number: it.number,
+      nodes: p.nodes.map((it) => ({ id: 'PVTI-' + it.number, isArchived: !!it.archived, content: { __typename: 'Issue', id: 'I-' + it.number, number: it.number,
         title: 'issue ' + it.number, state: it.state || 'OPEN', labels: page(it.labels, null, 'l') },
         status: it.status ? { name: it.status } : null,
         level: it.level === undefined ? { name: 'PBI' } : it.level ? { name: it.level } : null })) } } };
@@ -453,6 +455,37 @@ describe.skipIf(!hasPwsh || spawnSync('node', ['-v']).status !== 0 || process.pl
             '--force',
           ],
         ]);
+      });
+
+      it('does not plan an item that is archived at the read', async () => {
+        const { actions } = await planned({
+          ...BASE,
+          items: [
+            { number: 7, status: 'Todo', level: null, labels: [[{ name: 'pbi' }]], archived: true },
+            { number: 8, status: 'Todo', level: null, labels: [[{ name: 'pbi' }]] },
+          ],
+        });
+        expect(ofType(actions, 'SetItem').map((a) => a.number)).toEqual([8]);
+      });
+
+      it('an item archived between read and write is skipped once with a warning, no retry, the rest runs, exit 0', () => {
+        const { r, calls } = spawnRun(
+          {
+            ...twoRepos,
+            items: [
+              { number: 7, status: 'Todo', level: null, labels: [[{ name: 'pbi' }]] },
+              { number: 8, status: 'Todo', level: null, labels: [[{ name: 'task' }]] },
+            ],
+            editArchived: ['PVTI-7'],
+          },
+          ['-Sync']
+        );
+        const out = r.stdout + r.stderr;
+        expect(r.status, out).toBe(0);
+        expect(out).toContain('#7 is archived and cannot be updated; skipped.');
+        expect(out).toContain('skipped (archived): 1');
+        const edits = calls.filter((c) => c.args[0] === 'project' && c.args[1] === 'item-edit');
+        expect(edits.map((c) => c.args[5])).toEqual(['PVTI-7', 'PVTI-8']);
       });
 
       it('a failing gh label create is reported, the remaining actions still run, and the run exits 1', async () => {

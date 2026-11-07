@@ -241,7 +241,7 @@ query($id: ID!, $cursor: String) { node(id: $id) { ... on Repository { labels(fi
 $ItemsQuery = @'
 query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 { items(first: 100, after: $cursor) {
   totalCount pageInfo { hasNextPage endCursor }
-  nodes { id content { __typename ... on Issue { id number title state labels(first: 50) { pageInfo { hasNextPage endCursor } nodes { name } } } }
+  nodes { id isArchived content { __typename ... on Issue { id number title state labels(first: 50) { pageInfo { hasNextPage endCursor } nodes { name } } } }
     status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     level: fieldValueByName(name: "Level") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }
 '@
@@ -302,6 +302,7 @@ function Get-ProjectState {
     $raw = Read-ItemNodes { param($c) (Invoke-Graphql $ItemsQuery @{ id = $p.id; cursor = $c }).node.items }
     foreach ($n in $raw) {
       if ($n.content.__typename -ne 'Issue') { continue }
+      if ($n.isArchived) { $script:ArchivedSkipped++; continue }  # archived items cannot be edited: never planned
       $labels = Get-AllNodes $n.content.labels $IssueLabelsQuery @{ id = $n.content.id } { param($r) $r.node.labels }
       $items.Add([ordered]@{ id = $n.id; number = $n.content.number; title = $n.content.title; state = $n.content.state
           labels = @($labels | ForEach-Object { $_.name }); status = $n.status.name; level = $n.level.name })
@@ -316,6 +317,7 @@ function Get-ProjectState {
   $state
 }
 
+$script:ArchivedSkipped = 0
 function Invoke-Plan($Actions, $State) {
   $field = { param($name) (@($State.fields) | Where-Object { $_.name -eq $name } | Select-Object -First 1) }
   # Fields and views first: a failing item edit must not leave the project without its views.
@@ -348,6 +350,12 @@ function Invoke-Plan($Actions, $State) {
         foreach ($try in 1..4) {
           $out = & gh project item-edit --project-id $State.projectId --id $a.item --field-id $f.id --single-select-option-id $o.id 2>&1
           if ($LASTEXITCODE -eq 0) { break }
+          # Permanent: an item archived between the read and the write (auto-archive) never accepts the edit. Skip, no retry.
+          if ("$out" -match 'archived') {
+            $script:ArchivedSkipped++
+            Write-Warning "#$($a.number) is archived and cannot be updated; skipped."
+            break
+          }
           if ($try -eq 4) { throw "gh project item-edit failed for #$($a.number): $out" }
           Start-Sleep -Seconds (15 * $try)
         }
@@ -382,7 +390,7 @@ if ($StateFile) {
   # Optional: 'itemPages' (item connections of the walk) replace 'items'.
   if ($state.itemPages) {
     $raw = Read-ItemNodes (New-PageFetcher $state.itemPages) 0
-    $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' } | ForEach-Object {
+    $walked = @($raw | Where-Object { $_.content.__typename -eq 'Issue' -and -not $_.isArchived } | ForEach-Object {
         [ordered]@{ id = $_.id; number = $_.content.number; title = $_.content.title; state = $_.content.state
           labels = @($_.content.labels.nodes | ForEach-Object { $_.name }); status = $_.status.name; level = $_.level.name } })
     $state | Add-Member -NotePropertyName items -NotePropertyValue $walked -Force
@@ -423,10 +431,11 @@ if ($Sync) {
 }
 
 if ($Json) {
-  [ordered]@{ dryRun = $DryRun.IsPresent; itemsRead = $script:ItemsRead; itemsTotal = $script:ItemsTotal; actions = @($actions); needs = @($needsOutput); manualSteps = $script:ManualSteps } | ConvertTo-Json -Depth 20
+  [ordered]@{ dryRun = $DryRun.IsPresent; itemsRead = $script:ItemsRead; itemsTotal = $script:ItemsTotal; skippedArchived = $script:ArchivedSkipped; actions = @($actions); needs = @($needsOutput); manualSteps = $script:ManualSteps } | ConvertTo-Json -Depth 20
 } else {
   $verb = if ($DryRun) { 'Planned' } else { 'Applied' }
   if ($actions.Count -eq 0) { 'No changes.' } else { "$verb $($actions.Count) action(s):"; $actions | ForEach-Object { "  - $(Format-Action $_)" } }
   if ($needsOutput.Count -gt 0) { ''; $needsOutput }
+  if (-not $DryRun) { ''; "skipped (archived): $($script:ArchivedSkipped)" }
   ''; 'Manual steps (UI only):'; $script:ManualSteps | ForEach-Object { "  - $_" }
 }
