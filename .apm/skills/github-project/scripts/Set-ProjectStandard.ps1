@@ -2,7 +2,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level, Needs and Current, eight views, optional item and label sync.
+  Brings a GitHub Project (v2) to the GravionLabs standard: Status 'In release', fields Level, Needs and Current, nine views, optional item and label sync.
 .DESCRIPTION
   1. Reads the state (fields with options, views, issue items) via 'gh api graphql', or from -StateFile (no gh call at all).
   2. A pure function (Get-ProjectPlan) computes the action list.

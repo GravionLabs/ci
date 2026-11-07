@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: 'Bring a GitHub Project (v2) to the standard (In release, Level, Needs, eight views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
+description: 'Bring a GitHub Project (v2) to the standard (In release, Level, Needs, Current, nine views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
 disable-model-invocation: true
 metadata:
   opencode/autoinvoke: 'false'
@@ -16,7 +16,7 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 
 | Invocation | Does |
 |:--|:--|
-| `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level` and `Needs`; the five standard views plus `Needs me`, `Ready for loop`, `Blocked`. |
+| `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level`, `Needs` and `Current`; the five standard views plus `Current milestone`, `Needs me`, `Ready for loop`, `Blocked` (nine views). |
 | `sync <project-nr>` | `apply` plus item sync (Level, `merged` ⇄ `In release`) and the labels `planned`, `needs-review` in the repositories linked to the project. |
 | `new <repo>` | Copy the template project, link it to the repo, run `sync`. |
 
