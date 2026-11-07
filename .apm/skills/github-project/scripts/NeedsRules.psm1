@@ -4,7 +4,8 @@
   Shared Needs rule of the project field Needs: one rule function and a read-only issue reader.
 .DESCRIPTION
   Imported by Sync-ProjectNeeds.ps1 (writes the field), and the queue dry run. Get-NeedsValue is the only implementation of the rule; callers never restate it.
-  Test-BlockerUnresolved is the one definition of a blocking blocker: open and not merged (label merged or Status 'In release'); closed or merged blockers count as resolved.
+  Test-BlockerUnresolved is the one definition of a blocking blocker: a blocker blocks while it is open; a closed blocker counts as resolved.
+  Migration (GravionLabs/ci#182): an open blocker that still carries the label merged counts as resolved until the label is gone everywhere.
   Get-IssueNeedsItem reads an issue with gh GET calls only (never a mutation) and returns an item in the Sync-ProjectNeeds -StateFile shape;
   the project Status is not readable that way, so a read item has status $null.
 #>
@@ -18,17 +19,18 @@ function Get-Prop($Obj, [string]$Name) {
 }
 
 # Pure rule function: Needs option name, or $null to clear the field. First match wins:
-# closed -> clear; label needs-decision -> Decision; needs-review -> Review; unresolved blocked-by (open and not merged) -> Blocked;
-# label merged or Status 'In release' -> Release review; open PR head (^|/)<nr>- or Status 'In Progress' -> In progress;
+# closed -> clear; label needs-decision -> Decision; needs-review -> Review; unresolved blocked-by (open) -> Blocked;
+# open PR head (^|/)<nr>- or Status 'In Progress' -> In progress;
 # Epic without Feature, Feature without PBI, PBI-level without Task sub-issues and without label planned -> Planning;
 # else Ready for PBI-level items and clear for Epics and Features.
-# True when a blocker still blocks: state OPEN (any case), no label merged (strings or {name}) and Status not 'In release'.
-# A blocker without state counts as resolved. blockedByOpen of an item counts the unresolved blockers.
+# True when a blocker still blocks: state OPEN (any case). A blocker without state counts as resolved.
+# blockedByOpen of an item counts the unresolved blockers. The project Status of a blocker plays no part.
+# Migration shim (GravionLabs/ci#182): an open blocker with the label merged (strings or {name}) was delivered to a release branch
+# before issues closed on merge; it counts as resolved. Remove the shim once no open issue carries merged.
 function Test-BlockerUnresolved($Blocker) {
   if ("$(Get-Prop $Blocker 'state')".ToUpperInvariant() -ne 'OPEN') { return $false }
   $labels = @(Get-Prop $Blocker 'labels' | ForEach-Object { "$(if ($_ -is [string]) { $_ } else { Get-Prop $_ 'name' })".ToLowerInvariant() })
-  if ($labels -contains 'merged') { return $false }
-  "$(Get-Prop $Blocker 'status')" -ne 'In release'
+  $labels -notcontains 'merged'
 }
 
 function Get-NeedsValue($Item) {
@@ -39,7 +41,6 @@ function Get-NeedsValue($Item) {
   if ($labels -contains 'needs-review') { return 'Review' }
   $blocked = Get-Prop $Item 'blockedByOpen'
   if ($blocked -is [bool] ? $blocked : ([int]("0$blocked") -gt 0)) { return 'Blocked' }
-  if ($labels -contains 'merged' -or $status -eq 'In release') { return 'Release review' }
   $nr = [int](Get-Prop $Item 'number')
   $heads = @(Get-Prop $Item 'prHeads' | Where-Object { $_ })
   if ($status -eq 'In Progress' -or @($heads | Where-Object { "$_" -match "(^|/)$nr-" }).Count -gt 0) { return 'In progress' }

@@ -169,32 +169,115 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
 
   describe('Status', () => {
     it.each([
-      ['default set', DEFAULT_STATUS, ['Todo', 'In Progress', 'In release', 'Done']],
-      [
-        'Helix set',
-        HELIX_STATUS,
-        ['Backlog', 'Ready', 'In progress', 'In review', 'In release', 'Done'],
-      ],
-    ])('inserts In release before Done and keeps ids (%s)', (_n, status, names) => {
-      const [a] = ofType(plan(state({ status })), 'UpdateStatusOptions');
-      expect(a.options.map((o: Opt) => o.name)).toEqual(names);
-      for (const o of status)
-        expect(a.options.find((x: Opt) => x.name === o.name)).toMatchObject(o);
-      expect(a.options.find((x: Opt) => x.name === 'In release')).toMatchObject({ color: 'BLUE' });
-      expect(a.options.find((x: Opt) => x.name === 'In release').id).toBeUndefined();
+      ['default set', DEFAULT_STATUS],
+      ['Helix set', HELIX_STATUS],
+      ['old standard with In release', [opt('Todo'), opt('In release'), opt('Done')]],
+    ])('leaves the Status options alone without -RemoveInReleaseStatus (%s)', (_n, status) => {
+      const a = plan(state({ status, items: [item(1, { status: 'In release' })] }), '-Sync');
+      expect(a.filter((x) => x.field === 'Status')).toEqual([]);
+      expect(ofType(a, 'UpdateStatusOptions')).toEqual([]);
+    });
+  });
+
+  describe('-RemoveInReleaseStatus (#182)', () => {
+    const OLD = [opt('Todo'), opt('In Progress'), opt('In release', 'BLUE'), opt('Done')];
+    const remove = (items: Item[], status: Opt[] = OLD) =>
+      plan(state({ status, items }), '-RemoveInReleaseStatus');
+
+    it('moves In release items to Done (closed) or Todo (open), then removes the option keeping the other ids', () => {
+      const a = remove([
+        item(1, { status: 'In release' }),
+        item(2, { state: 'CLOSED', status: 'In release' }),
+        item(3, { status: 'In Progress' }),
+        item(4, { state: 'CLOSED', status: 'Done' }),
+      ]);
+      expect(a).toEqual([
+        { type: 'SetItem', item: 'I-1', number: 1, field: 'Status', option: 'Todo' },
+        { type: 'SetItem', item: 'I-2', number: 2, field: 'Status', option: 'Done' },
+        {
+          type: 'RemoveStatusOption',
+          field: 'Status',
+          option: 'In release',
+          options: [opt('Todo'), opt('In Progress'), opt('Done')],
+        },
+      ]);
     });
 
-    it('appends at the end without a Done option', () => {
-      const [a] = ofType(
-        plan(state({ status: [opt('Todo'), opt('Doing')] })),
-        'UpdateStatusOptions'
+    it('removes an unused option without moving items', () => {
+      expect(remove([item(1, { status: 'Todo' })]).map((x) => x.type)).toEqual(['RemoveStatusOption']);
+    });
+
+    it('is a no-op for a project without In release', () => {
+      expect(remove([item(1, { status: 'Todo' })], DEFAULT_STATUS)).toEqual([]);
+    });
+
+    it('falls back to the first other option without Todo and to the last one without Done', () => {
+      const a = remove(
+        [item(1, { status: 'In release' }), item(2, { state: 'CLOSED', status: 'In release' })],
+        [opt('Backlog'), opt('In release'), opt('Shipped')]
       );
-      expect(a.options.map((o: Opt) => o.name)).toEqual(['Todo', 'Doing', 'In release']);
+      expect(ofType(a, 'SetItem').map((x) => `#${x.number} ${x.option}`)).toEqual(['#1 Backlog', '#2 Shipped']);
     });
 
-    it('is a no-op when In release exists', () => {
-      const status = [opt('Todo'), opt('In release'), opt('Done')];
-      expect(ofType(plan(state({ status })), 'UpdateStatusOptions')).toHaveLength(0);
+    it('fails when In release is the only Status option', () => {
+      const file = path.join(dir, 'only.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ projectId: 'P', ownerType: 'User', ...state({ status: [opt('In release')] }) })
+      );
+      const r = spawnSync('pwsh', ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-RemoveInReleaseStatus'], {
+        encoding: 'utf8',
+      });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr + r.stdout).toContain("Status has no option besides 'In release'.");
+    });
+
+    it('lists the moves and the removal in the text dry run', () => {
+      const file = path.join(dir, 'rm.json');
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          projectId: 'P',
+          ownerType: 'User',
+          ...state({ status: OLD, items: [item(5, { state: 'CLOSED', status: 'In release' })] }),
+        })
+      );
+      const r = spawnSync('pwsh', ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-RemoveInReleaseStatus'], {
+        encoding: 'utf8',
+      });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain('Planned 2 action(s):');
+      expect(r.stdout).toContain('#5 Status -> Done');
+      expect(r.stdout).toContain('Status: remove option In release (options -> Todo, In Progress, Done)');
+    });
+
+    it('fails on an incomplete item walk instead of removing the option', () => {
+      const file = path.join(dir, 'short.json');
+      const node = (num: number) => ({
+        id: `N-${num}`,
+        content: { __typename: 'Issue', number: num, title: `t${num}`, state: 'OPEN' },
+        status: { name: 'In release' },
+        level: null,
+      });
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          projectId: 'P',
+          ownerType: 'User',
+          ...state({ status: OLD }),
+          itemPages: [
+            { totalCount: 2, pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node(1)] },
+            { totalCount: 2, pageInfo: { hasNextPage: false }, nodes: [] },
+          ],
+        })
+      );
+      const r = spawnSync(
+        'pwsh',
+        ['-NoProfile', '-File', SCRIPT, '-StateFile', file, '-RemoveInReleaseStatus', '-Json'],
+        { encoding: 'utf8' }
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('read 1 of 2');
     });
   });
 
@@ -310,23 +393,16 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
       expect(set(a, 5, 'Level')).toBeUndefined();
     });
 
-    it('moves open merged issues to In release, and In release without merged back to Todo', () => {
-      const a = sync([
-        item(1, { labels: ['merged'], status: 'Todo', level: 'PBI' }),
-        item(2, { labels: ['merged'], status: 'In release', level: 'PBI' }),
-        item(3, { status: 'In release', level: 'PBI' }),
-      ]);
-      expect(set(a, 1, 'Status')).toBe('In release');
-      expect(set(a, 2, 'Status')).toBeUndefined();
-      expect(set(a, 3, 'Status')).toBe('Todo');
-    });
-
-    it('falls back to the first status option when Todo does not exist', () => {
+    it('never syncs the Status from the label merged (#182)', () => {
       const a = sync(
-        [item(3, { status: 'In release', level: 'PBI' })],
-        [opt('Backlog'), opt('Done')]
+        [
+          item(1, { labels: ['merged'], status: 'Todo', level: 'PBI' }),
+          item(2, { labels: ['merged'], status: 'In release', level: 'PBI' }),
+          item(3, { status: 'In release', level: 'PBI' }),
+        ],
+        [opt('Todo'), opt('In release'), opt('Done')]
       );
-      expect(set(a, 3, 'Status')).toBe('Backlog');
+      expect(a).toEqual([]);
     });
 
     it('sets Level on closed items but never their Status', () => {
@@ -409,7 +485,11 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
         filter: '-label:epic,feature -status:Done',
         verticalGroupBy: 'Status',
       });
-      expect(creates[1]).toMatchObject({ layout: 'table', groupBy: 'Parent issue' });
+      expect(creates[1]).toMatchObject({
+        layout: 'table',
+        filter: 'is:open -label:epic,feature',
+        groupBy: 'Parent issue',
+      });
     });
 
     it('creates the milestone views and the Needs views, but not Release next', () => {
@@ -629,10 +709,10 @@ describe.skipIf(!hasPwsh)('Set-ProjectStandard.ps1 -StateFile', () => {
   it('is idempotent: a standard state yields no actions', () => {
     const items = [
       item(1, { labels: ['pbi'], status: 'Todo', level: 'PBI' }),
-      item(2, { labels: ['merged', 'task'], status: 'In release', level: 'Task' }),
+      item(2, { labels: ['task'], status: 'In Progress', level: 'Task' }),
       item(3, { state: 'CLOSED', status: 'Done', level: 'Bug' }),
     ];
-    const status = [opt('Todo'), opt('In release'), opt('Done')];
+    const status = [opt('Todo'), opt('In Progress'), opt('Done')];
     expect(
       plan(state({ status, items }), '-Sync', '-RemoveDefaultViews').filter(
         (a) => a.type !== 'syncNeeds'

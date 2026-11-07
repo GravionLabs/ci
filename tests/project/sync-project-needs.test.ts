@@ -63,8 +63,9 @@ describe.skipIf(!hasPwsh)('Sync-ProjectNeeds', () => {
     ['needs-review', { labels: ['needs-review'] }, 'Review'],
     ['open blocked-by', { blockedByOpen: 2 }, 'Blocked'],
     ['blockedByOpen true', { blockedByOpen: true }, 'Blocked'],
-    ['label merged', { labels: ['merged'] }, 'Release review'],
-    ['status In release', { status: 'In release' }, 'Release review'],
+    ['label merged no longer means Release review', { labels: ['merged'], subIssueLevels: ['Task'] }, 'Ready'],
+    ['status In release no longer means Release review', { status: 'In release', subIssueLevels: ['Task'] }, 'Ready'],
+    ['label merged on a PBI without Tasks', { labels: ['merged'], subIssueLevels: [] }, 'Planning'],
     ['PR head with number', { number: 7, prHeads: ['feat/7-x'] }, 'In progress'],
     ['PR head at start', { number: 7, prHeads: ['7-x'] }, 'In progress'],
     ['PR head of another issue', { number: 7, prHeads: ['feat/17-x'] }, 'Ready'],
@@ -81,8 +82,8 @@ describe.skipIf(!hasPwsh)('Sync-ProjectNeeds', () => {
     // precedence
     ['decision beats blocked', { labels: ['needs-decision'], blockedByOpen: 1 }, 'Decision'],
     ['decision beats review', { labels: ['needs-review', 'needs-decision'] }, 'Decision'],
-    ['blocked beats merged', { blockedByOpen: 1, labels: ['merged'] }, 'Blocked'],
-    ['merged beats in progress', { labels: ['merged'], status: 'In Progress' }, 'Release review'],
+    ['blocked with label merged', { blockedByOpen: 1, labels: ['merged'] }, 'Blocked'],
+    ['In Progress with label merged', { labels: ['merged'], status: 'In Progress' }, 'In progress'],
     ['in progress beats planning', { status: 'In Progress', subIssueLevels: [] }, 'In progress'],
     ['Epic with needs-review', { level: 'Epic', labels: ['needs-review'] }, 'Review'],
   ];
@@ -539,9 +540,9 @@ describe.skipIf(!hasPwsh)('Sync-ProjectNeeds', () => {
       const { status } = await statusActions([ip({ number: 5, prHeads: ['feat/15-x'] })]);
       expect(status.map((a) => a.to)).toEqual(['Todo']);
     });
-    it('label merged keeps In Progress', async () => {
+    it('label merged no longer keeps In Progress: an open issue without PR goes back to Todo', async () => {
       const { status } = await statusActions([ip({ number: 5, labels: ['Merged'] })]);
-      expect(status).toEqual([]);
+      expect(status.map((a) => [a.issue, a.to])).toEqual([['o/r#5', 'Todo']]);
     });
     it('closed issue with In Progress goes to Done', async () => {
       const { status } = await statusActions([ip({ number: 5, state: 'CLOSED' })]);
