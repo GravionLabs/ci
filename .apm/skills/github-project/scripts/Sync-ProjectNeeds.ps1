@@ -274,6 +274,7 @@ function Read-ProjectItems($Ctx, $FieldIds, [string]$Repo) {
   $query = 'per_page=100' + (@($FieldIds.PSObject.Properties.Value | Where-Object { $_ } | ForEach-Object { "&fields[]=$_" }) -join '') + $(if ($Repo) { "&q=repo:$Repo" } else { '' })
   foreach ($it in @(Invoke-GhList "$($Ctx.seg)/$($Ctx.owner)/projectsV2/$($Ctx.number)/items?$query")) {
     if ((Get-Prop $it 'content_type') -ne 'Issue') { continue }
+    if (Get-Prop $it 'archived_at') { $script:ArchivedSkipped++; continue }  # archived at the read: never planned
     $r = Get-ContentRepo $it.content
     if ($Repo -and $r -ne $Repo) { continue }
     $script:Seen["$r#$($it.content.number)"] = $it
@@ -463,6 +464,7 @@ function Set-ProjectItemField([string]$OwnerKind, [string]$Owner, [int]$Number, 
     -Body @{ fields = @(@{ id = [long]$FieldDatabaseId; value = $Value }) } | Out-Null
 }
 
+$script:ArchivedSkipped = 0
 function Set-NeedsValue($State, $Action) {
   $fname = if ($Action.Contains('field')) { "$($Action.field)" } else { 'Needs' }
   $field = switch ($fname) { 'Current' { $State.currentField } 'Status' { $State.statusField } default { $State.needsField } }
@@ -477,6 +479,12 @@ function Set-NeedsValue($State, $Action) {
   $backoff = [double]($env:SYNC_PROJECT_NEEDS_BACKOFF ?? 15)
   foreach ($try in 1..4) {
     try { Set-ProjectItemField (Get-Prop $State 'ownerKind') $State.owner $State.number $itemDb $field.databaseId $opt; return } catch {
+      # Permanent: an item archived between the read and the write (auto-archive). Skip, no retry.
+      if ("$_" -match 'item is archived|archived and cannot') {
+        $script:ArchivedSkipped++
+        Write-Warning "$($Action.issue) is archived and cannot be updated; skipped."
+        return
+      }
       if ($try -eq 4) { throw "$fname update failed for $($Action.issue): $_" }
       Start-Sleep -Seconds ($backoff * $try)
     }
@@ -559,6 +567,7 @@ if ($live) {
       if (-not $DryRun) { Set-NeedsValue $state $a }
     }
   } catch { Write-Output "Needs sync failed: $_"; exit 1 }
+  if (-not $Json -and -not $DryRun) { Write-Output "skipped (archived): $($script:ArchivedSkipped)" }
   if (-not $Json) { Write-Output ("Needs: {0} {1}, {2} unchanged{3}" -f @($plan.actions).Count, $(if ($DryRun) { 'to change' } else { 'changed' }), ($inScope - @($plan.actions).Count), $(if ($DryRun) { ' (dry run)' } else { '' })) }
   if (-not $Json) { Write-ScopeReport $plan }
   exit 0
