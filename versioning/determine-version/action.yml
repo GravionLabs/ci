@@ -20,11 +20,24 @@ inputs:
       type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.
     required: false
     default: 'true'
+  channel:
+    description: >
+      Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta;
+      tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc.<n> / -beta.<n>
+      (n = commits since the last version source, at least 1).
+    required: false
+    default: 'auto'
 
 outputs:
+  channel:
+    description: 'Release channel: stable, rc or beta'
+    value: ${{ steps.channel.outputs.channel }}
+  is-prerelease:
+    description: "'true' on rc and beta, 'false' on stable"
+    value: ${{ steps.channel.outputs.is-prerelease }}
   semver:
     description: 'Full SemVer (e.g. 1.2.3-alpha.4) — use for npm, Angular, NuGet, Docker'
-    value: ${{ steps.gitversion.outputs.semVer }}
+    value: ${{ steps.channel.outputs.semver }}
   major-minor-patch:
     description: 'Stable version without pre-release (e.g. 1.2.3)'
     value: ${{ steps.gitversion.outputs.majorMinorPatch }}
@@ -39,13 +52,13 @@ outputs:
     value: ${{ steps.gitversion.outputs.patch }}
   pre-release-tag:
     description: 'Full pre-release tag (e.g. alpha.4); empty on stable releases'
-    value: ${{ steps.gitversion.outputs.preReleaseTag }}
+    value: ${{ steps.channel.outputs.pre-release-tag }}
   pre-release-label:
     description: 'Pre-release label (e.g. alpha, beta, rc); empty on stable releases'
-    value: ${{ steps.gitversion.outputs.preReleaseLabel }}
+    value: ${{ steps.channel.outputs.pre-release-label }}
   pre-release-number:
     description: 'Pre-release number (e.g. 4)'
-    value: ${{ steps.gitversion.outputs.preReleaseNumber }}
+    value: ${{ steps.channel.outputs.pre-release-number }}
   informational-version:
     description: 'Long version with branch and SHA — use for .NET AssemblyInformationalVersion'
     value: ${{ steps.gitversion.outputs.informationalVersion }}
@@ -57,16 +70,16 @@ outputs:
     value: ${{ steps.gitversion.outputs.assemblySemFileVer }}
   nuget-version:
     description: 'NuGet-compatible version (e.g. 1.2.3-alpha.4)'
-    value: ${{ steps.gitversion.outputs.semVer }}
+    value: ${{ steps.channel.outputs.semver }}
   npm-version:
     description: 'npm-compatible SemVer (e.g. 1.2.3-alpha.4)'
-    value: ${{ steps.gitversion.outputs.semVer }}
+    value: ${{ steps.channel.outputs.semver }}
   python-version:
     description: 'PEP 440-compatible version (e.g. 1.2.3a4) — use for Python / uv packages'
-    value: ${{ steps.python-version.outputs.python-version }}
+    value: ${{ steps.channel.outputs.python-version }}
   docker-version:
     description: 'SemVer with short commit hash (e.g. 1.2.3-alpha.4-abc1234) — use for Docker image tags'
-    value: ${{ steps.docker-version.outputs.docker-version }}
+    value: ${{ steps.channel.outputs.docker-version }}
 
 runs:
   using: 'composite'
@@ -101,48 +114,36 @@ runs:
         overrideConfig: ${{ steps.bump-rules.outputs.override-config }}
         configFilePath: ${{ inputs.gitversion-config-file != '' && inputs.gitversion-config-file || '' }}
 
-    - name: Convert to PEP 440 (Python version)
-      id: python-version
+    - name: Resolve release channel and channel versions
+      id: channel
       shell: bash
-      run: |
-        MMP="${{ steps.gitversion.outputs.majorMinorPatch }}"
-        LABEL="${{ steps.gitversion.outputs.preReleaseLabel }}"
-        NUM="${{ steps.gitversion.outputs.preReleaseNumber }}"
-
-        if [ -z "$LABEL" ]; then
-          PYTHON_VER="$MMP"
-        elif [ "$LABEL" = "alpha" ]; then
-          PYTHON_VER="${MMP}a${NUM}"
-        elif [ "$LABEL" = "beta" ]; then
-          PYTHON_VER="${MMP}b${NUM}"
-        elif [ "$LABEL" = "rc" ] || [ "$LABEL" = "preview" ]; then
-          PYTHON_VER="${MMP}rc${NUM}"
-        else
-          PYTHON_VER="${MMP}.dev${NUM:-0}"
-        fi
-
-        echo "python-version=$PYTHON_VER" >> "$GITHUB_OUTPUT"
-
-    - name: Compute Docker version
-      id: docker-version
-      shell: bash
-      run: |
-        SEMVER="${{ steps.gitversion.outputs.semVer }}"
-        SHORT_SHA="${{ steps.gitversion.outputs.shortSha }}"
-        echo "docker-version=${SEMVER}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+      env:
+        CHANNEL_INPUT: ${{ inputs.channel }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        MMP: ${{ steps.gitversion.outputs.majorMinorPatch }}
+        SEMVER: ${{ steps.gitversion.outputs.semVer }}
+        PRE_TAG: ${{ steps.gitversion.outputs.preReleaseTag }}
+        PRE_LABEL: ${{ steps.gitversion.outputs.preReleaseLabel }}
+        PRE_NUMBER: ${{ steps.gitversion.outputs.preReleaseNumber }}
+        COMMITS: ${{ steps.gitversion.outputs.commitsSinceVersionSource }}
+        SHORT_SHA: ${{ steps.gitversion.outputs.shortSha }}
+      run: bash "${{ github.action_path }}/channel.sh"
 
     - name: Report versions
       shell: bash
       run: |
-        SEMVER="${{ steps.gitversion.outputs.semVer }}"
+        SEMVER="${{ steps.channel.outputs.semver }}"
+        CHANNEL="${{ steps.channel.outputs.channel }}"
         MMP="${{ steps.gitversion.outputs.majorMinorPatch }}"
-        PRE_TAG="${{ steps.gitversion.outputs.preReleaseTag }}"
+        PRE_TAG="${{ steps.channel.outputs.pre-release-tag }}"
         INFO="${{ steps.gitversion.outputs.informationalVersion }}"
         ASM="${{ steps.gitversion.outputs.assemblySemVer }}"
         ASM_FILE="${{ steps.gitversion.outputs.assemblySemFileVer }}"
-        PYTHON="${{ steps.python-version.outputs.python-version }}"
-        DOCKER="${{ steps.docker-version.outputs.docker-version }}"
+        PYTHON="${{ steps.channel.outputs.python-version }}"
+        DOCKER="${{ steps.channel.outputs.docker-version }}"
 
+        echo "Channel:              $CHANNEL"
         echo "SemVer:               $SEMVER"
         echo "MajorMinorPatch:      $MMP"
         echo "PreReleaseTag:        $PRE_TAG"
@@ -158,6 +159,7 @@ runs:
           echo "## Version"
           echo "| Output | Value |"
           echo "| --- | --- |"
+          echo "| Channel | \`$CHANNEL\` |"
           echo "| SemVer | \`$SEMVER\` |"
           echo "| MajorMinorPatch | \`$MMP\` |"
           echo "| PreReleaseTag | \`$PRE_TAG\` |"
