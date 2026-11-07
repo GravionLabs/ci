@@ -1,10 +1,11 @@
 # Reusable workflow for pushes to a release branch (callers trigger it on push to `release/**`; this file has no triggers of its own).
 # One job, three steps in order:
 # 1. versioning/release-pr keeps the PR release/<x.y> -> default branch open and current (never merges).
-# 2. versioning/mark-merged-issues labels the open issues merged into the branch (label input) and, with project-status,
-#    sets that project Status (empty = off).
-# 3. project/needs syncs the project field Needs of the issues labelled in this run, with parents and dependents
+# 2. versioning/close-merged-issues closes the open issues merged into the branch (output closed). The inputs label and
+#    project-status are deprecated no-ops kept for one major: a caller that sets them gets a warning, not a failure.
+# 3. project/needs syncs the project field Needs of the issues closed in this run, with parents and dependents
 #    (input project-url; empty = off; skipped on a dry run, which prints what it would sync).
+# A caller may add workflow_dispatch (input dry-run) to run it once without a new push; a reverted PR: reopen its issues by hand.
 # Tokens: the release PR is created with an installation token of the GitHub App GravionLabs CI (secrets CI_APP_ID and
 # CI_APP_PRIVATE_KEY, minted with actions/create-github-app-token): a PR created with the GITHUB_TOKEN triggers no pull_request
 # workflows, so required checks would never run, and the app has its own rate limit. GH_PAT (classic PAT, scope repo) is the
@@ -13,8 +14,8 @@
 # calls (a GitHub App cannot access a user-owned project; the calls use the REST projectsV2 endpoints); it falls back to GH_PAT.
 # Secret names match issues.yml, so `secrets: inherit` works.
 # The actions are referenced at @v1, the moving major tag the release job of ci.yml moves to every release.
-# The Needs sync covers only the issues newly labelled in this run (decision): a failed sync is not retried by a rerun,
-# because those issues are then already labelled; the central nightly sync (project-needs.yml, mode project) catches up.
+# The Needs sync covers only the issues closed in this run (decision): a failed sync is not retried by a rerun,
+# because those issues are then already closed; the central nightly sync (project-needs.yml, mode project) catches up.
 # Never checks out caller code; event data reaches scripts through env only.
 name: Release branch
 
@@ -32,17 +33,17 @@ on:
         required: false
         default: ''
       label:
-        description: 'Label set on the issues merged into the release branch'
+        description: 'Deprecated no-op, kept for one major: a value only prints a warning'
         type: string
         required: false
-        default: merged
+        default: ''
       project-status:
-        description: 'Project Status set on the project items of the labelled issues; empty disables it'
+        description: 'Deprecated no-op, kept for one major: a value only prints a warning'
         type: string
         required: false
-        default: 'In release'
+        default: ''
       project-url:
-        description: 'Project URL for the Needs sync of the labelled issues; empty disables the sync'
+        description: 'Project URL for the Needs sync of the closed issues; empty disables the sync'
         type: string
         required: false
         default: ''
@@ -80,7 +81,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    # pushes to one release branch run one after the other (PR creation and labelling must not race); a running mark is never cancelled
+    # pushes to one release branch run one after the other (PR creation and closing must not race); a running close is never cancelled
     concurrency:
       group: release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}
       cancel-in-progress: false
@@ -124,30 +125,32 @@ jobs:
           token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
           dry-run: ${{ inputs.dry-run }}
 
-      - name: Mark merged issues
-        id: mark
-        uses: GravionLabs/ci/versioning/mark-merged-issues@v1
+      - name: Warn about deprecated inputs
+        if: inputs.label != '' || inputs.project-status != ''
+        shell: bash
+        run: echo "::warning::The inputs label and project-status of release-branch.yml are deprecated no-ops (issues are closed, not labelled); remove them."
+
+      - name: Close merged issues
+        id: close
+        uses: GravionLabs/ci/versioning/close-merged-issues@v1
         with:
           release-branch: ${{ inputs.release-branch }}
           base: ${{ inputs.base }}
-          label: ${{ inputs.label }}
           token: ${{ github.token }}
-          project-status: ${{ inputs.project-status }}
-          project-token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
           dry-run: ${{ inputs.dry-run }}
 
       - name: Needs sync (dry run)
         if: inputs.dry-run && inputs.project-url != ''
         shell: bash
         env:
-          LABELLED: ${{ steps.mark.outputs.labelled }}
-        # a dry run labels nothing, so the output is empty: say what a real run does
-        run: echo "would sync Needs of the issues newly labelled in a real run${LABELLED:+ ($LABELLED)}, with parents and dependents"
+          CLOSED: ${{ steps.close.outputs.closed }}
+        # a dry run closes nothing, so the output is empty: say what a real run does
+        run: echo "would sync Needs of the issues closed in a real run${CLOSED:+ ($CLOSED)}, with parents and dependents"
 
-      - name: Sync Needs of the labelled issues
-        if: '!inputs.dry-run && inputs.project-url != '''' && steps.mark.outputs.labelled != '''''
+      - name: Sync Needs of the closed issues
+        if: '!inputs.dry-run && inputs.project-url != '''' && steps.close.outputs.closed != '''''
         uses: GravionLabs/ci/project/needs@v1
         with:
           project-url: ${{ inputs.project-url }}
           token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
-          issues: ${{ steps.mark.outputs.labelled }}
+          issues: ${{ steps.close.outputs.closed }}

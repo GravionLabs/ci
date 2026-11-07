@@ -57,6 +57,7 @@ jobs:
         run: |
           bash tests/determine-version.test.sh
           bash tests/conventional-commits.test.sh
+          bash tests/release-channel.test.sh
 
   test-self-references:
     name: 'Test: self-references follow the major tag'
@@ -119,6 +120,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # read-only; warns and exits 0 when the branch does not exist (between releases)
         run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
+
+      - name: Smoke test close-merged-issues (dry run, no-op path)
+        uses: ./versioning/close-merged-issues
+        with:
+          # a branch compared with itself is 0 commits ahead -> "nothing to do"; between releases
+          # (release/next deleted) the compare fails, close.sh warns and exits 0
+          release-branch: release/next
+          base: release/next
+          dry-run: 'true'
+
+      - name: Smoke test close-merged-issues (dry run against a public release branch)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # read-only; warns and exits 0 when the branch does not exist (between releases)
+        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh
 
   actionlint:
     name: 'Lint: workflows (actionlint)'

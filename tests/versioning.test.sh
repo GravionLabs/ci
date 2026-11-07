@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Tests for versioning/mark-merged-issues/mark.sh and the label removal in
+# Tests for versioning/mark-merged-issues/mark.sh, versioning/close-merged-issues/close.sh and the label removal in
 # versioning/close-release-issues/close.sh against a fake gh (tests/stub/gh). Run: bash tests/versioning.test.sh
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MARK="$ROOT/versioning/mark-merged-issues/mark.sh"
 CLOSE="$ROOT/versioning/close-release-issues/close.sh"
+CLOSE_MERGED="$ROOT/versioning/close-merged-issues/close.sh"
 export PATH="$ROOT/tests/stub:$PATH" GITHUB_REPOSITORY=o/r
 failures=0 total=0
 
@@ -22,9 +23,10 @@ setup() {
 fix() { printf '%s\n' "$2" > "$GH_FIX/$1.json"; }
 # issue <n> <state> <labels csv> [pr]
 issue() {
-  local labels
+  local labels pr=""
   labels=$(jq -cn --arg l "$3" '$l | split(",") | map(select(. != "") | {name: .})')
-  fix "GET_repos_o_r_issues_$1" "{\"number\":$1,\"state\":\"$2\",\"labels\":$labels,\"repository_url\":\"https://api.github.com/repos/o/r\"${4:+,\"pull_request\":{}}}"
+  [ -z "${4:-}" ] || pr=',"pull_request":{}'
+  fix "GET_repos_o_r_issues_$1" "{\"number\":$1,\"state\":\"$2\",\"labels\":$labels,\"repository_url\":\"https://api.github.com/repos/o/r\"$pr}"
 }
 parent() { fix "GET_repos_o_r_issues_$1_parent" "{\"number\":$2,\"repository_url\":\"https://api.github.com/repos/${3:-o/r}\"}"; }
 subs() { fix "GET_repos_o_r_issues_$1_sub_issues" "$2"; }
@@ -193,7 +195,7 @@ proj 1 Board true
 run_mark
 [ "$code" = 0 ] && ok "exit 0 without project items" || fail "exit $code"
 hasnt "issue without project item not written" "-X PATCH" "$log"
-hasnt "no warning" "::warning::" "$out"
+hasnt "no warning besides the deprecation" "::warning::" "$(grep -v deprecated <<<"$out")"
 
 status_fixture
 proj 1 Board true; pitem 1 10 Todo "o/x"
@@ -334,6 +336,177 @@ close_fixture
 out=$(GITHUB_SHA=abc DRY_RUN=true bash "$CLOSE" 2>&1); log=$(cat "$GH_LOG")
 has "prints the removal" "would remove merged from #11" "$out"
 hasnt "no delete" "-X DELETE" "$log"
+
+echo "# close-merged: closes the issues with a closing keyword, never Refs, PRs or closed issues"
+# release/next is 4 commits ahead of main. PR #41 (merged after the branch left main): Fixes #12 (a PR), Resolves #14
+# (milestone, labelled merged), Refs #15. PR #42 (merged before): Closes #19. Commits: Closes #10 footer of the squash
+# commit of #40 (and Refs #11), Fixes #13 (already closed), #17 only in the subject, #18 only inline, Resolves #16 in a
+# commit without PR. Parents: #20 (feature) of #10 and #14 under the epic #30; #22 (pbi) of #16 with the open #23.
+milestone() { local f="$GH_FIX/GET_repos_o_r_issues_$1.json"; jq --arg t "$2" '.milestone = {title: $t}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; }
+sub() { printf '{"number":%s,"state":"%s","repository_url":"https://api.github.com/repos/%s"}' "$1" "$2" "${3:-o/r}"; }
+close_merged_fixture() {
+  setup
+  fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+  fix "GET_repos_o_r_compare_main...release_next" '{"ahead_by":4,
+    "merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},
+    "commits":[{"sha":"aaaaaaa111","commit":{"message":"feat: a (#40)\n\nCloses #10\n\nRefs #11"}},
+               {"sha":"bbbbbbb222","commit":{"message":"fix: b\n\nFixes #13"}},
+               {"sha":"ccccccc333","commit":{"message":"fix: #17 subject only\n\nmentions closes #18 inline"}},
+               {"sha":"ddddddd444","commit":{"message":"chore: c\n\nResolves #16"}}]}'
+  fix pr-list '[{"number":41,"body":"Fixes #12\nResolves #14\nRefs #15","mergedAt":"2026-02-01T00:00:00Z"},
+                {"number":42,"body":"Closes #19","mergedAt":"2025-12-01T00:00:00Z"}]'
+  issue 10 open pbi; issue 11 open pbi; issue 12 open "" pr; issue 13 closed pbi; issue 14 open pbi,merged
+  milestone 14 "M3 (1.2.0)"
+  issue 15 open pbi; issue 16 open task; issue 17 open pbi; issue 18 open pbi; issue 19 open pbi
+  parent 10 20; parent 14 20; issue 20 open feature
+  subs 20 "[$(sub 10 open),$(sub 14 open),$(sub 21 closed)]"
+  parent 20 30; issue 30 open epic; subs 30 "[$(sub 20 open)]"
+  parent 16 22; issue 22 open pbi; subs 22 "[$(sub 16 open),$(sub 23 open)]"
+}
+run_close_merged() {
+  local f; f=$(mktemp)
+  out=$(GITHUB_OUTPUT=$f RELEASE_BRANCH="${BRANCH:-release/next}" bash "$CLOSE_MERGED" 2>&1); code=$?
+  log=$(cat "$GH_LOG"); output=$(cat "$f")
+}
+close_merged_fixture; run_close_merged
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code: $out"
+has "closing references from PR bodies and commit footers" "Closing references: 10 12 13 14 16" "$out"
+has "closes #10 (Closes footer) as completed" "gh issue close 10 -R o/r --reason completed" "$log"
+has "closes #14 (Resolves in a PR body)" "gh issue close 14 -R o/r --reason completed" "$log"
+has "closes #16 (Resolves footer of a commit without PR)" "gh issue close 16 -R o/r --reason completed" "$log"
+has "comment names the PR of the squash commit, no milestone" 'repos/o/r/issues/10/comments --silent -f body=Merged into `release/next` in #40, ships with the next release.' "$log"
+has "comment names the PR and the milestone" 'repos/o/r/issues/14/comments --silent -f body=Merged into `release/next` in #41, ships with M3 (1.2.0).' "$log"
+has "comment names the commit without PR" 'repos/o/r/issues/16/comments --silent -f body=Merged into `release/next` in ddddddd, ships with the next release.' "$log"
+count_is "one comment on #10" "issues/10/comments" 1 "$log"
+has "removes the label merged from #14" "gh api -X DELETE repos/o/r/issues/14/labels/merged" "$log"
+hasnt "no label removal where absent" "issues/10/labels" "$log"
+hasnt "Refs #11 never closes" "issues/11/comments" "$log"
+hasnt "Refs #15 in a PR body never closes" "close 15" "$log"
+hasnt "PR #12 skipped" "close 12" "$log"
+has "PR #12 reported" "#12 is a pull request; skipped." "$out"
+hasnt "closed #13 skipped" "close 13" "$log"
+hasnt "keyword in the commit subject ignored" "close 17" "$log"
+hasnt "inline keyword in a commit body ignored" "close 18" "$log"
+hasnt "PR merged before the branch left main ignored" "issues/19" "$log"
+has "closes the feature #20 once its sub-issues are closed" "gh issue close 20 -R o/r --reason completed" "$log"
+has "parent comment" 'repos/o/r/issues/20/comments --silent -f body=Merged into `release/next` in #41' "$log"
+hasnt "epic #30 never closed" "close 30" "$log"
+hasnt "pbi #22 with an open sub-issue stays open" "close 22" "$log"
+[ "$output" = "closed=10 14 16 20" ] && ok "output closed=10 14 16 20" || fail "output: $output"
+
+echo "# close-merged: idempotent rerun"
+close_merged_fixture
+issue 10 closed pbi; issue 14 closed pbi; issue 16 closed task; issue 20 closed feature
+run_close_merged
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code"
+hasnt "closes nothing" "issue close" "$log"
+hasnt "comments nothing" "-X POST" "$log"
+hasnt "removes nothing" "-X DELETE" "$log"
+[ "$output" = "closed=" ] && ok "output closed empty" || fail "output: $output"
+
+echo "# close-merged: issues labelled merged before (first run) are closed and unlabelled"
+close_merged_fixture; issue 10 open pbi,merged; run_close_merged
+has "closes the labelled #10" "gh issue close 10" "$log"
+has "unlabels #10" "-X DELETE repos/o/r/issues/10/labels/merged" "$log"
+
+echo "# close-merged: parents"
+close_merged_fixture; subs 20 "[$(sub 10 open),$(sub 14 open),$(sub 24 open)]"; run_close_merged
+hasnt "parent with another open sub-issue stays open" "close 20" "$log"
+close_merged_fixture; subs 20 "[$(sub 10 open),$(sub 14 open),$(sub 10 open o/x)]"; run_close_merged
+hasnt "open sub-issue of another repository blocks the parent" "close 20" "$log"
+close_merged_fixture; parent 10 20 other/repo; parent 14 20 other/repo; run_close_merged
+hasnt "parent in another repository skipped" "close 20" "$log"
+close_merged_fixture; issue 20 open ""; run_close_merged
+hasnt "parent without pbi/feature label skipped" "close 20" "$log"
+close_merged_fixture; issue 30 open feature; run_close_merged
+has "closing repeats upwards to a complete feature" "gh issue close 30" "$log"
+close_merged_fixture; touch "$GH_FIX/GET_repos_o_r_issues_20_sub_issues.fail"; run_close_merged
+[ "$code" = 0 ] && ok "sub-issue read failure exits 0" || fail "exit $code"
+hasnt "sub-issue read failure leaves the parent open" "close 20" "$log"
+
+echo "# close-merged: dry run prints only"
+close_merged_fixture; DRY_RUN=true run_close_merged
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code"
+has "prints would close #10 with the comment" 'would close #10: Merged into `release/next` in #40, ships with the next release.' "$out"
+has "prints would close the parent #20" "would close #20" "$out"
+has "prints the label removal" "would remove merged from #14" "$out"
+hasnt "no epic" "would close #30" "$out"
+hasnt "no close" "issue close" "$log"
+hasnt "no comment" "-X POST" "$log"
+hasnt "no label removal" "-X DELETE" "$log"
+[ "$output" = "closed=" ] && ok "dry run: output closed empty" || fail "output: $output"
+
+echo "# close-merged: custom base, no-op branches"
+close_merged_fixture
+fix "GET_repos_o_r_compare_dev...release_next" "$(cat "$GH_FIX/GET_repos_o_r_compare_main...release_next.json")"
+out=$(RELEASE_BRANCH=release/next BASE=dev bash "$CLOSE_MERGED" 2>&1); log=$(cat "$GH_LOG")
+has "compares with the given base" "compare/dev...release/next" "$log"
+hasnt "default branch not queried" "repo view" "$log"
+close_merged_fixture; BRANCH=main run_close_merged
+[ "$code" = 0 ] && ok "not a release branch: exit 0" || fail "exit $code"
+has "not a release branch: nothing to do" "not a release/* branch" "$out"
+[ -z "$log" ] && ok "not a release branch: no gh call" || fail "gh called: $log"
+[ "$output" = "closed=" ] && ok "not a release branch: output closed empty" || fail "output: $output"
+close_merged_fixture
+fix "GET_repos_o_r_compare_main...release_next" '{"ahead_by":0,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},"commits":[]}'
+run_close_merged
+has "not ahead: nothing to do" "no commits ahead" "$out"
+hasnt "not ahead: no close" "issue close" "$log"
+
+echo "# close-merged: missing permissions warn and exit 0"
+close_merged_fixture; touch "$GH_FIX/repo-view-o_r.fail"; run_close_merged
+[ "$code" = 0 ] && ok "repo view failure exits 0" || fail "exit $code"
+has "repo view failure warns" "::warning::Cannot read the default branch" "$out"
+close_merged_fixture; touch "$GH_FIX/GET_repos_o_r_compare_main...release_next.fail"; run_close_merged
+[ "$code" = 0 ] && ok "compare failure exits 0" || fail "exit $code"
+has "compare failure warns" "::warning::Cannot compare main...release/next" "$out"
+close_merged_fixture; touch "$GH_FIX/pr-list.fail"; run_close_merged
+[ "$code" = 0 ] && ok "pr list failure exits 0" || fail "exit $code"
+has "pr list failure warns" "::warning::Cannot list the pull requests" "$out"
+hasnt "pr list failure closes nothing" "issue close" "$log"
+close_merged_fixture; touch "$GH_FIX/issue-close-10.fail"; run_close_merged
+[ "$code" = 0 ] && ok "close failure exits 0" || fail "exit $code"
+has "close failure warns" "::warning::Cannot close #10" "$out"
+hasnt "no comment without a close" "issues/10/comments" "$log"
+[ "$output" = "closed=" ] && ok "close failure: output closed empty" || fail "output: $output"
+close_merged_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_comments.fail"; run_close_merged
+[ "$code" = 0 ] && ok "comment failure exits 0" || fail "exit $code"
+has "comment failure warns" "::warning::Cannot comment on #10." "$out"
+has "continues after a comment failure" "gh issue close 14" "$log"
+close_merged_fixture; touch "$GH_FIX/GET_repos_o_r_issues_10.fail"; run_close_merged
+has "unreadable issue skipped" "#10 cannot be read; skipped." "$out"
+hasnt "unreadable issue not closed" "close 10" "$log"
+
+echo "# close-release-issues (safety net): leftovers of the release PR, one still open and one already closed"
+setup
+fix GET_repos_o_r_commits_abc_pulls '[{"number":50,"head":{"ref":"release/1.0"}}]'
+fix pr-view-50 '{"headRefName":"release/1.0","body":"Closes #12\nFixes #13"}'
+fix pr-list '[]'
+issue 12 open pbi,merged; issue 13 closed pbi,merged
+out=$(GITHUB_SHA=abc VERSION=1.0.0 bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "leftover: exit 0" || fail "leftover: exit $code: $out"
+has "leftover: closes the open #12" "gh issue close 12 -R o/r --reason completed --comment Shipped in v1.0.0 (release PR #50)." "$log"
+has "leftover: removes the merged label of #12" "gh api -X DELETE repos/o/r/issues/12/labels/merged" "$log"
+hasnt "leftover: does not close the already closed #13" "gh issue close 13" "$log"
+has "leftover: removes the merged label of the closed #13" "gh api -X DELETE repos/o/r/issues/13/labels/merged" "$log"
+
+echo "# close-release-issues (safety net): rerun after the leftovers are closed changes nothing"
+setup
+fix GET_repos_o_r_commits_abc_pulls '[{"number":50,"head":{"ref":"release/1.0"}}]'
+fix pr-view-50 '{"headRefName":"release/1.0","body":"Closes #12"}'
+fix pr-list '[]'
+issue 12 closed pbi
+out=$(GITHUB_SHA=abc VERSION=1.0.0 bash "$CLOSE" 2>&1); code=$?; log=$(cat "$GH_LOG")
+[ "$code" = 0 ] && ok "rerun: exit 0" || fail "rerun: exit $code: $out"
+hasnt "rerun: closes nothing" "gh issue close" "$log"
+
+echo "# mark-merged-issues: deprecation warning"
+mark_fixture; run_mark
+has "deprecation warning when used" "::warning::versioning/mark-merged-issues is deprecated" "$out"
+has "deprecation warning names the replacement" "close-merged-issues" "$out"
+setup
+out=$(RELEASE_BRANCH=feature/x bash "$MARK" 2>&1)
+has "deprecation warning also on a no-op run" "::warning::versioning/mark-merged-issues is deprecated" "$out"
 
 echo "# release-pr: recreated branch without commits ahead opens no PR"
 RELEASE_PR="$ROOT/versioning/release-pr/release-pr.sh"

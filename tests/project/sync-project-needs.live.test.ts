@@ -42,6 +42,7 @@ const HANDLER = `(call, ctx) => {
   const list = (all) => slurp ? Array.from({ length: Math.max(1, Math.ceil(all.length / 100)) }, (_, i) => all.slice(i * 100, i * 100 + 100)) : all;
   const key = (p, re) => { const m = p.match(re); return m[1] + '#' + m[2]; };
   if (call.args.includes('PATCH')) {
+    if (d.archivedItem && call.args.some((a) => a.endsWith('/items/' + d.archivedItem))) throw new Error('HTTP 422: The item is archived and cannot be updated');
     if (d.failMutation && ctx.count('mut') <= d.failMutation) throw new Error('secondary rate limit');
     return { rest: {} };
   }
@@ -545,7 +546,9 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       content: { issue_dependencies_summary: { blocked_by: n, total_blocked_by: n, blocking: 0, total_blocking: 0 } },
     });
 
-    it('resolves blockers from the labels of the blocker and the Status of items already read', async () => {
+    // #182: a blocker blocks while open; the Status of its item plays no part. An open blocker with the label merged
+    // counts as resolved during the migration.
+    it('resolves blockers from their state and the label merged, never from the Status of their item', async () => {
       const items = [
         restItem(30, null),
         restItem(31, null, { status: 'In release' }),
@@ -564,12 +567,12 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       });
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#21: (none) -> Ready');
-      expect(r.stdout).toContain('#22: (none) -> Ready');
+      expect(r.stdout).toContain('#22: (none) -> Blocked');
       expect(r.stdout).toContain('#23: (none) -> Blocked');
       expect(itemCalls).toHaveLength(1);
     });
 
-    it('reads the items of a blocker repository once, only when a blocker needs its Status', async () => {
+    it('never reads the items of a blocker repository outside the scope', async () => {
       const items = [
         restItem(1, null, { repo: 'o/other' }),
         restItem(2, null, { repo: 'o/other', status: 'In release' }),
@@ -591,11 +594,11 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       );
       expect(r.status).toBe(0);
       expect(r.stdout).toContain('#41: (none) -> Ready');
-      expect(r.stdout).toContain('#42: (none) -> Ready');
+      expect(r.stdout).toContain('#42: (none) -> Blocked');
       expect(r.stdout).toContain('#43: (none) -> Blocked');
       expect(r.stdout).toContain('#44: (none) -> Blocked');
       expect(r.stdout).toContain('#45: (none) -> Ready');
-      expect(itemCalls.map((c) => restPath(c).match(/q=repo:(\S+)/)![1])).toEqual(['o/r', 'o/other']);
+      expect(itemCalls.map((c) => restPath(c).match(/q=repo:(\S+)/)![1])).toEqual(['o/r']);
     });
 
     it('takes sub-issue levels from title, type or the Level of items already read', async () => {
@@ -642,6 +645,21 @@ describe.skipIf(!hasPwsh || !hasNode || process.platform === 'win32')(
       expect(r.status).toBe(0);
       expect(mutations).toHaveLength(3);
       expect(r.stdout).toContain('Needs: 1 changed, 0 unchanged');
+    });
+
+    it('skips an item archived before the write: warning, no retry, the others are written, exit 0', async () => {
+      const { r, mutations } = await run({ items: [restItem(1, null), restItem(2, null)], archivedItem: 1 });
+      expect(r.status).toBe(0);
+      expect(mutations.map(itemNr)).toEqual([1, 2]);
+      expect(r.stdout).toContain('skipped (archived): 1');
+      expect(r.stderr + r.stdout).toContain('is archived and cannot be updated; skipped.');
+    });
+
+    it('does not plan an item that is archived at the read (archived_at set)', async () => {
+      const { r, mutations } = await run({ items: [{ ...restItem(1, null), archived_at: '2026-01-01T00:00:00Z' }, restItem(2, null)] });
+      expect(r.status).toBe(0);
+      expect(mutations.map(itemNr)).toEqual([2]);
+      expect(r.stdout).toContain('skipped (archived): 1');
     });
 
     it('exits 1 with one line after 4 failed tries', async () => {

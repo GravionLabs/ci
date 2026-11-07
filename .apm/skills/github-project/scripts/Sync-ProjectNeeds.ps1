@@ -9,11 +9,11 @@
      None found: prints 'Needs sync skipped: no project configured' and exits 0.
   2. A pure function (Get-NeedsValue) computes the value per item, first match wins:
        closed -> clear; label needs-decision -> Decision; label needs-review -> Review; open blocked-by -> Blocked;
-       label merged or Status 'In release' -> Release review; open PR whose head ref matches (^|/)<nr>- or Status 'In Progress' -> In progress;
+       open PR whose head ref matches (^|/)<nr>- or Status 'In Progress' -> In progress;
        Epic without Feature, Feature without PBI, PBI without Task sub-issues and without label planned -> Planning;
        else Ready for PBI-level items (PBI, Bug, Task, unknown level) and clear for Epics and Features.
   3. Status reset (state with statusField, i.e. the project has a Status field): an open issue with Status 'In Progress', no open PR whose head
-     ref matches (^|/)<nr>- (or linked) and without the label merged goes back to Todo; a closed issue with Status 'In Progress' goes to Done
+     ref matches (^|/)<nr>- (or linked) goes back to Todo; a closed issue with Status 'In Progress' goes to Done
      (actions carry field = 'Status'; -DryRun lists them; Needs is computed from the new Status). An issue with such a PR keeps 'In Progress'.
      The run also reports open issues without Level per repository ('Without Level: <repo>: <n> open'; JSON key noLevel) and, when the whole
      project is in scope, warns about repositories of the owner with open issues but no item in the project (JSON key unlinked); no failure.
@@ -22,8 +22,8 @@
   (Status, Level, Needs, Parent issue, Linked pull requests; paginated by gh --paginate --slurp), then per open item in scope only what its
   summaries announce: /issues/<n>/sub_issues, /dependencies/blocked_by, /dependencies/blocking (-IncludeDependents), /issues/<n> (issue type of a
   legacy issue without Level and title prefix), and /pulls?state=open per repository. The issue type is not part of a project item; sub-issue levels
-  come from the sub-issue's type / title prefix or the Level of items already read. A blocker blocks while open and not merged: its labels come from
-  the blocker, its Status from the items of its repository (read only when needed).
+  come from the sub-issue's type / title prefix or the Level of items already read. A blocker blocks while open (Test-BlockerUnresolved of
+  NeedsRules.psm1; its labels come from the blocker itself, no project read).
   Live mode (no -StateFile): with -Repo only that repository's items are read (q=repo:), with -Issue only the repositories of the listed issues
   (plus parents / dependents), then applies one REST update (PATCH .../projectsV2/<n>/items/<id>, value null for a clear) per changed
   item, 4 tries with backoff (15 s * try, env SYNC_PROJECT_NEEDS_BACKOFF overrides the 15). Prints '#<nr>: <from> -> <to>'
@@ -154,15 +154,14 @@ function Get-NeedsPlan {
     $from = Get-Prop $it 'needs'
     if ($from -eq '') { $from = $null }
     # Status reset (only when the state has statusField): a stale 'In Progress' goes back to Todo (open issue without open PR head
-    # matching (^|/)<nr>- and without label merged) or to Done (closed issue); Needs is then computed from the new Status.
+    # matching (^|/)<nr>-) or to Done (closed issue); Needs is then computed from the new Status.
     $view = $it
     $statusTo = $null
     if ($hasStatus -and "$(Get-Prop $it 'status')" -eq 'In Progress') {
       $nr = [int]$it.number
-      $labels = @(@(Get-Prop $it 'labels') | Where-Object { $_ } | ForEach-Object { "$_".ToLowerInvariant() })
       $hasPr = @(@(Get-Prop $it 'prHeads') | Where-Object { $_ -and "$_" -match "(^|/)$nr-" }).Count -gt 0
       if ("$($it.state)" -eq 'CLOSED') { $statusTo = 'Done' }
-      elseif (-not $hasPr -and $labels -notcontains 'merged') { $statusTo = 'Todo' }
+      elseif (-not $hasPr) { $statusTo = 'Todo' }
     }
     if ($statusTo) {
       $actions.Add([ordered]@{ issue = $id; item = Get-Prop $it 'itemId'; field = 'Status'; from = 'In Progress'; to = $statusTo })
@@ -275,6 +274,7 @@ function Read-ProjectItems($Ctx, $FieldIds, [string]$Repo) {
   $query = 'per_page=100' + (@($FieldIds.PSObject.Properties.Value | Where-Object { $_ } | ForEach-Object { "&fields[]=$_" }) -join '') + $(if ($Repo) { "&q=repo:$Repo" } else { '' })
   foreach ($it in @(Invoke-GhList "$($Ctx.seg)/$($Ctx.owner)/projectsV2/$($Ctx.number)/items?$query")) {
     if ((Get-Prop $it 'content_type') -ne 'Issue') { continue }
+    if (Get-Prop $it 'archived_at') { $script:ArchivedSkipped++; continue }  # archived at the read: never planned
     $r = Get-ContentRepo $it.content
     if ($Repo -and $r -ne $Repo) { continue }
     $script:Seen["$r#$($it.content.number)"] = $it
@@ -291,14 +291,6 @@ function Get-LevelOf($ItemLevel, $IssueType, [string]$Title) {
 }
 
 function Get-LabelNames($Labels) { @(@($Labels) | Where-Object { $_ } | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.name } }) }
-
-# Labels and Status of an issue that is (or may be) an item of the project; reads that repository's items when needed.
-function Get-KnownInfo($Ctx, $FieldIds, [string]$Key) {
-  if (-not $script:Seen.Contains($Key)) { Read-ProjectItems $Ctx $FieldIds ($Key -replace '#\d+$', '') }
-  $it = $script:Seen[$Key]
-  if (-not $it) { return $null }
-  @{ labels = @(Get-LabelNames $it.content.labels); status = (Get-SelectValue $it $FieldIds.status) }
-}
 
 # REST project item (+ the lists fetched for it) -> state item. prHeads are filled by the caller.
 function ConvertTo-NeedsItem($Ctx, $FieldIds, $Item) {
@@ -325,18 +317,11 @@ function ConvertTo-NeedsItem($Ctx, $FieldIds, $Item) {
         if ($lv) { $subs.Add($lv) }
       }
     }
-    # a blocker blocks only while open and not merged (label merged or Status In release in this project)
+    # a blocker blocks while open (Test-BlockerUnresolved); its project item is not read
     $dep = Get-Prop $c 'issue_dependencies_summary'
     if (-not $dep -or [int](Get-Prop $dep 'blocked_by') -gt 0) {
       foreach ($b in @(Invoke-GhList "repos/$repo/issues/$nr/dependencies/blocked_by?per_page=100")) {
-        $br = Get-RepoOfUrl (Get-Prop $b 'repository_url')
-        $labels = @(Get-LabelNames (Get-Prop $b 'labels'))
-        $status = $null
-        if ("$($b.state)".ToUpperInvariant() -eq 'OPEN' -and @($labels | ForEach-Object { "$_".ToLowerInvariant() }) -notcontains 'merged') {
-          $info = Get-KnownInfo $Ctx $FieldIds "$(if ($br) { $br } else { $repo })#$($b.number)"
-          if ($info) { $status = $info.status; $labels = @($labels) + @($info.labels) }
-        }
-        if (Test-BlockerUnresolved ([pscustomobject]@{ state = $b.state; labels = $labels; status = $status })) { $blocked++ }
+        if (Test-BlockerUnresolved ([pscustomobject]@{ state = $b.state; labels = @(Get-LabelNames (Get-Prop $b 'labels')) })) { $blocked++ }
       }
     }
     # a linked open PR counts as work in progress whatever its branch is called
@@ -479,6 +464,7 @@ function Set-ProjectItemField([string]$OwnerKind, [string]$Owner, [int]$Number, 
     -Body @{ fields = @(@{ id = [long]$FieldDatabaseId; value = $Value }) } | Out-Null
 }
 
+$script:ArchivedSkipped = 0
 function Set-NeedsValue($State, $Action) {
   $fname = if ($Action.Contains('field')) { "$($Action.field)" } else { 'Needs' }
   $field = switch ($fname) { 'Current' { $State.currentField } 'Status' { $State.statusField } default { $State.needsField } }
@@ -493,6 +479,12 @@ function Set-NeedsValue($State, $Action) {
   $backoff = [double]($env:SYNC_PROJECT_NEEDS_BACKOFF ?? 15)
   foreach ($try in 1..4) {
     try { Set-ProjectItemField (Get-Prop $State 'ownerKind') $State.owner $State.number $itemDb $field.databaseId $opt; return } catch {
+      # Permanent: an item archived between the read and the write (auto-archive). Skip, no retry.
+      if ("$_" -match 'item is archived|archived and cannot') {
+        $script:ArchivedSkipped++
+        Write-Warning "$($Action.issue) is archived and cannot be updated; skipped."
+        return
+      }
       if ($try -eq 4) { throw "$fname update failed for $($Action.issue): $_" }
       Start-Sleep -Seconds ($backoff * $try)
     }
@@ -575,6 +567,7 @@ if ($live) {
       if (-not $DryRun) { Set-NeedsValue $state $a }
     }
   } catch { Write-Output "Needs sync failed: $_"; exit 1 }
+  if (-not $Json -and -not $DryRun) { Write-Output "skipped (archived): $($script:ArchivedSkipped)" }
   if (-not $Json) { Write-Output ("Needs: {0} {1}, {2} unchanged{3}" -f @($plan.actions).Count, $(if ($DryRun) { 'to change' } else { 'changed' }), ($inScope - @($plan.actions).Count), $(if ($DryRun) { ' (dry run)' } else { '' })) }
   if (-not $Json) { Write-ScopeReport $plan }
   exit 0

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Safety net: close-merged-issues closes the issues at merge; this closes what is still open after the release
+# (e.g. an issue referenced only in the release PR) and removes a leftover merged label. Idempotent.
 # Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA; optional VERSION, LABEL (default merged), DRY_RUN=true, ASSUME_OPEN=true
 # (ASSUME_OPEN treats every referenced issue as open; use it with DRY_RUN to test against a finished release).
 set -euo pipefail

@@ -6,7 +6,7 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 
 | Field | Values | Meaning |
 |:--|:--|:--|
-| Status | `Todo`, `In progress`, `In release`, `Done` | `In release` (BLUE) sits before `Done` and mirrors the label `merged`: merged into `release/next`, ships with the next release. |
+| Status | `Todo`, `In progress`, `Done` | Issues close when their pull request is merged into a release branch (`release-branch.yml` of GravionLabs/ci, `versioning/close-merged-issues`), so there is no Status between `In Progress` and `Done`; the built-in workflow "Item closed" sets `Done`. `-RemoveInReleaseStatus` drops the `In release` of the old standard (items: closed to `Done`, open to `Todo`; dry run first). |
 | Level | Epic, Feature, PBI, Task, Bug | Hierarchy level. `-Sync` fills an empty Level from the labels, fallback the title prefix. |
 | Current | `Yes` (GREEN) | Marks the items of the current milestone of their repository. Created when missing; `Sync-ProjectNeeds.ps1` sets it (view `Current milestone` filters `current:Yes`). |
 | Needs | see below | What the item waits for. Created when missing; an existing field keeps its options and ids and only gets missing options appended. |
@@ -21,24 +21,23 @@ One reproducible GitHub Project (v2) layout for all GravionLabs repositories. `p
 | Blocked | RED | Cannot proceed; the loop skips it. |
 | Ready | GREEN | Planned and unblocked: the loop may pick it up. |
 | In progress | PURPLE | A runner or person is working on it. |
-| Release review | PINK | The release content waits for an owner review. Owner action. |
+| Release review | PINK | The release content waits for an owner review. Owner action. No rule sets it any more (#182); kept so existing fields and the view `Needs me` stay valid. |
 
 `-Sync` also runs `Sync-ProjectNeeds.ps1`, which sets Needs of every open item. Rule order, first match wins:
 
 1. Closed: Needs is cleared.
 2. Label `needs-decision`: Decision.
 3. Label `needs-review`: Review.
-4. Open native blocked-by link: Blocked.
-5. Label `merged` or Status `In release`: Release review.
-6. Open pull request for the issue or Status `In Progress`: In progress.
-7. Epic without Feature, Feature without PBI, PBI without Task and without label `planned`: Planning.
-8. Otherwise Ready (Epics and Features: cleared).
+4. Blocked-by link to an open blocker: Blocked (a closed blocker is resolved; during the migration an open blocker that still carries the label `merged` counts as resolved too).
+5. Open pull request for the issue or Status `In Progress`: In progress.
+6. Epic without Feature, Feature without PBI, PBI without Task and without label `planned`: Planning.
+7. Otherwise Ready (Epics and Features: cleared).
 
-The sync also resets a stale Status `In Progress` (open issue without open pull request head `(^|/)<nr>-` and without label `merged`: Todo; closed issue: Done), reports open issues without Level per repository and warns about repositories with open issues that are not in the project; none of these fails the run.
+The sync also resets a stale Status `In Progress` (open issue without open pull request head `(^|/)<nr>-`: Todo; closed issue: Done), reports open issues without Level per repository and warns about repositories with open issues that are not in the project; none of these fails the run.
 
 The project comes from `-Owner`/`-Number`, else `.agents/project.json` (`{"owner": "...", "number": 17}`), else `project-url:` in `.github/workflows/add-to-project.yml`, else in the first other `.github/workflows/*.yml|yaml` (name order) that has one, e.g. `issue-events.yml`. A failing Needs sync prints one warning; the run still exits 0.
 
-`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs and Current on label, close, milestoned, demilestoned and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it sets to `In release`; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
+`issue-events.yml` (reusable `issues.yml` of GravionLabs/ci) adds new issues to the project and syncs Needs and Current on label, close, milestoned, demilestoned and pull request events and `release-branch.yml` (reusable `release-branch.yml`) syncs the issues it closes; `project-needs.yml` of GravionLabs/ci is the central nightly sync of every item of the project, across all repositories (reusable `issues.yml`, mode `project`, 03:17 UTC).
 
 ### Needs sync in other repositories
 
@@ -56,7 +55,7 @@ Views are matched by name. Missing ones are created, existing ones are never tou
 |:--|:--|:--|:--|:--|
 | Hierarchy | table | `is:open` | none | Epic to Task tree of everything open. |
 | Board | board | `-label:epic,feature -status:Done` | columns: Status | Day-to-day board. |
-| Backlog | table | `is:open -status:"In release" -label:epic,feature` | rows: Parent issue | Open work not yet merged. |
+| Backlog | table | `is:open -label:epic,feature` | rows: Parent issue | Open work not yet merged. |
 | Recently closed | table | `is:closed` | none | Audit trail. |
 | Milestones | table | `has:milestone -level:Epic,Task` | rows: Milestone | Items per milestone, open and closed. |
 | Current milestone | board | `current:Yes -level:Epic,Task` | columns: Status, rows: Repository | Done versus all items of the current milestone per repository. |
@@ -74,6 +73,7 @@ The script prints them; the API cannot do them:
 - Recently closed: sort by Closed, descending.
 - Milestones: sort by Milestone, ascending.
 - Project Workflows: enable "Auto-archive items" with `is:closed updated:<@today-14d` (keeps the project small; Milestones shows closed items until archived).
+- Archived items cannot be edited: `Set-ProjectStandard.ps1` does not plan them, and one archived between read and write is skipped with a warning (no retry); `Sync-ProjectNeeds.ps1` skips it the same way. Both end with `skipped (archived): <n>`.
 - Project Workflows: enable "Item closed" to Status `Done`.
 
 ## Labels
@@ -82,9 +82,8 @@ The script prints them; the API cannot do them:
 |:--|:--|:--|:--|
 | `planned` | `0E8A16` | Task breakdown published or single-task plan approved | `issue-planning` (`references/publish.md` § 5) on the PBI when Tasks are published or a single-task plan is approved. Nothing removes it. |
 | `needs-review` | `FBCA04` | Waiting for an owner review | Set by hand or by a skill when an item waits for review. |
-| `merged` | n/a | Merged into a release branch | CI (`mark-merged-issues`); removed by `close-release-issues` on release. |
 
-With `-Sync` the script ensures `planned` and `needs-review` (colour and description as above) in every repository linked to the project via `gh label create --force`. `merged` is managed by CI and the release skill, not by this script.
+With `-Sync` the script ensures `planned` and `needs-review` (colour and description as above) in every repository linked to the project via `gh label create --force`. The label `merged` left the standard (#182): issues close on merge into a release branch. Until no open issue carries it any more, an open blocker with `merged` counts as resolved.
 
 ## Versioning and merge methods
 

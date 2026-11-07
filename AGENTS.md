@@ -15,6 +15,7 @@ versioning/
   release-pr/           — Keeps one PR from release/<x.y> to the default branch open and current (title, merged PRs, Closes lines); never merges
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)
+  close-merged-issues/  — On every push to release/*, closes the open issues merged into it as completed with one comment `Merged into <branch> in #<pr>, ships with <milestone>` (Closes/Fixes/Resolves #n in merged PRs and commit footers, never Refs; complete pbi/feature parents, never epics; removes `merged`; output `closed`)
 
 pr-checks/
   readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
@@ -76,7 +77,7 @@ scripts/
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
   project-needs.yml     — Central nightly Needs sync of every item of the project, all repositories (cron `17 3 * * *` + workflow_dispatch, issues.yml with `needs: true`, `mode: project`)
-  release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → mark-merged-issues (`labelled` output) → project/needs for the labelled issues (inputs incl. `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
+  release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → close-merged-issues (`closed` output) → project/needs for the closed issues (inputs incl. deprecated `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
   deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
 ```
@@ -265,8 +266,8 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 |---|---|---|---|
 | `release-branch` | No | `""` | Release branch; empty = the triggering ref |
 | `base` | No | `""` | Base branch of the release PR; empty = repository default branch |
-| `label` | No | `merged` | Label for issues merged into the release branch |
-| `project-status` | No | `In release` | Project Status of the labelled issues; empty disables it |
+| `label` | No | `""` | Deprecated no-op (warning when set) |
+| `project-status` | No | `""` | Deprecated no-op (warning when set) |
 | `project-url` | No | `""` | Project URL for the Needs sync; empty disables the sync |
 | `require-pat` | No | `false` | Fail instead of warning when neither the app secrets nor `GH_PAT` are set |
 | `dry-run` | No | `false` | Print what would change |
@@ -282,7 +283,8 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 ### Behavior
 
 - One job, no checkout, top-level `permissions: {}`; the calling job must grant `contents: read`, `issues: write`, `pull-requests: write`. `secrets: inherit` works.
-- Steps: mint the app token, check app/`GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/mark-merged-issues` (output `labelled` = issues newly labelled in this run), then `project/needs` with `issues: <labelled>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without labelled issues and on `dry-run` (which only prints that it would sync, since a dry run labels nothing). Only newly labelled issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
+- Steps: mint the app token, check app/`GH_PAT` (warning, or failure with `require-pat`), `versioning/release-pr`, `versioning/close-merged-issues` (output `closed` = issues closed in this run; `label` and `project-status` are deprecated no-ops with a warning), then `project/needs` with `issues: <closed>` (the issues plus parents and dependents). The Needs sync is skipped without `project-url`, without closed issues and on `dry-run` (which only prints that it would sync, since a dry run closes nothing). Only newly closed issues are synced; a failed sync is not retried by a rerun. Runs of one release branch are serialized (`concurrency`, no cancel).
+- A caller can add `workflow_dispatch` with `dry-run` for a one-time run (`gh workflow run release-branch.yml --ref release/next -f dry-run=true`, then without); a reverted PR: reopen its issues by hand.
 - Actions are referenced at `@v1`, the moving major tag (see "Releasing ci").
 - Test: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints it.
 
@@ -373,6 +375,13 @@ jobs:
 Output `labelled`: space-separated numbers of the issues newly labelled in the run. The reusable workflow `release-branch.yml` wraps this action with `release-pr` and a Needs sync.
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true [PROJECT_STATUS='In release' PROJECT_TOKEN=<pat>] bash versioning/mark-merged-issues/mark.sh` (`GH_TOKEN` set). Unit tests for both scripts against a fake `gh`: `bash tests/versioning.test.sh`.
+
+### `versioning/close-merged-issues`
+
+Run it on every push to `release/**`: it closes (`--reason completed`) every open issue referenced by `Closes|Fixes|Resolves #n` in the PRs merged into the branch since it left the base and in the footer lines (not the subject) of the commit messages of `base...branch`; `Refs #n` never closes (partial deliveries use it with `## Not delivered`). Pull requests and closed issues are skipped. Each closed issue gets one comment ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (no milestone: `the next release`; a commit without `(#n)` in its subject is named by its short SHA). Parents labeled `pbi` or `feature` (same repository) whose sub-issues are all closed are closed too, repeating upwards; `epic` never; an open sub-issue in another repository blocks. The label `merged` is removed from the issues it closes. The comment is posted only after the close succeeded, so a rerun closes and comments nothing. Missing permissions only warn (exit 0).
+Inputs: `release-branch` (default: the triggering ref), `base` (default: repository default branch), `token`, `dry-run` (prints `would close #n: <comment>`). Output `closed`: space-separated issues closed in the run (empty on a dry run). Needs `contents: read`, `issues: write`, `pull-requests: read`.
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests in `bash tests/versioning.test.sh`.
 
 ### `versioning/create-version-tag`
 

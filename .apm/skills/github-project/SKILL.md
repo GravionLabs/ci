@@ -1,6 +1,6 @@
 ---
 name: github-project
-description: 'Bring a GitHub Project (v2) to the standard (In release, Level, Needs, Current, nine views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
+description: 'Bring a GitHub Project (v2) to the standard (Level, Needs, Current, nine views), sync labels, or create one from the template. Use for "/github-project apply|sync|new".'
 disable-model-invocation: true
 metadata:
   opencode/autoinvoke: 'false'
@@ -16,8 +16,8 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 
 | Invocation | Does |
 |:--|:--|
-| `apply <project-nr>` | Status gets `In release` before `Done`; fields `Level`, `Needs` and `Current`; the five standard views plus `Current milestone`, `Needs me`, `Ready for loop`, `Blocked` (nine views). |
-| `sync <project-nr>` | `apply` plus item sync (Level, `merged` ⇄ `In release`) and the labels `planned`, `needs-review` in the repositories linked to the project. |
+| `apply <project-nr>` | Fields `Level`, `Needs` and `Current`; the five standard views plus `Current milestone`, `Needs me`, `Ready for loop`, `Blocked` (nine views). |
+| `sync <project-nr>` | `apply` plus item sync (Level) and the labels `planned`, `needs-review` in the repositories linked to the project. |
 | `new <repo>` | Copy the template project, link it to the repo, run `sync`. |
 
 ## apply / sync
@@ -26,15 +26,17 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -DryRun          # apply: show the plan first
 pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -Sync            # sync: also items
 pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -Sync -RemoveDefaultViews
+pwsh scripts/Set-ProjectStandard.ps1 -Owner <login> -Number <n> -RemoveInReleaseStatus -DryRun   # old standard: drop In release
 ```
 
 Always run `-DryRun` first, show the actions to the user, then run without it. `-Json` prints `{actions, manualSteps}`; `-StateFile <json>` plans offline and never calls `gh`.
 
-- Status: option `In release` (BLUE) goes directly before `Done`; every existing option keeps its id, so item values survive.
+- Status: left as it is. Issues close when their pull request is merged into a release branch (`release-branch.yml` of GravionLabs/ci, `versioning/close-merged-issues`), so there is no Status between `In Progress` and `Done`; the built-in workflow "Item closed" sets `Done`.
+- `-RemoveInReleaseStatus` (old standard): moves the items with Status `In release` to `Done` (closed) or `Todo` (open), then deletes the option; the other options keep their ids. It reads every item; an incomplete item walk fails the run. `-DryRun` lists the moves and the removal.
 - Level: created (Epic, Feature, PBI, Task, Bug) only when missing.
-- Sync, open issues only: Level from labels `epic|feature|pbi|task|bug` (first match in that order), fallback title prefix `[Epic]`, `[Feature]`, `[PBI]`, `[Task]`, only where Level is empty. Label `merged` → `In release`; `In release` without `merged` → `Todo`. Closed items are untouched.
+- Sync, open and closed issues: Level from labels `epic|feature|pbi|task|bug` (first match in that order), fallback title prefix `[Epic]`, `[Feature]`, `[PBI]`, `[Task]`, only where Level is empty. The Status is never synced.
 - `-Sync` also runs `scripts/Sync-ProjectNeeds.ps1` (forwards `-DryRun`; offline `-StateFile` only lists the action `syncNeeds`). A failing Needs sync is one warning, the run still exits 0. Details: `references/needs-sync.md`.
-- Status reset and scope report: `Sync-ProjectNeeds.ps1` resets `In Progress` to `Todo` (open issue without an open PR head matching `(^|/)<nr>-` and without label `merged`) or `Done` (closed issue), reports open issues without Level per repository and warns about repositories not linked to the project (`references/needs-sync.md`).
+- Status reset and scope report: `Sync-ProjectNeeds.ps1` resets `In Progress` to `Todo` (open issue without an open PR head matching `(^|/)<nr>-`) or `Done` (closed issue), reports open issues without Level per repository and warns about repositories not linked to the project (`references/needs-sync.md`).
 - Current: single-select with the option `Yes` (GREEN), created when missing; `Sync-ProjectNeeds.ps1` sets it on the items of the current milestone of each repository (view filter `current:Yes`).
 - Needs: single-select (Planning, Decision, Review, Blocked, Ready, In progress, Release review), created when missing; an existing field keeps its option ids and gets missing options appended.
 - Standard views: the five standard views (Hierarchy, Board, Backlog, Recently closed, Milestones), `Current milestone`, and the Needs views. Views are matched by name; missing ones are created, others are never touched (`references/views.md`).
@@ -55,4 +57,4 @@ Other repositories of the project copy `templates/issue-events.yml` and `templat
 ## Rules
 
 - Never run the script without `-DryRun` first on a project the user has not seen.
-- The label `merged` stays the source of truth; the project mirrors it.
+- Never run `-RemoveInReleaseStatus` without `-DryRun` first and the owner's approval.

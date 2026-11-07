@@ -28,7 +28,8 @@ versioning/
 ├── create-version-tag/     # Create and push a git tag
 ├── gh-release/             # Create the GitHub Release; optionally recreate release/next afterwards
 ├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
-└── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
+└── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -59,7 +60,7 @@ node/
 ├── issues.yml              # Reusable issue workflow (add to project, title/section conventions, project Needs)
 ├── issue-events.yml        # This repository's caller of issues.yml (workflow "Issue events")
 ├── project-needs.yml       # Central nightly Needs sync of the whole project (workflow "Project needs")
-├── release-branch.yml      # Reusable release-branch workflow (release PR, merged label, project Status, Needs sync)
+├── release-branch.yml      # Reusable release-branch workflow (release PR, closes merged issues, Needs sync)
 └── sync-wiki.yml           # Reusable Wiki sync workflow (docs → GitHub Wiki)
 ```
 
@@ -416,11 +417,12 @@ jobs:
 **Inputs**
 
 <!-- action-docs:inputs source="versioning/determine-version/action.yml" -->
-| Name                      | Description                                                                                                                                                                                        | Required | Default |
-|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                  | No       | 6.x     |
-| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                      | No       |         |
-| `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults. | No       | true    |
+| Name                      | Description                                                                                                                                                                                                                                                                    | Required | Default |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                                                                                              | No       | 6.x     |
+| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                                                                                                  | No       |         |
+| `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.                                                                             | No       | true    |
+| `channel`                 | Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta; tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc.<n> / -beta.<n> (n = commits since the last version source, at least 1). | No       | auto    |
 <!-- /action-docs:inputs -->
 
 **Versioning model (Conventional Commits).** With `conventional-commits: true` (default) the bump comes from the commit messages that reach the branch: `fix:`, `perf:`, `revert:` (and any other type, e.g. `docs:`) give a patch, `feat:` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major. `+semver: major|minor|patch` stays as an escape hatch (for example the jump to 1.0.0). `conventional-commits: false` keeps the plain GitVersion defaults. The caller's `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`.
@@ -430,11 +432,18 @@ jobs:
 - Limit in 0.x: a breaking change jumps to 1.0.0 (GitVersion has no "bump minor pre major"). Avoid `!` in 0.x repositories or use `+semver: minor` deliberately.
 - The reusable `*-package.yml` workflows and `tauri-app.yml` pass the input `conventional-commits` through. Test: `bash tests/conventional-commits.test.sh`.
 
+**Release channel.** The branch decides the channel, callers need no `prerelease` input: `main` (and tag builds) is `stable` and keeps the GitVersion version; `release/*` is `rc` (`<next stable>-rc.<n>`); every other branch is `beta` (`<next stable>-beta.<n>`). `n` is the number of commits since the last version source (at least 1). The input `channel` (`stable`, `rc`, `beta`; default `auto`) overrides the rule. The outputs `channel` and `is-prerelease` come next to the existing ones; `semver`, `nuget-version`, `npm-version`, `python-version` (`1.2.0rc3`, `1.2.0b3`) and `docker-version` follow the channel. Existing callers on `@v1` see no change on `main`. Test: `bash tests/release-channel.test.sh`.
+
+- **Beta builds create no tag and no release.** A caller gates tag, release and publish steps on `needs.determine-version.outputs.channel != 'beta'`; `rc` creates a pre-release tag `v<version>` (`is-prerelease` marks the release as pre-release). To keep the beta installers, upload them as workflow artifacts instead of attaching them to a release (for example `actions/upload-artifact` on the bundle directory `src-tauri/target/<target>/release/bundle/`, `retention-days: 7`).
+- **Tauri installers and MSI.** WiX needs a numeric version, so `tauri/installers` skips the MSI on Windows when `version` has a suffix (`1.2.0-rc.3`, `1.2.0-beta.1`) and builds the NSIS installer only; a `--bundles` in `args` takes precedence.
+
 **Outputs**
 
 <!-- action-docs:outputs source="versioning/determine-version/action.yml" -->
 | Name                    | Description                                                                            |
 |-------------------------|----------------------------------------------------------------------------------------|
+| `channel`               | Release channel: stable, rc or beta                                                    |
+| `is-prerelease`         | 'true' on rc and beta, 'false' on stable                                               |
 | `semver`                | Full SemVer (e.g. 1.2.3-alpha.4) — use for npm, Angular, NuGet, Docker                 |
 | `major-minor-patch`     | Stable version without pre-release (e.g. 1.2.3)                                        |
 | `major`                 | Major version number (e.g. 1)                                                          |
@@ -492,7 +501,7 @@ steps:
 
 ### `versioning/gh-release`
 
-Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELOG.md section or GitHub), closes the issues delivered by a merged release PR (`close-issues`) and optionally recreates the rolling release branch.
+Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELOG.md section or GitHub), runs `close-release-issues` (`close-issues`) as a safety net for the issues delivered by a merged release PR that are still open (`close-merged-issues` closes them at merge), and optionally recreates the rolling release branch.
 
 **`recreate-branch`** (default empty = off): set it to `release/next` and, after the release, the branch is pushed from the released commit when it does not exist on origin. An existing branch is never moved or force-pushed. **Callers whose repository has `delete_branch_on_merge` should set it**: merging the release PR then deletes `release/next`, and without this input the next cycle starts only after a manual `github-release cut`. The recreated branch has no commits ahead of the default branch, so `versioning/release-pr` opens no (empty) release PR for it; GitVersion gives it the next minor from the caller's branch config. The step needs only `contents: write`. A push made with the default `GITHUB_TOKEN` triggers no workflows: pass a PAT as `token` (it is also what the changelog commit needs on a protected default branch) when the new branch must trigger them, e.g. `release-branch.yml`. The `*-package.yml` workflows pass the input through (`recreate-branch`).
 
@@ -517,7 +526,7 @@ Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELO
 | `cliff-config`           | Path to a cliff.toml configuration file for git-cliff. When set, git-cliff generates release notes from Conventional Commits instead of extracting from CHANGELOG.md. Requires git history (fetch-depth: 0).                                                                                                                                                                          | No       |                     |
 | `update-changelog`       | When cliff-config is set, regenerate CHANGELOG.md from the full git history and commit it (with [skip ci]) before creating the release tag.                                                                                                                                                                                                                                           | No       | false               |
 | `version-command`        | Shell command run after the checkout with VERSION set (the version without tag prefix, e.g. 1.0.0-rc.1), before the changelog commit, to write the version into project files. Every file it changes is committed together with the changelog in the one [skip ci] commit that gets tagged. Empty = off.                                                                              | No       |                     |
-| `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR (versioning/close-release-issues). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                                                                                         | No       | true                |
+| `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR still open (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                      | No       | true                |
 | `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
 | `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
@@ -559,6 +568,8 @@ Idempotent. Run it after `create-version-tag`; the `release` job of this reposit
 Test: `bash tests/move-major-tag.test.sh`.
 
 ### `versioning/mark-merged-issues`
+
+> **Deprecated:** replaced by [`versioning/close-merged-issues`](#versioningclose-merged-issues), which closes the issues at merge instead of labelling them. It prints a `::warning::` when used and will be removed in the next major.
 
 On every push to a `release/*` branch (incl. `release/next`), labels the open issues delivered to it with `merged` and comments once. `close-release-issues` removes the label when the release lands.
 
@@ -605,6 +616,53 @@ steps:
 |------------|-------------------------------------------------------------------------------------------------------|
 | `labelled` | Space-separated numbers of the issues newly labelled in this run (empty when none, also on a dry run) |
 <!-- /action-docs:outputs -->
+
+### `versioning/close-merged-issues`
+
+On every push to a `release/*` branch (incl. `release/next`), closes the open issues delivered to it as completed and comments once on each: ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (without a milestone: `ships with the next release`; a commit without PR number is named by its short SHA).
+
+- **Closing references:** `Closes`, `Fixes` and `Resolves #n` in the bodies of the PRs merged into the branch since it left the base, and in the footer lines of the commit messages of `base...branch` (not the subject line). `Refs #n` never closes: partial deliveries use it with `## Not delivered`. Pull requests and closed issues are skipped.
+- **Parents** labeled `pbi` or `feature` (same repository) whose sub-issues are all closed are closed too, repeating upwards; an `epic` never.
+- The label `merged` (set by `mark-merged-issues`) is removed from every issue it closes, so issues labelled before are closed on the first run through the same references.
+- Idempotent: a closed issue is skipped, and the comment is written only after the close succeeded, so a rerun closes and comments nothing. Missing permissions only warn (exit 0).
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`, `pull-requests: read`.
+
+**Usage:**
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+steps:
+  - uses: GravionLabs/ci/versioning/close-merged-issues@v1
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/close-merged-issues/action.yml" -->
+| Name             | Description                                                                 | Required | Default             |
+|------------------|-----------------------------------------------------------------------------|----------|---------------------|
+| `release-branch` | Release branch (release/*); defaults to the ref that triggered the workflow | No       |                     |
+| `base`           | Base branch the release lands on; defaults to the repository default branch | No       |                     |
+| `token`          | GitHub token used for the gh CLI                                            | No       | ${{ github.token }} |
+| `dry-run`        | Print the issues that would be closed without changing anything             | No       | false               |
+<!-- /action-docs:inputs -->
+
+**Outputs**
+
+<!-- action-docs:outputs source="versioning/close-merged-issues/action.yml" -->
+| Name     | Description                                                                                   |
+|----------|-----------------------------------------------------------------------------------------------|
+| `closed` | Space-separated numbers of the issues closed in this run (empty when none, also on a dry run) |
+<!-- /action-docs:outputs -->
+
+Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
 
 ---
 
@@ -944,7 +1002,7 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 <!-- action-docs:inputs source="tauri/installers/action.yml" -->
 | Name                           | Description                                                                                                                                                                                  | Required | Default                                |
 |--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
-| `version`                      | Version to build (SemVer; MSI needs a numeric one, so non-release builds pass 0.0.<run number>)                                                                                              | **Yes**  | —                                      |
+| `version`                      | Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc.3 the MSI is skipped on Windows and only the NSIS installer is built)                                  | **Yes**  | —                                      |
 | `target`                       | Rust target triple of this matrix entry                                                                                                                                                      | **Yes**  | —                                      |
 | `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.                                                                      | No       |                                        |
 | `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                                                                                      | No       |                                        |
@@ -1551,8 +1609,29 @@ jobs:
 Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
 
 1. `versioning/release-pr` keeps the PR `release: <x.y>` (`release: next` for `release/next`) from the release branch to the default branch open and current (never merges).
-2. `versioning/mark-merged-issues` labels the open issues merged into the branch (input `label`) and, with `project-status`, sets that project Status. Its output `labelled` holds the issues newly labelled in the run.
-3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was labelled; on a dry run it only prints that it would sync (a dry run labels nothing). Only issues newly labelled in the run are synced: a failed sync is not retried by a rerun, because those issues are then already labelled.
+2. `versioning/close-merged-issues` closes the open issues merged into the branch (it replaces `mark-merged-issues`, which labelled them). Its output `closed` holds the issues closed in the run. The inputs `label` and `project-status` stay for one major as no-ops: a caller that passes them gets a deprecation warning, not a failure.
+3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was closed; on a dry run it only prints that it would sync (a dry run closes nothing). Only issues closed in the run are synced: a failed sync is not retried by a rerun, because those issues are then already closed.
+
+A reverted PR: its issues stay closed; reopen them by hand.
+
+**One-time run (`workflow_dispatch`):** the caller workflow can also trigger on `workflow_dispatch` with a boolean input `dry-run` that it passes on, so each repository can close today's issues that already carry `merged` without a new push:
+
+```sh
+gh workflow run release-branch.yml --ref release/next -f dry-run=true   # prints what would be closed
+gh workflow run release-branch.yml --ref release/next                   # closes them
+```
+
+```yaml
+on:
+  push:
+    branches: ['release/**']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        type: boolean
+        default: false
+# ... and in the job: with: { dry-run: "${{ inputs.dry-run || false }}" }
+```
 
 No checkout; `permissions: {}` at the top, the job requests `contents: read`, `issues: write`, `pull-requests: write`, which the calling job must grant.
 
@@ -1581,9 +1660,9 @@ jobs:
 |------------------|----------|---------------|----------------------------------------------------------------------------------------------------------|
 | `release-branch` | No       | `""`          | Release branch, e.g. `release/next`; empty = the triggering ref                                          |
 | `base`           | No       | `""`          | Base branch of the release PR; empty = the repository default branch                                     |
-| `label`          | No       | `merged`      | Label set on the issues merged into the release branch                                                   |
-| `project-status` | No       | `In release`  | Project Status set on the project items of the labelled issues; empty disables it                        |
-| `project-url`    | No       | `""`          | Project URL for the Needs sync of the labelled issues; empty disables the sync                           |
+| `label`          | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
+| `project-status` | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
+| `project-url`    | No       | `""`          | Project URL for the Needs sync of the closed issues; empty disables the sync                           |
 | `require-pat`    | No       | `false`       | Fail instead of warning when neither the app secrets nor `GH_PAT` are set                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 
