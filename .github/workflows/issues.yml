@@ -89,7 +89,7 @@ jobs:
     name: Issue conventions
     if: >-
       github.event_name == 'issues' && github.event.issue.state == 'open' &&
-      contains(fromJSON('["opened","edited","labeled","unlabeled","reopened"]'), github.event.action)
+      contains(fromJSON('["opened","edited","labeled","unlabeled","reopened","milestoned","demilestoned"]'), github.event.action)
     runs-on: ubuntu-latest
     permissions:
       issues: write

@@ -1,10 +1,14 @@
 import {
   MARKER,
+  MILESTONE_MARKER,
   NEEDS_REFINEMENT,
   NO_SECTIONS_BODY,
   commentBody,
+  epicMilestoneBody,
   expectedTitle,
   levelOf,
+  milestoneCommentBody,
+  milestoneViolations,
   missingSections,
   parseLevels,
   parseRequiredSections,
@@ -17,6 +21,63 @@ async function ignoring(status, request) {
   } catch (error) {
     if (error.status !== status) throw error;
   }
+}
+
+/** Keeps the one milestone-rule comment of a Feature current; nothing to say and no comment = no write. */
+async function checkFeature({ github, core, owner, repo, feature }) {
+  const subs = await github.paginate('GET /repos/{owner}/{repo}/issues/{issue_number}/sub_issues', {
+    owner,
+    repo,
+    issue_number: feature.number,
+    per_page: 100,
+  });
+  const violations = milestoneViolations(feature, subs, `${owner}/${repo}`);
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    owner,
+    repo,
+    issue_number: feature.number,
+    per_page: 100,
+  });
+  const previous = comments.find((c) => c.user?.type === 'Bot' && c.body?.startsWith(MILESTONE_MARKER));
+  if (violations.length === 0 && !previous) return;
+  const body = milestoneCommentBody(feature.milestone?.title, violations);
+  if (!previous) await github.rest.issues.createComment({ owner, repo, issue_number: feature.number, body });
+  else if (previous.body !== body) {
+    await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+  }
+  if (violations.length > 0) core.warning(`Sub-issues outside the milestone: ${violations.join(', ')}`);
+}
+
+/** Milestone rule on milestoned/demilestoned: an Epic loses its milestone; a Feature, or the parent Feature of a PBI/Bug, is checked. */
+async function milestoneRule({ github, core, owner, repo, issue, level }) {
+  if (level === 'epic') {
+    if (!issue.milestone) return;
+    await github.rest.issues.update({ owner, repo, issue_number: issue.number, milestone: null });
+    await github.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issue.number,
+      body: epicMilestoneBody(issue.milestone.title),
+    });
+    return;
+  }
+  if (level === 'feature') return checkFeature({ github, core, owner, repo, feature: issue });
+  if (level !== 'pbi' && level !== 'bug') return;
+  let parent;
+  try {
+    ({ data: parent } = await github.request('GET /repos/{owner}/{repo}/issues/{issue_number}/parent', {
+      owner,
+      repo,
+      issue_number: issue.number,
+    }));
+  } catch (error) {
+    if (error.status === 404) return;
+    throw error;
+  }
+  const sameRepo = !parent.repository_url || parent.repository_url.endsWith(`/repos/${owner}/${repo}`);
+  const isFeature = (parent.labels ?? []).some((l) => String(l.name ?? l).toLowerCase() === 'feature');
+  if (!sameRepo || !isFeature) return;
+  await checkFeature({ github, core, owner, repo, feature: parent });
 }
 
 /** Fixes the "[Level] " title prefix and flags issues that miss required sections. */
@@ -36,6 +97,12 @@ export default async function run({ github, context, core, inputs }) {
       await github.rest.issues.update({ owner, repo, issue_number, title });
       core.info(`Title: "${issue.title}" -> "${title}"`);
     }
+  }
+
+  const action = context.payload.action;
+  if (action === 'milestoned' || action === 'demilestoned') {
+    if (level) await milestoneRule({ github, core, owner, repo, issue, level });
+    return;
   }
 
   const sections = level ? required[level] : undefined;

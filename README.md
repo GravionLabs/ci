@@ -777,6 +777,7 @@ Sets the `[Level] ` title prefix from the level label of an issue and flags issu
 
 - **Title:** the first label of `levels` that the issue carries decides the prefix (`epic` becomes `[Epic]`, `pbi` `[PBI]`, others capitalized). Existing leading `[...]` prefixes and the legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced by exactly one `[Level] `. Issues without a level label are left alone.
 - **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed; when the level label changes to one without required sections, the label is removed only if the action set it (its comment says so).
+- **Milestone rule** (on `milestoned`/`demilestoned`): an Epic never has a milestone, so it is removed with the comment `An Epic never has a milestone (milestone rule), removed <title>.`. A Feature with a milestone gets one comment (marker `<!-- gravionlabs-ci:milestone-rule -->`, updated in place, set to "resolved" once fixed) listing its open sub-issues outside that milestone (other milestone, none, or another repository) as `<owner>/<repo>#<n> (<milestone|none>)`. A PBI or Bug milestoned or demilestoned re-checks its parent Feature (same repository) the same way. Issues without a level label are left alone.
 
 > **Prerequisite:** `permissions: issues: write`. The default `token` is the `GITHUB_TOKEN`, so the edits it makes trigger no further workflow run.
 
@@ -1537,7 +1538,7 @@ Renovate (`renovate.yml`) runs as the app, not as the PAT: it has its own rate l
 Reusable workflow for issue and pull request events, three independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
-- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
+- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened, milestoned, demilestoned).
 - **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened, milestoned, demilestoned and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**
