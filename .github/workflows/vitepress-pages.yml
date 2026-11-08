@@ -32,9 +32,11 @@ permissions:
   contents: read
 
 concurrency:
-  # Deployments queue behind each other and the last one wins; a pull request replaces its own earlier run.
-  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Only runs that deploy share the group `pages-deploy`: they queue behind each other, the last one wins and none is cancelled.
+  # Every other run (pull request, build-only, other branch) uses a group of its own ref and cancels its earlier run,
+  # so it can never cancel a pending deployment.
+  group: pages-${{ (inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main') && 'deploy' || github.ref }}
+  cancel-in-progress: ${{ !(inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   build:
