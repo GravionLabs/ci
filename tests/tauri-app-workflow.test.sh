@@ -29,4 +29,11 @@ idx() { yq -r "$P.steps | to_entries | .[] | select(.value.name == \"$1\") | .ke
 if [ "$(idx 'Recreate the release branch')" -gt "$(idx 'Publish the release')" ]; then r=after; else r=before; fi
 eq "recreate step comes after the release is published" after "$r"
 
+CO="$P.steps[] | select(.uses == \"actions/checkout@v4\" and .with.path == null)"
+eq "publish checkout does not persist github.token (would shadow the push token)" false "$(q "$CO | .with[\"persist-credentials\"]")"
+eq "no extraheader is set back in the publish job" 0 "$(q "[$P.steps[] | select(.run != null) | select(.run | test(\"extraheader\"))] | length")"
+for s in CI_APP_ID CI_APP_PRIVATE_KEY GH_PAT; do
+  eq "secret $s is declared optional" false "$(q ".on.workflow_call.secrets.$s.required")"
+done
+
 [ "$failures" = 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
