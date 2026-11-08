@@ -51,7 +51,7 @@ case "$atp_if" in "inputs.project-url != '' &&"*) ok "add-to-project off without
 eq "add-to-project issue types" 'opened,reopened,transferred' "$(events issues "$atp_if")"
 eq "add-to-project PR types" 'opened,reopened' "$(events pull_request_target "$atp_if")"
 case "$conv_if" in *"github.event.issue.state == 'open'"*) ok "conventions only open issues" ;; *) fail "conventions only open issues" ;; esac
-eq "conventions issue types" 'edited,labeled,opened,reopened,unlabeled' "$(events issues "$conv_if")"
+eq "conventions issue types" 'demilestoned,edited,labeled,milestoned,opened,reopened,unlabeled' "$(events issues "$conv_if")"
 eq "conventions ignores PRs" '' "$(events pull_request_target "$conv_if")"
 
 # --- inputs ---
