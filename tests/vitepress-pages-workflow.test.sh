@@ -30,7 +30,9 @@ eq "upload only on push to main with deploy" "inputs.deploy && github.event_name
 eq "upload path" '${{ inputs.site-path }}/.vitepress/dist' "$(q '.jobs.build.steps[] | select(.name == "Upload the site") | .with.path')"
 eq "node version from .nvmrc" '.nvmrc' "$(q '.jobs.build.steps[] | select(.uses != null and (.uses | test("setup-node"))) | .with["node-version-file"]')"
 eq "SITE_BASE" '/${{ github.event.repository.name }}/' "$(q '.jobs.build.env.SITE_BASE')"
-eq "pull request replaces its own run" "\${{ github.event_name == 'pull_request' }}" "$(q '.concurrency["cancel-in-progress"]')"
+DEPLOY="inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+eq "deploy runs share the group pages-deploy, others use their ref" "\${{ ($DEPLOY) && 'deploy' || github.ref }}" "$(q '.concurrency.group' | sed 's/^pages-//')"
+eq "only non-deploy runs cancel" "\${{ !($DEPLOY) }}" "$(q '.concurrency["cancel-in-progress"]')"
 inst=$(q '.jobs.build.steps[] | select(.name == "Install") | .run')
 case "$inst" in *"pnpm install --frozen-lockfile"*"npm ci"*) ok "installs with the lockfile" ;; *) fail "installs with the lockfile" ;; esac
 eq "third-party actions pinned to SHAs" 0 "$(q '[.jobs[].steps[].uses | select(. != null and (test("@[0-9a-f]{40}( |$)") | not))] | length')"
