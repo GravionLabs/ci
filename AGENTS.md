@@ -27,7 +27,7 @@ issues/
   conventions/          — Sets the `[Level] ` title prefix from the level label (legacy `Epic:`/`Feature:`/`Bug:` prefixes replaced) and flags missing required sections with `needs-refinement`
 
 project/
-  needs/                — Keeps the project field Needs current: runs Sync-ProjectNeeds.ps1 of the skill `.apm/skills/github-project` of this repository (inputs `project-url`, `token`, `mode`, `issues`)
+  needs/                — Keeps the project field Needs current: runs Sync-ProjectNeeds.ps1 of the skill `.agents/skills/github-project` of this repository (inputs `project-url`, `token`, `mode`, `issues`)
 
 dotnet/
   setup/                — Installs .NET SDK, caches NuGet packages, optionally adds a private feed
@@ -61,7 +61,7 @@ tauri/
 node/
   setup/ build/ test/ ci/ publish/ — Node.js actions; `publish` takes `publish-directory` / `publish-directories`
 
-.apm/skills/github-project/  — APM package `github-project` (apm.yml): the user-invoked skill (`apply|sync|new`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
+.agents/skills/github-project/  — the skill `github-project`, installed from GravionLabs/skills with `/skills-manage` (`skills-lock.json`; update with `/skills-manage update`, never edit here): the user-invoked skill (`apply|sync|new`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
 scripts/
   Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
@@ -292,7 +292,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 
 ### `project/needs`
 
-Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` (with `NeedsRules.psm1`) from `.apm/skills/github-project/scripts`, resolved from the action path of the same ref. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`|`project`), `issues` (space/comma/newline-separated issue numbers; with `mode: event` each is synced with parents and dependents, independent of the event; invalid number = error). Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`; the scripts of the skill: `npm ci && npm test` (Vitest, `tests/project/`, needs pwsh).
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` (with `NeedsRules.psm1`) from `.agents/skills/github-project/scripts`, resolved from the action path of the same ref. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`|`project`), `issues` (space/comma/newline-separated issue numbers; with `mode: event` each is synced with parents and dependents, independent of the event; invalid number = error). Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`; the scripts of the skill: `npm ci && npm test` (Vitest, `tests/project/`, needs pwsh).
 
 ### `issues/conventions`
 
