@@ -36,5 +36,9 @@ case "$inst" in *"pnpm install --frozen-lockfile"*"npm ci"*) ok "installs with t
 eq "third-party actions pinned to SHAs" 0 "$(q '[.jobs[].steps[].uses | select(. != null and (test("@[0-9a-f]{40}( |$)") | not))] | length')"
 eq "no input expanded in a run script" 0 "$(q '[.jobs[].steps[].run | select(. != null and test("\$\{\{"))] | length')"
 
+pnpm_step='.jobs.build.steps[] | select(.uses != null and (.uses | test("pnpm/action-setup")))'
+eq "pnpm setup pinned to the v4 commit" 'pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1' "$(q "$pnpm_step | .uses" | sed 's/ #.*//')"
+eq "pnpm setup reads the packageManager field of the site" '${{ inputs.site-path }}/package.json' "$(q "$pnpm_step | .with.package_json_file")"
+
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]
