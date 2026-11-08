@@ -195,6 +195,9 @@ jobs:
       contents: write
       issues: write
       pull-requests: read
+      # Build provenance attestation of SHA256SUMS (public repositories only; the caller must grant both).
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -265,6 +268,29 @@ jobs:
             exit 1
           fi
           gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
+      # SHA256SUMS over every binary asset of the release (CLI archives and installers), written after all
+      # uploads. Signatures, latest.json and the previous SHA256SUMS (CLI archives only) are not hashed.
+      - name: Checksum the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          repo="${{ github.repository }}"
+          mkdir assets
+          gh release download "$tag" --dir assets --repo "$repo" --pattern '*'
+          cd assets
+          rm -f -- *.sig latest.json SHA256SUMS
+          ls -1 | LC_ALL=C sort | xargs -d '\n' sha256sum > ../SHA256SUMS
+          sha256sum -c ../SHA256SUMS
+          cd ..
+          gh release upload "$tag" SHA256SUMS --clobber --repo "$repo"
+      # Attestations need a public repository (or a plan that supports them for private ones); private callers
+      # keep SHA256SUMS and skip the attestation.
+      - name: Attest the build provenance
+        if: ${{ github.event.repository.private == false }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: SHA256SUMS
       # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
