@@ -1073,6 +1073,13 @@ The caller decides when it runs (the matrix of macOS and Windows runners is expe
 
 **Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `apt-cache-version` (cache version of the apt packages of the Linux installer job only; the checks install none), `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`), `recreate-branch` (default empty = off; e.g. `release/next`: after the release the `publish` job pushes the branch from the released commit when it is missing on origin, through `versioning/gh-release/recreate-branch.sh`, never forcing or moving an existing one; set it when the repository deletes merged branches; the push uses the CI app token or `GH_PAT` when set, so the new branch starts `release-branch.yml`, else `github.token`, which starts no workflow). Test: `bash tests/tauri-app-workflow.test.sh`. **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `CI_APP_ID`, `CI_APP_PRIVATE_KEY` (GitHub App `GravionLabs CI`, see "GitHub App") and `GH_PAT` (deprecated fallback), all optional.
 
+**Release assets and provenance:** after all uploads the `publish` job downloads the release's assets and writes `SHA256SUMS` over every binary (CLI archives, `.exe`, `.msi`, `.dmg`, `.deb`, `.rpm`, `.AppImage`, `.app.tar.gz`; not `*.sig`, `latest.json` or the earlier `SHA256SUMS`), checks it with `sha256sum -c` and uploads it with `--clobber`. When the calling repository is public (`github.event.repository.private == false`) the SHA-pinned `actions/attest-build-provenance` attests the listed files (`subject-checksums: SHA256SUMS`); a private repository keeps `SHA256SUMS` and skips the attestation without failing. The calling job must grant `id-token: write` and `attestations: write` (besides `contents: write`, `issues: write`, `pull-requests: read`), or the reusable workflow fails at startup. Verify a download:
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify <asset> --repo <owner>/<repo>
+```
+
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
 ---
