@@ -1,5 +1,5 @@
 name: 'Deploy GitHub Pages (MkDocs)'
-description: 'Builds a MkDocs site with the Material theme and uploads it as a GitHub Pages artifact.'
+description: 'Deprecated: use the reusable workflow vitepress-pages.yml (removal in the next major). Builds a MkDocs site with the Material theme and uploads it as a GitHub Pages artifact.'
 
 inputs:
   docs-path:

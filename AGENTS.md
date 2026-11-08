@@ -79,7 +79,8 @@ scripts/
   project-needs.yml     — Central nightly Needs sync of every item of the project, all repositories (cron `17 3 * * *` + workflow_dispatch, issues.yml with `needs: true`, `mode: project`)
   release-branch.yml    — Reusable push-to-`release/**` workflow: release-pr → close-merged-issues (`closed` output) → project/needs for the closed issues (inputs incl. deprecated `project-status`, `project-url`, `require-pat`, `dry-run`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   sync-wiki.yml         — Wiki sync: docs/**/*.md + README.md → GitHub Wiki
-  deploy-pages.yml      — GitHub Pages deploy: MkDocs Material build → GitHub Pages
+  vitepress-pages.yml   — Reusable VitePress → GitHub Pages (inputs `site-path`, `package-manager`, `pre-build`, `deploy`): PR/dispatch build only, push to main deploys; test `tests/vitepress-pages-workflow.test.sh`
+  deploy-pages.yml      — Deprecated (use vitepress-pages.yml): MkDocs Material build → GitHub Pages
 ```
 
 Migrating a repository with an inline workflow: see `docs/migration-guide.md`.
