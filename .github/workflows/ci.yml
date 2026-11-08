@@ -172,6 +172,10 @@ jobs:
         # triggers, permissions, step order, token wiring, token check script
         run: bash tests/release-branch-workflow.test.sh
 
+      - name: Test tauri-app.yml recreate-branch
+        shell: bash
+        run: bash tests/tauri-app-workflow.test.sh
+
       - name: Test rust/setup apt cache
         shell: bash
         run: bash tests/rust-setup.test.sh
