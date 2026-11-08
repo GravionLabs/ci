@@ -21,7 +21,11 @@ if [ "$channel" = stable ]; then
 else
   n="${COMMITS:-0}"; [[ "$n" =~ ^[0-9]+$ ]] || n=0
   [ "$n" -ge 1 ] || n=1
-  label="$channel" num="$n" tag="$channel.$n" semver="$mmp-$channel.$n"
+  # Zero-padded to 3 digits and without a dot (rc009, rc010): GitHub sorts releases by comparing the pre-release
+  # part as text, so rc.9 would list above rc.10. SemVer forbids leading zeros in a numeric identifier (rc.010), but
+  # an alphanumeric one (rc010) is compared as text everywhere, which the padding makes correct up to 999.
+  printf -v padded '%03d' "$n"
+  label="$channel" num="$n" tag="$channel$padded" semver="$mmp-$channel$padded"
 fi
 
 if [ -z "$label" ]; then py="$mmp"
