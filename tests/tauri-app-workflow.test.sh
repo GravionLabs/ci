@@ -40,11 +40,11 @@ CS="$P.steps[] | select(.name == \"Checksum the release assets\")"
 AT="$P.steps[] | select(.name == \"Attest the build provenance\")"
 eq "publish has id-token: write" write "$(q "$P.permissions[\"id-token\"]")"
 eq "publish has attestations: write" write "$(q "$P.permissions.attestations")"
-eq "checksum step uploads with --clobber" 1 "$(q "[$CS | select(.run | test(\"upload .*SHA256SUMS --clobber\"))] | length")"
+eq "checksum step uploads with --clobber" 1 "$(q "[$CS | select(.run | test(\"upload .*SHA256SUMS. --clobber\"))] | length")"
 eq "checksum step verifies with sha256sum -c" 1 "$(q "[$CS | select(.run | test(\"sha256sum -c\"))] | length")"
 eq "checksum step leaves out sig, latest.json and SHA256SUMS" 1 "$(q "[$CS | select(.run | test(\"rm -f -- \\\\*\\\\.sig latest\\\\.json SHA256SUMS\"))] | length")"
 eq "attestation runs only for public repositories" '${{ github.event.repository.private == false }}' "$(q "$AT | .if")"
-eq "attestation uses subject-checksums" SHA256SUMS "$(q "$AT | .with[\"subject-checksums\"]")"
+eq "attestation uses subject-checksums outside the checkout" '${{ env.SHA256SUMS_PATH }}' "$(q "$AT | .with[\"subject-checksums\"]")"
 eq "attestation action is pinned to a SHA" 1 "$(q "[$AT | select(.uses | test(\"@[0-9a-f]{40}\"))] | length")"
 if [ "$(idx 'Checksum the release assets')" -gt "$(idx 'Pin the updater URLs to the release')" ]; then r=after; else r=before; fi
 eq "checksums come after the last asset upload" after "$r"
@@ -59,5 +59,33 @@ for perm in $(q "$P.permissions | keys | .[]"); do
   got=$(printf '%s' "$EX" | yq -r ".jobs.release.permissions[\"$perm\"]")
   eq "README example grants $perm: $want" "$want" "$got"
 done
+
+# #208: a caller repository with its own assets/ directory must neither fail the step nor leak into SHA256SUMS.
+eq "checksum step uses no relative assets directory" 0 "$(q "[$CS | select(.run | test(\"mkdir assets|--dir assets\"))] | length")"
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+mkdir -p "$T/bin" "$T/repo/assets" "$T/runner"
+echo caller > "$T/repo/assets/caller-file.txt"
+cat > "$T/bin/gh" <<'GH'
+#!/usr/bin/env bash
+if [ "$1 $2" = "release download" ]; then
+  while [ $# -gt 0 ]; do [ "$1" = "--dir" ] && d=$2; shift; done
+  echo binary > "$d/app.tar.gz"; echo sig > "$d/app.sig"; echo '{}' > "$d/latest.json"
+elif [ "$1 $2" = "release upload" ]; then
+  cp "$4" "$UPLOADED"
+fi
+GH
+chmod +x "$T/bin/gh"
+# BSD xargs (macOS) lacks -d; the workflow runs on Linux.
+printf '#!/usr/bin/env bash\nshift 2\ntr "\\n" "\\0" | /usr/bin/xargs -0 "$@"\n' > "$T/bin/xargs"
+chmod +x "$T/bin/xargs"
+command -v sha256sum >/dev/null || { printf '#!/usr/bin/env bash\nexec shasum -a 256 "$@"\n' > "$T/bin/sha256sum"; chmod +x "$T/bin/sha256sum"; }
+q "$CS | .run" | sed -e 's/\${{ needs.determine-version.outputs.semver }}/1.0.0/' -e 's/\${{ github.repository }}/o\/r/' > "$T/step.sh"
+(cd "$T/repo" && PATH="$T/bin:$PATH" RUNNER_TEMP="$T/runner" GITHUB_ENV="$T/env" UPLOADED="$T/uploaded" bash -e "$T/step.sh" > "$T/out" 2>&1)
+rc=$?; [ "$rc" = 0 ] || cat "$T/out"
+eq "step succeeds in a repository with assets/" 0 "$rc"
+eq "SHA256SUMS lists only the release binaries" "app.tar.gz" "$(awk '{print $2}' "$T/uploaded" 2>/dev/null | paste -sd' ' -)"
+sums=$(sed -n 's/^SHA256SUMS_PATH=//p' "$T/env")
+case "$sums" in "$T/runner"/*) r=under-runner-temp;; *) r="$sums";; esac
+eq "SHA256SUMS path is exported under RUNNER_TEMP" under-runner-temp "$r"
 
 [ "$failures" = 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
