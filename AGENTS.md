@@ -27,7 +27,7 @@ issues/
   conventions/          — Sets the `[Level] ` title prefix from the level label (legacy `Epic:`/`Feature:`/`Bug:` prefixes replaced) and flags missing required sections with `needs-refinement`
 
 project/
-  needs/                — Keeps the project field Needs current: runs Sync-ProjectNeeds.ps1 of the skill `project/github-project` of this repository (inputs `project-url`, `token`, `mode`, `issues`)
+  needs/                — Keeps the project field Needs current: runs Sync-ProjectNeeds.ps1 of the skill `.agents/skills/github-project` of this repository (inputs `project-url`, `token`, `mode`, `issues`)
 
 dotnet/
   setup/                — Installs .NET SDK, caches NuGet packages, optionally adds a private feed
@@ -61,7 +61,7 @@ tauri/
 node/
   setup/ build/ test/ ci/ publish/ — Node.js actions; `publish` takes `publish-directory` / `publish-directories`
 
-project/github-project/  — `scripts/Sync-ProjectNeeds.ps1` and `NeedsRules.psm1`, run by `project/needs`. ci is their source; the skill `github-project` (`apply|sync|new`, Set-ProjectStandard, caller templates) lives in GravionLabs/skills `skills/github/github-project` and carries copies of both; the standard is described in `docs/project-standard.md`
+.agents/skills/github-project/  — the skill `github-project`, installed from GravionLabs/skills with `/skills-manage` (`skills-lock.json`; update with `/skills-manage update`, never edit here): the user-invoked skill (`apply|sync|new`), `scripts/` (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules.psm1), `templates/` (callers `issue-events.yml`, `project-needs.yml`); the standard is described in `docs/project-standard.md`
 
 scripts/
   Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
@@ -72,7 +72,7 @@ scripts/
   docker-package.yml    — Full Docker CI/CD: determine-version ‖ lint → build-publish → release (main only)
   node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
   angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
-  tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`)
+  tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`); the calling job must grant `contents: write`, `issues: write`, `pull-requests: read`, `id-token: write` and `attestations: write` (the `publish` job requests them; a caller granting less fails at startup, job permissions cannot be conditional; README example, `tests/tauri-app-workflow.test.sh`)
   pr-checks.yml         — Reusable PR checks: `readiness` and `adr` jobs and the aggregate job `PR checks` (the only name a ruleset requires); inputs `readiness`, `adr`, `spec`, `not-ready-labels`, `require-issue`
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)
@@ -292,7 +292,7 @@ Call with `uses: GravionLabs/ci/.github/workflows/release-branch.yml@v1` from a 
 
 ### `project/needs`
 
-Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` (with `NeedsRules.psm1`) from `project/github-project/scripts`, resolved from the action path of the same ref. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`|`project`), `issues` (space/comma/newline-separated issue numbers; with `mode: event` each is synced with parents and dependents, independent of the event; invalid number = error). Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`; the scripts of the skill: `npm ci && npm test` (Vitest, `tests/project/`, needs pwsh).
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` (with `NeedsRules.psm1`) from `.agents/skills/github-project/scripts`, resolved from the action path of the same ref. Inputs: `project-url` (required), `token` (classic PAT, scope `project`, plus `repo` for a private repository; empty = warning, green), `mode` (`event`|`full`|`project`), `issues` (space/comma/newline-separated issue numbers; with `mode: event` each is synced with parents and dependents, independent of the event; invalid number = error). Event data reaches `needs.sh` through `env:` only. Test: `bash tests/project-needs.test.sh`; the scripts of the skill: `npm ci && npm test` (Vitest, `tests/project/`, needs pwsh).
 
 ### `issues/conventions`
 

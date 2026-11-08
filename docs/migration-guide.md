@@ -48,6 +48,10 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1
     permissions:
       contents: write
+      issues: write
+      pull-requests: read
+      id-token: write           # publish requests these five; a caller granting less fails at startup
+      attestations: write
     with:
       ci-exclude: agentlens-app            # needs system libraries; app.yml checks it
       cli-package: agentlens-cli agentlens-mcp

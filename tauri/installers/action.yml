@@ -3,7 +3,7 @@ description: 'Builds the installers of a Tauri 2 application for the runner it r
 
 inputs:
   version:
-    description: 'Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc.3 the MSI is skipped on Windows and only the NSIS installer is built)'
+    description: 'Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc003 the MSI is skipped on Windows and only the NSIS installer is built)'
     required: true
   target:
     description: 'Rust target triple of this matrix entry'
@@ -151,7 +151,7 @@ runs:
         VERSION: ${{ inputs.version }}
         EXTRA_ARGS: ${{ inputs.args }}
       run: |
-        # WiX needs a numeric version: a suffix (-rc.3, -beta.1) skips the MSI, unless the caller chose --bundles.
+        # WiX needs a numeric version: a suffix (-rc003, -beta001) skips the MSI, unless the caller chose --bundles.
         bundles=""
         if [ "$RUNNER_OS" = "Windows" ] && [[ "$VERSION" == *-* ]] && [[ "$EXTRA_ARGS" != *--bundles* ]]; then
           bundles="--bundles nsis"

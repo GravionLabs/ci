@@ -172,7 +172,7 @@ echo "# action.yml structure"
 eq "no checkout step (the script comes from this repository)" 0 "$(q '[.runs.steps[] | select(.uses != null)] | length')"
 eq "no run script expands an expression" 0 "$(q '[.runs.steps[].run | select(. != null and test("\$\{\{"))] | length')"
 eq "SYNC_SCRIPT points into the skill of this repository" \
-  '${{ github.action_path }}/../github-project/scripts/Sync-ProjectNeeds.ps1' \
+  '${{ github.action_path }}/../../.agents/skills/github-project/scripts/Sync-ProjectNeeds.ps1' \
   "$(q '.runs.steps[] | select(.env.SYNC_SCRIPT != null) | .env.SYNC_SCRIPT')"
 SYNC_REL=$(q '.runs.steps[] | select(.env.SYNC_SCRIPT != null) | .env.SYNC_SCRIPT | sub("^\$\{\{ github.action_path \}\}/"; "")')
 if [ -f "$ROOT/project/needs/$SYNC_REL" ]; then ok "SYNC_SCRIPT exists"; else fail "SYNC_SCRIPT exists ($SYNC_REL)"; fi

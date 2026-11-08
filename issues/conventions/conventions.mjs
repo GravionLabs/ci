@@ -80,3 +80,42 @@ ${list}
 
 It is labeled \`${NEEDS_REFINEMENT}\` until they are added.`;
 }
+
+// --- Milestone rule: an Epic has no milestone; a Feature's open sub-issues share the Feature's milestone ---
+
+export const MILESTONE_MARKER = '<!-- gravionlabs-ci:milestone-rule -->';
+export const MILESTONE_RESOLVED_BODY = `${MILESTONE_MARKER}\nAll open sub-issues are in the milestone of this Feature now (milestone rule). Thanks!`;
+
+/** `owner/repo` of an issue payload from `repository_url`, or `fallback` when absent. */
+function repoOf(issue, fallback) {
+  const match = /\/repos\/([^/]+\/[^/]+)$/.exec(issue?.repository_url ?? '');
+  return match ? match[1] : fallback;
+}
+
+/**
+ * The open sub-issues of a Feature that lie outside its milestone (other milestone, none, or another
+ * repository), as `owner/repo#n (milestone|none)` strings. A Feature without milestone has no violations.
+ */
+export function milestoneViolations(issue, subIssues, repoFullName) {
+  const milestone = issue?.milestone;
+  if (!milestone) return [];
+  return (subIssues ?? [])
+    .filter((sub) => sub.state !== 'closed')
+    .filter((sub) => repoOf(sub, repoFullName) !== repoFullName || sub.milestone?.number !== milestone.number)
+    .map((sub) => `${repoOf(sub, repoFullName)}#${sub.number} (${sub.milestone?.title ?? 'none'})`);
+}
+
+/** The comment of a Feature whose sub-issues lie outside its milestone, or the resolved text when none do. */
+export function milestoneCommentBody(milestoneTitle, violations) {
+  if (violations.length === 0) return MILESTONE_RESOLVED_BODY;
+  const list = violations.map((v) => `- ${v}`).join('\n');
+  return `${MILESTONE_MARKER}
+This Feature is in milestone ${milestoneTitle}, but these open sub-issues are not (milestone rule):
+
+${list}`;
+}
+
+/** The comment after an Epic's milestone was removed. */
+export function epicMilestoneBody(milestoneTitle) {
+  return `${MILESTONE_MARKER}\nAn Epic never has a milestone (milestone rule), removed ${milestoneTitle}.`;
+}

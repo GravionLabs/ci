@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   MARKER,
+  MILESTONE_MARKER,
   NO_SECTIONS_BODY,
   commentBody,
   expectedTitle,
   levelOf,
+  milestoneCommentBody,
+  milestoneViolations,
   missingSections,
   parseLevels,
   parseRequiredSections,
@@ -370,5 +373,155 @@ describe('run', () => {
       await exec(f);
       assert.deepEqual(f.writes, []);
     }
+  });
+});
+
+describe('milestoneViolations', () => {
+  const M1 = { number: 1, title: 'M1' };
+  const M2 = { number: 2, title: 'M2' };
+  const feature = { milestone: M1 };
+  const url = (r) => `https://api.github.com/repos/${r}`;
+  const sub = (number, milestone, extra = {}) => ({ number, milestone, repository_url: url('o/r'), ...extra });
+
+  it('lists open sub-issues with another milestone, none, or another repository', () => {
+    const subs = [sub(1, M1), sub(2, M2), sub(3, null), sub(4, M1, { repository_url: url('o/other') })];
+    assert.deepEqual(milestoneViolations(feature, subs, 'o/r'), ['o/r#2 (M2)', 'o/r#3 (none)', 'o/other#4 (M1)']);
+  });
+
+  it('is empty when all sub-issues share the milestone, are closed, or the feature has no milestone', () => {
+    assert.deepEqual(milestoneViolations(feature, [sub(1, M1)], 'o/r'), []);
+    assert.deepEqual(milestoneViolations(feature, [sub(2, M2, { state: 'closed' })], 'o/r'), []);
+    assert.deepEqual(milestoneViolations({ milestone: null }, [sub(2, M2)], 'o/r'), []);
+    assert.deepEqual(milestoneViolations(feature, [], 'o/r'), []);
+  });
+});
+
+describe('milestoneCommentBody', () => {
+  it('lists the violations behind the milestone marker and says resolved when there are none', () => {
+    const body = milestoneCommentBody('M1', ['o/r#2 (M2)']);
+    assert.ok(body.startsWith(MILESTONE_MARKER));
+    assert.match(body, /- o\/r#2 \(M2\)/);
+    assert.match(milestoneCommentBody('M1', []), /All open sub-issues are in the milestone/);
+  });
+
+  it('uses a marker distinct from the section comment', () => {
+    assert.notEqual(MILESTONE_MARKER, MARKER);
+  });
+});
+
+describe('run milestone rule', () => {
+  const M1 = { number: 1, title: 'M1' };
+  const base = 'https://api.github.com/repos/o/r';
+  // issues: number -> issue; subs: feature number -> sub-issues; parents: child number -> parent number
+  function fake({ issues, subs = {}, parents = {}, comments = {} }) {
+    const writes = [];
+    const github = {
+      paginate: async (fn, args) => {
+        if (typeof fn === 'string') return subs[args.issue_number] ?? [];
+        return comments[args.issue_number] ?? [];
+      },
+      request: async (route, args) => {
+        const parent = parents[args.issue_number];
+        if (!parent) throw Object.assign(new Error('Not Found'), { status: 404 });
+        return { data: { ...issues[parent], repository_url: base } };
+      },
+      rest: {
+        issues: {
+          get: async (a) => ({ data: structuredClone(issues[a.issue_number]) }),
+          listComments: () => {},
+          update: async (a) => void writes.push(['update', a]),
+          createComment: async (a) => void writes.push(['createComment', a]),
+          updateComment: async (a) => void writes.push(['updateComment', a]),
+        },
+      },
+    };
+    return { github, writes };
+  }
+  const core = { info: () => {}, warning: () => {} };
+  const exec = (f, number, action = 'milestoned') =>
+    run({
+      github: f.github,
+      core,
+      context: { repo: { owner: 'o', repo: 'r' }, payload: { action, issue: { number } } },
+      inputs: { levels: 'epic,feature,pbi,task,bug', requiredSections: '{}' },
+    });
+  const issue = (number, label, milestone, title = `[${LEVELS[label] ?? 'X'}] t${number}`) => ({
+    number,
+    title,
+    labels: [{ name: label }],
+    milestone,
+    body: '',
+  });
+  const bot = (body, id = 5) => ({ id, user: { type: 'Bot' }, body });
+
+  it('removes the milestone of an Epic and comments', async () => {
+    const f = fake({ issues: { 1: issue(1, 'epic', M1, '[Epic] t1') } });
+    await exec(f, 1);
+    assert.deepEqual(f.writes.map(([n]) => n), ['update', 'createComment']);
+    assert.equal(f.writes[0][1].milestone, null);
+    assert.match(f.writes[1][1].body, /An Epic never has a milestone \(milestone rule\), removed M1\./);
+  });
+
+  it('leaves an Epic without milestone and issues without level label alone', async () => {
+    const f = fake({ issues: { 1: issue(1, 'epic', null, '[Epic] t1'), 2: issue(2, 'dependencies', M1) } });
+    await exec(f, 1, 'demilestoned');
+    await exec(f, 2);
+    assert.deepEqual(f.writes, []);
+  });
+
+  it('comments once on a Feature with a sub-issue outside its milestone', async () => {
+    const subs = { 1: [{ number: 2, milestone: null, repository_url: base }] };
+    const f = fake({ issues: { 1: issue(1, 'feature', M1, '[Feature] t1') }, subs });
+    await exec(f, 1);
+    assert.deepEqual(f.writes.map(([n]) => n), ['createComment']);
+    assert.match(f.writes[0][1].body, /- o\/r#2 \(none\)/);
+  });
+
+  it('updates the existing comment instead of duplicating it, and marks it resolved when fixed', async () => {
+    const old = bot(milestoneCommentBody('M1', ['o/r#9 (none)']));
+    const bad = fake({
+      issues: { 1: issue(1, 'feature', M1, '[Feature] t1') },
+      subs: { 1: [{ number: 2, milestone: null, repository_url: base }] },
+      comments: { 1: [old] },
+    });
+    await exec(bad, 1);
+    assert.deepEqual(bad.writes.map(([n]) => n), ['updateComment']);
+    assert.match(bad.writes[0][1].body, /o\/r#2 \(none\)/);
+
+    const ok = fake({
+      issues: { 1: issue(1, 'feature', M1, '[Feature] t1') },
+      subs: { 1: [{ number: 2, milestone: M1, repository_url: base }] },
+      comments: { 1: [old] },
+    });
+    await exec(ok, 1);
+    assert.equal(ok.writes[0][0], 'updateComment');
+    assert.match(ok.writes[0][1].body, /All open sub-issues are in the milestone/);
+  });
+
+  it('writes nothing for a clean Feature without a previous comment', async () => {
+    const f = fake({ issues: { 1: issue(1, 'feature', M1, '[Feature] t1') }, subs: { 1: [] } });
+    await exec(f, 1, 'demilestoned');
+    assert.deepEqual(f.writes, []);
+  });
+
+  it('rechecks the parent Feature when a PBI or Bug is milestoned', async () => {
+    for (const label of ['pbi', 'bug']) {
+      const f = fake({
+        issues: { 1: issue(1, 'feature', M1, '[Feature] t1'), 2: issue(2, label, null) },
+        subs: { 1: [{ number: 2, milestone: null, repository_url: base }] },
+        parents: { 2: 1 },
+      });
+      await exec(f, 2, 'demilestoned');
+      assert.equal(f.writes[0][0], 'createComment');
+      assert.equal(f.writes[0][1].issue_number, 1);
+    }
+  });
+
+  it('ignores a PBI without parent or with a non-Feature parent', async () => {
+    const none = fake({ issues: { 2: issue(2, 'pbi', M1) } });
+    await exec(none, 2);
+    const epic = fake({ issues: { 1: issue(1, 'epic', null, '[Epic] t1'), 2: issue(2, 'pbi', M1) }, parents: { 2: 1 } });
+    await exec(epic, 2);
+    assert.deepEqual([...none.writes, ...epic.writes], []);
   });
 });

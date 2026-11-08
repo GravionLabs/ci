@@ -6,7 +6,7 @@ import { PwshWorker } from '../helpers/pwsh-worker';
 
 const SCRIPT = path.resolve(
   __dirname,
-  '../../project/github-project/scripts/Sync-ProjectNeeds.ps1'
+  '../../.agents/skills/github-project/scripts/Sync-ProjectNeeds.ps1'
 );
 
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;
@@ -416,6 +416,11 @@ describe.skipIf(!hasPwsh)('Sync-ProjectNeeds', () => {
       ['M3.1 after M3', ['M3.1', 'M3'], 2],
       ['M3.1 before M4', ['M4', 'M3.1'], 2],
       ['topic is ignored', ['M10 Late', 'M2 Early'], 2],
+      ['padded M001 before M011.1', ['M011.1', 'M001'], 2],
+      ['padded M002 before unpadded M10', ['M10', 'M002'], 2],
+      ['unpadded M2 before padded M010', ['M010', 'M2'], 2],
+      ['padded M010 before M011.1', ['M011.1', 'M010'], 2],
+      ['unpadded M11 before padded M011.1', ['M011.1', 'M11'], 2],
     ])('%s', async (_n, open, winner) => {
       const items = open.map((m, i) => it0(i + 1, m));
       const acts = await currentActions(items, { 'o/r': { open } });

@@ -1,7 +1,7 @@
 {
   "name": "ci-tests",
   "private": true,
-  "description": "Vitest tests of the project scripts (pwsh) of GravionLabs/ci (Sync-ProjectNeeds, NeedsRules)",
+  "description": "Vitest tests of the github-project skill scripts (pwsh) shipped from GravionLabs/ci",
   "scripts": {
     "test": "vitest run"
   },

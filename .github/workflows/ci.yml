@@ -119,7 +119,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # read-only; warns and exits 0 when the branch does not exist (between releases)
-        run: GITHUB_REPOSITORY=GravionLabs/skills RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
+        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true PROJECT_STATUS='In release' bash versioning/mark-merged-issues/mark.sh
 
       - name: Smoke test close-merged-issues (dry run, no-op path)
         uses: ./versioning/close-merged-issues
@@ -135,7 +135,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # read-only; warns and exits 0 when the branch does not exist (between releases)
-        run: GITHUB_REPOSITORY=GravionLabs/skills RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh
+        run: GITHUB_REPOSITORY=GravionLabs/apm-hub RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh
 
   actionlint:
     name: 'Lint: workflows (actionlint)'
@@ -171,6 +171,10 @@ jobs:
         shell: bash
         # triggers, permissions, step order, token wiring, token check script
         run: bash tests/release-branch-workflow.test.sh
+
+      - name: Test tauri-app.yml recreate-branch
+        shell: bash
+        run: bash tests/tauri-app-workflow.test.sh
 
       - name: Test rust/setup apt cache
         shell: bash
@@ -256,7 +260,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Vitest (Sync-ProjectNeeds, NeedsRules; pwsh is preinstalled)
+      - name: Vitest (Set-ProjectStandard, Sync-ProjectNeeds, NeedsRules; pwsh is preinstalled)
         shell: bash
         run: CI=true npm test
 

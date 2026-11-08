@@ -23,7 +23,7 @@ inputs:
   channel:
     description: >
       Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta;
-      tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc.<n> / -beta.<n>
+      tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc<nnn> / -beta<nnn>
       (n = commits since the last version source, at least 1).
     required: false
     default: 'auto'

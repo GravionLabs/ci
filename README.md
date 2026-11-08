@@ -33,7 +33,6 @@ versioning/
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
-├── github-project/         # Sync-ProjectNeeds.ps1 and NeedsRules.psm1 (run by needs; the skill lives in GravionLabs/skills)
 └── needs/                  # Keep the project field Needs current (Sync-ProjectNeeds.ps1 of the github-project skill)
 wiki/
 └── sync/                   # Sync docs/**/*.md and README.md to the GitHub Wiki
@@ -423,7 +422,7 @@ jobs:
 | `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                                                                                              | No       | 6.x     |
 | `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                                                                                                  | No       |         |
 | `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.                                                                             | No       | true    |
-| `channel`                 | Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta; tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc.<n> / -beta.<n> (n = commits since the last version source, at least 1). | No       | auto    |
+| `channel`                 | Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta; tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc<nnn> / -beta<nnn> (n = commits since the last version source, at least 1, zero-padded to 3 digits). | No       | auto    |
 <!-- /action-docs:inputs -->
 
 **Versioning model (Conventional Commits).** With `conventional-commits: true` (default) the bump comes from the commit messages that reach the branch: `fix:`, `perf:`, `revert:` (and any other type, e.g. `docs:`) give a patch, `feat:` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major. `+semver: major|minor|patch` stays as an escape hatch (for example the jump to 1.0.0). `conventional-commits: false` keeps the plain GitVersion defaults. The caller's `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`.
@@ -433,10 +432,10 @@ jobs:
 - Limit in 0.x: a breaking change jumps to 1.0.0 (GitVersion has no "bump minor pre major"). Avoid `!` in 0.x repositories or use `+semver: minor` deliberately.
 - The reusable `*-package.yml` workflows and `tauri-app.yml` pass the input `conventional-commits` through. Test: `bash tests/conventional-commits.test.sh`.
 
-**Release channel.** The branch decides the channel, callers need no `prerelease` input: `main` (and tag builds) is `stable` and keeps the GitVersion version; `release/*` is `rc` (`<next stable>-rc.<n>`); every other branch is `beta` (`<next stable>-beta.<n>`). `n` is the number of commits since the last version source (at least 1). The input `channel` (`stable`, `rc`, `beta`; default `auto`) overrides the rule. The outputs `channel` and `is-prerelease` come next to the existing ones; `semver`, `nuget-version`, `npm-version`, `python-version` (`1.2.0rc3`, `1.2.0b3`) and `docker-version` follow the channel. Existing callers on `@v1` see no change on `main`. Test: `bash tests/release-channel.test.sh`.
+**Release channel.** The branch decides the channel, callers need no `prerelease` input: `main` (and tag builds) is `stable` and keeps the GitVersion version; `release/*` is `rc` (`<next stable>-rc<nnn>`, e.g. `1.2.0-rc010`); every other branch is `beta` (`<next stable>-beta<nnn>`). `n` is the number of commits since the last version source (at least 1), zero-padded to 3 digits and without a dot: GitHub sorts releases by comparing the pre-release part as text, so `rc.9` would list above `rc.10`, and SemVer forbids a leading zero in a numeric identifier (`rc.010`). The alphanumeric `rc010` sorts correctly as text and as SemVer up to 999. The input `channel` (`stable`, `rc`, `beta`; default `auto`) overrides the rule. The outputs `channel` and `is-prerelease` come next to the existing ones; `semver`, `nuget-version`, `npm-version`, `python-version` (`1.2.0rc3`, `1.2.0b3`) and `docker-version` follow the channel. Existing callers on `@v1` see no change on `main`. Test: `bash tests/release-channel.test.sh`.
 
 - **Beta builds create no tag and no release.** A caller gates tag, release and publish steps on `needs.determine-version.outputs.channel != 'beta'`; `rc` creates a pre-release tag `v<version>` (`is-prerelease` marks the release as pre-release). To keep the beta installers, upload them as workflow artifacts instead of attaching them to a release (for example `actions/upload-artifact` on the bundle directory `src-tauri/target/<target>/release/bundle/`, `retention-days: 7`).
-- **Tauri installers and MSI.** WiX needs a numeric version, so `tauri/installers` skips the MSI on Windows when `version` has a suffix (`1.2.0-rc.3`, `1.2.0-beta.1`) and builds the NSIS installer only; a `--bundles` in `args` takes precedence.
+- **Tauri installers and MSI.** WiX needs a numeric version, so `tauri/installers` skips the MSI on Windows when `version` has a suffix (`1.2.0-rc003`, `1.2.0-beta001`) and builds the NSIS installer only; a `--bundles` in `args` takes precedence.
 
 **Outputs**
 
@@ -778,6 +777,7 @@ Sets the `[Level] ` title prefix from the level label of an issue and flags issu
 
 - **Title:** the first label of `levels` that the issue carries decides the prefix (`epic` becomes `[Epic]`, `pbi` `[PBI]`, others capitalized). Existing leading `[...]` prefixes and the legacy `Epic:`, `Feature:`, `Bug:` prefixes are replaced by exactly one `[Level] `. Issues without a level label are left alone.
 - **Sections:** for levels listed in `required-sections`, a missing heading (`##` to `####`, case-insensitive) adds the label `needs-refinement` and one comment (marked with `<!-- gravionlabs-ci:issue-conventions -->`, updated in place, never duplicated). Once all sections exist the label is removed; when the level label changes to one without required sections, the label is removed only if the action set it (its comment says so).
+- **Milestone rule** (on `milestoned`/`demilestoned`): an Epic never has a milestone, so it is removed with the comment `An Epic never has a milestone (milestone rule), removed <title>.`. A Feature with a milestone gets one comment (marker `<!-- gravionlabs-ci:milestone-rule -->`, updated in place, set to "resolved" once fixed) listing its open sub-issues outside that milestone (other milestone, none, or another repository) as `<owner>/<repo>#<n> (<milestone|none>)`. A PBI or Bug milestoned or demilestoned re-checks its parent Feature (same repository) the same way. Issues without a level label are left alone.
 
 > **Prerequisite:** `permissions: issues: write`. The default `token` is the `GITHUB_TOKEN`, so the edits it makes trigger no further workflow run.
 
@@ -810,7 +810,7 @@ Test: `node --test "issues/conventions/*.test.mjs"` (quote the glob: Node 24 tre
 
 ### `project/needs`
 
-Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` from `project/github-project/scripts` of this repository (the skill [`github-project`](https://github.com/GravionLabs/skills/tree/main/skills/github/github-project) of GravionLabs/skills carries a copy) (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
+Keeps the project field `Needs` current by running `Sync-ProjectNeeds.ps1` of the skill [`github-project`](.agents/skills/github-project/SKILL.md) of this repository (see [Project standard](docs/project-standard.md)). Used by the `needs` job of `issues.yml`; run it on `issues`, `pull_request_target`, `schedule` or `workflow_dispatch`.
 
 - **Event mode (`mode: event`):** syncs the issue of the event plus its parent. Issue events: `labeled`, `unlabeled`, `closed`, `reopened`, `milestoned`, `demilestoned` (the field `Current`); dependents are synced too on `closed`, `reopened` and when the label `merged` is added or removed. Pull requests (`pull_request_target`): the issue number is the leading number of the head branch after an optional `<prefix>/` (`feat/63-x`, `63-x`); a branch without one logs a notice and does nothing.
 - **Full mode (`mode: full`):** syncs every item of the calling repository; `schedule` and `workflow_dispatch` events without a mode do this too.
@@ -1003,7 +1003,7 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 <!-- action-docs:inputs source="tauri/installers/action.yml" -->
 | Name                           | Description                                                                                                                                                                                  | Required | Default                                |
 |--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
-| `version`                      | Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc.3 the MSI is skipped on Windows and only the NSIS installer is built)                                  | **Yes**  | —                                      |
+| `version`                      | Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc003 the MSI is skipped on Windows and only the NSIS installer is built)                                  | **Yes**  | —                                      |
 | `target`                       | Rust target triple of this matrix entry                                                                                                                                                      | **Yes**  | —                                      |
 | `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.                                                                      | No       |                                        |
 | `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                                                                                      | No       |                                        |
@@ -1061,6 +1061,10 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1
     permissions:
       contents: write
+      issues: write
+      pull-requests: read
+      id-token: write
+      attestations: write
     with:
       ci-exclude: myapp-tauri
       cli-package: myapp-cli
@@ -1072,7 +1076,14 @@ jobs:
 
 The caller decides when it runs (the matrix of macOS and Windows runners is expensive: run it on pushes to the default branch and on demand, not on every pull request). Without `cli-package` no CLI binaries are built, without `tauri` no installers.
 
-**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `apt-cache-version` (cache version of the apt packages of the Linux installer job only; the checks install none), `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`). **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional).
+**Inputs:** `gitversion-config-file` (`GitVersion.yml`), `ci-exclude`, `cli-package` and `cli-binary` (several, separated by spaces, go into one archive per target), `cli-matrix`, `tauri`, `installer-matrix`, `installer-args`, `installer-linux-packages`, `apt-cache-version` (cache version of the apt packages of the Linux installer job only; the checks install none), `installer-sidecars` (JSON `{"package":"…","binary":"…","dir":"…"}`, see `tauri/installers`), `cliff-config` (`cliff.toml`), `recreate-branch` (default empty = off; e.g. `release/next`: after the release the `publish` job pushes the branch from the released commit when it is missing on origin, through `versioning/gh-release/recreate-branch.sh`, never forcing or moving an existing one; set it when the repository deletes merged branches; the push uses the CI app token or `GH_PAT` when set, so the new branch starts `release-branch.yml`, else `github.token`, which starts no workflow). Test: `bash tests/tauri-app-workflow.test.sh`. **Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `CI_APP_ID`, `CI_APP_PRIVATE_KEY` (GitHub App `GravionLabs CI`, see "GitHub App") and `GH_PAT` (deprecated fallback), all optional.
+
+**Release assets and provenance:** after all uploads the `publish` job downloads the release's assets into a temporary directory under `RUNNER_TEMP` (never into the caller's checkout, so a repository `assets/` directory is not hashed) and writes `SHA256SUMS` over every binary (CLI archives, `.exe`, `.msi`, `.dmg`, `.deb`, `.rpm`, `.AppImage`, `.app.tar.gz`; not `*.sig`, `latest.json` or the earlier `SHA256SUMS`), checks it with `sha256sum -c` and uploads it with `--clobber`. When the calling repository is public (`github.event.repository.private == false`) the SHA-pinned `actions/attest-build-provenance` attests the listed files (`subject-checksums` points to `SHA256SUMS`); a private repository keeps `SHA256SUMS` and skips the attestation without failing. The calling job must grant `id-token: write` and `attestations: write` (besides `contents: write`, `issues: write`, `pull-requests: read`), or the reusable workflow fails at startup. Verify a download:
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify <asset> --repo <owner>/<repo>
+```
 
 **GitVersion pitfall:** do not pin `next-version` in `GitVersion.yml` to an old minor, or the release is numbered as a patch of that minor (a release of 0.5 was published as 0.4.3). Ask for a minor or major bump with `+semver: minor` or `+semver: major` in a commit message of the release.
 
@@ -1531,7 +1542,7 @@ Renovate (`renovate.yml`) runs as the app, not as the PAT: it has its own rate l
 Reusable workflow for issue and pull request events, three independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
-- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened).
+- **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened, milestoned, demilestoned).
 - **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened, milestoned, demilestoned and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**

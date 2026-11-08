@@ -61,6 +61,10 @@ on:
         description: 'git-cliff configuration for the release notes and the changelog'
         type: string
         default: 'cliff.toml'
+      recreate-branch:
+        description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
+        type: string
+        default: ''
     secrets:
       TAURI_SIGNING_PRIVATE_KEY:
         required: false
@@ -191,10 +195,15 @@ jobs:
       contents: write
       issues: write
       pull-requests: read
+      # Build provenance attestation of SHA256SUMS (public repositories only; the caller must grant both).
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # No persisted github.token header: it would shadow the push token of the recreate step.
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         if: ${{ inputs.cli-package != '' }}
         with:
@@ -259,11 +268,72 @@ jobs:
             exit 1
           fi
           gh release upload "$tag" updater/latest.json --clobber --repo "$repo"
+      # SHA256SUMS over every binary asset of the release (CLI archives and installers), written after all
+      # uploads. Signatures, latest.json and the previous SHA256SUMS (CLI archives only) are not hashed.
+      - name: Checksum the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          repo="${{ github.repository }}"
+          # Outside the checkout: a caller repository may have its own assets/ directory, and its files must
+          # never end up in SHA256SUMS or the attestation.
+          work=$(mktemp -d "$RUNNER_TEMP/release.XXXXXX")
+          mkdir "$work/assets"
+          gh release download "$tag" --dir "$work/assets" --repo "$repo" --pattern '*'
+          cd "$work/assets"
+          rm -f -- *.sig latest.json SHA256SUMS
+          ls -1 | LC_ALL=C sort | xargs -d '\n' sha256sum > "$work/SHA256SUMS"
+          sha256sum -c "$work/SHA256SUMS"
+          gh release upload "$tag" "$work/SHA256SUMS" --clobber --repo "$repo"
+          echo "SHA256SUMS_PATH=$work/SHA256SUMS" >> "$GITHUB_ENV"
+      # Attestations need a public repository (or a plan that supports them for private ones); private callers
+      # keep SHA256SUMS and skip the attestation.
+      - name: Attest the build provenance
+        if: ${{ github.event.repository.private == false }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ${{ env.SHA256SUMS_PATH }}
       # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
         with:
           version: ${{ needs.determine-version.outputs.semver }}
+      # Recreates the release branch (normally release/next) when the repository deleted it on merge. The push uses the
+      # CI app token or GH_PAT when set (a token's push starts release-branch.yml; github.token's does not).
+      - name: Check CI app
+        id: app
+        if: ${{ inputs.recreate-branch != '' }}
+        shell: bash
+        env:
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+      - name: Create CI app token
+        id: app-token
+        if: ${{ inputs.recreate-branch != '' && steps.app.outputs.present == 'true' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - name: Fetch recreate-branch.sh
+        if: ${{ inputs.recreate-branch != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: GravionLabs/ci
+          ref: v1
+          path: .gravionlabs-ci
+          sparse-checkout: versioning/gh-release
+      - name: Recreate the release branch
+        if: ${{ inputs.recreate-branch != '' }}
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.recreate-branch }}
+          SHA: ${{ github.sha }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
+          bash .gravionlabs-ci/versioning/gh-release/recreate-branch.sh
 
   update-changelog:
     name: update changelog

@@ -1,7 +1,7 @@
 name: Project needs
 description: >-
-  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of this repository
-  (project/github-project/scripts, resolved from the action path of the same ref).
+  Keeps the project field Needs current by running Sync-ProjectNeeds.ps1 of the github-project skill in this repository
+  (.agents/skills/github-project/scripts, resolved from the action path of the same ref).
   Run it on issues, pull_request_target, schedule or workflow_dispatch events. The calling repository and PR code are
   never checked out, and event data reaches the script through the environment only. No token: one warning and a green step.
 
@@ -52,5 +52,5 @@ runs:
         ISSUE_NUMBER: ${{ github.event.issue.number }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         LABEL_NAME: ${{ github.event.label.name }}
-        SYNC_SCRIPT: ${{ github.action_path }}/../github-project/scripts/Sync-ProjectNeeds.ps1
+        SYNC_SCRIPT: ${{ github.action_path }}/../../.agents/skills/github-project/scripts/Sync-ProjectNeeds.ps1
       run: bash "$GITHUB_ACTION_PATH/needs.sh"
