@@ -72,7 +72,7 @@ scripts/
   docker-package.yml    — Full Docker CI/CD: determine-version ‖ lint → build-publish → release (main only)
   node-package.yml      — Full Node.js Package CI/CD: determine-version ‖ ci → publish → release
   angular-package.yml   — Full Angular Package CI/CD: same as node-package.yml with Angular defaults
-  tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`)
+  tauri-app.yml         — Full Rust CLI / Tauri 2 app CI/CD: determine-version → ci → draft → build ‖ installers → publish → changelog (inputs incl. `installer-sidecars`); the calling job must grant `contents: write`, `issues: write`, `pull-requests: read`, `id-token: write` and `attestations: write` (the `publish` job requests them; a caller granting less fails at startup, job permissions cannot be conditional; README example, `tests/tauri-app-workflow.test.sh`)
   pr-checks.yml         — Reusable PR checks: `readiness` and `adr` jobs and the aggregate job `PR checks` (the only name a ruleset requires); inputs `readiness`, `adr`, `spec`, `not-ready-labels`, `require-issue`
   issues.yml            — Reusable issue workflow: add-to-project ‖ conventions ‖ needs (inputs `project-url`, `required-sections`, `levels`, `needs`, `mode`; secrets `GH_PAT`, `PROJECT_TOKEN`)
   issue-events.yml      — This repository's caller of issues.yml (workflow "Issue events"; replaced add-to-project.yml)

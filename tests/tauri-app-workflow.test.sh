@@ -51,4 +51,13 @@ eq "checksums come after the last asset upload" after "$r"
 if [ "$(idx 'Attest the build provenance')" -gt "$(idx 'Checksum the release assets')" ]; then r=after; else r=before; fi
 eq "attestation comes after the checksums" after "$r"
 
+# The README usage example must grant every permission the publish job requests (a caller granting less fails at startup, #207).
+EX=$(awk '/^## Reusable Workflow: `tauri-app.yml`/{s=1;next} s&&/^## /{exit} s&&/^```yaml/{b=1;buf="";hit=0;next} s&&/^```/{if(b&&hit){printf "%s",buf;exit} b=0;next} b{buf=buf $0 "\n"; if($0~/tauri-app\.yml@/)hit=1}' "$ROOT/README.md")
+eq "publish requests exactly five permissions" 5 "$(q "$P.permissions | length")"
+for perm in $(q "$P.permissions | keys | .[]"); do
+  want=$(q "$P.permissions[\"$perm\"]")
+  got=$(printf '%s' "$EX" | yq -r ".jobs.release.permissions[\"$perm\"]")
+  eq "README example grants $perm: $want" "$want" "$got"
+done
+
 [ "$failures" = 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

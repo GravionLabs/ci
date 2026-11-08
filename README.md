@@ -1061,6 +1061,10 @@ jobs:
     uses: GravionLabs/ci/.github/workflows/tauri-app.yml@v1
     permissions:
       contents: write
+      issues: write
+      pull-requests: read
+      id-token: write
+      attestations: write
     with:
       ci-exclude: myapp-tauri
       cli-package: myapp-cli
