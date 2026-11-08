@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.10.1] — 2026-11-07
+
+### Documentation
+- Update CHANGELOG.md for v1.10.0 [skip ci]
+
+
+### Refactoring
+- Drop the APM package layout (#194)
+
+
 ## [1.10.0] — 2026-11-07
 
 ### Bug Fixes
