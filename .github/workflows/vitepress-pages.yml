@@ -1,0 +1,116 @@
+name: VitePress Pages
+
+# Builds a VitePress site and deploys it to GitHub Pages. Call it from a workflow on push (main), pull_request and
+# workflow_dispatch; github.event_name inside this workflow is the caller's event. Pull requests and manual runs build
+# as a dry run (tests, dead links); a push to main deploys when `deploy` is true.
+# The caller grants `pages: write` and `id-token: write` (Settings -> Pages -> Source must be "GitHub Actions").
+on:
+  workflow_call:
+    inputs:
+      site-path:
+        description: 'Directory of the VitePress site (package.json and lockfile), relative to the repository root'
+        type: string
+        required: false
+        default: 'site'
+      package-manager:
+        description: 'Package manager of the site: npm or pnpm'
+        type: string
+        required: false
+        default: 'npm'
+      pre-build:
+        description: 'Optional shell command run at the repository root after the install, before tests and build'
+        type: string
+        required: false
+        default: ''
+      deploy:
+        description: 'Deploy on a push to main; false builds only'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deployments queue behind each other and the last one wins; a pull request replaces its own earlier run.
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    env:
+      SITE_PATH: ${{ inputs.site-path }}
+      PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      PRE_BUILD: ${{ inputs.pre-build }}
+      # https://<owner>.github.io/<repository>/
+      SITE_BASE: /${{ github.event.repository.name }}/
+    steps:
+      - name: Check the package manager
+        shell: bash
+        run: |
+          case "$PACKAGE_MANAGER" in
+            npm|pnpm) ;;
+            *) echo "::error::package-manager must be npm or pnpm, got '$PACKAGE_MANAGER'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          package_json_file: ${{ inputs.site-path }}/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.site-path }}/${{ inputs.package-manager == 'pnpm' && 'pnpm-lock.yaml' || 'package-lock.json' }}
+
+      - name: Install
+        shell: bash
+        working-directory: ${{ inputs.site-path }}
+        run: |
+          if [ "$PACKAGE_MANAGER" = pnpm ]; then pnpm install --frozen-lockfile; else npm ci; fi
+
+      - name: Pre-build
+        if: inputs.pre-build != ''
+        shell: bash
+        run: eval "$PRE_BUILD"
+
+      - name: Site tests
+        shell: bash
+        working-directory: ${{ inputs.site-path }}
+        run: |
+          if [ "$PACKAGE_MANAGER" = pnpm ]; then pnpm test; else npm test; fi
+
+      # Dead links fail this step.
+      - name: Build the site
+        shell: bash
+        working-directory: ${{ inputs.site-path }}
+        run: |
+          if [ "$PACKAGE_MANAGER" = pnpm ]; then pnpm run build; else npm run build; fi
+
+      - name: Upload the site
+        if: inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: ${{ inputs.site-path }}/.vitepress/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
