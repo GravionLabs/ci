@@ -6,6 +6,24 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.11.0] — 2026-11-08
+
+### Bug Fixes
+- **versioning**: Zero-pad the pre-release number so releases sort in order (#195)
+- **tauri-app**: Publish requests id-token and attestations permissions that break existing callers (#207) (#209)
+- **tauri-app**: Publish creates assets/ in the caller checkout (#208) (#210)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.10.1 [skip ci]
+
+
+### Features
+- **tauri-app**: Recreate release/next after the release (#138) (#202)
+- **tauri-app**: SHA256SUMS over the installers and build provenance attestation (#198) (#203)
+- Issue conventions check the milestone rule on milestoned/demilestoned (#199) (#204)
+
+
 ## [1.10.1] — 2026-11-07
 
 ### Documentation
