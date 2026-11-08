@@ -276,21 +276,24 @@ jobs:
         run: |
           tag="v${{ needs.determine-version.outputs.semver }}"
           repo="${{ github.repository }}"
-          mkdir assets
-          gh release download "$tag" --dir assets --repo "$repo" --pattern '*'
-          cd assets
+          # Outside the checkout: a caller repository may have its own assets/ directory, and its files must
+          # never end up in SHA256SUMS or the attestation.
+          work=$(mktemp -d "$RUNNER_TEMP/release.XXXXXX")
+          mkdir "$work/assets"
+          gh release download "$tag" --dir "$work/assets" --repo "$repo" --pattern '*'
+          cd "$work/assets"
           rm -f -- *.sig latest.json SHA256SUMS
-          ls -1 | LC_ALL=C sort | xargs -d '\n' sha256sum > ../SHA256SUMS
-          sha256sum -c ../SHA256SUMS
-          cd ..
-          gh release upload "$tag" SHA256SUMS --clobber --repo "$repo"
+          ls -1 | LC_ALL=C sort | xargs -d '\n' sha256sum > "$work/SHA256SUMS"
+          sha256sum -c "$work/SHA256SUMS"
+          gh release upload "$tag" "$work/SHA256SUMS" --clobber --repo "$repo"
+          echo "SHA256SUMS_PATH=$work/SHA256SUMS" >> "$GITHUB_ENV"
       # Attestations need a public repository (or a plan that supports them for private ones); private callers
       # keep SHA256SUMS and skip the attestation.
       - name: Attest the build provenance
         if: ${{ github.event.repository.private == false }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-checksums: SHA256SUMS
+          subject-checksums: ${{ env.SHA256SUMS_PATH }}
       # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
