@@ -24,7 +24,9 @@ for f in nuget-package python-package docker-package tauri-app release-branch; d
   grep -qE "uses: actions/create-github-app-token@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+$" "$file" && ok "$f: pin carries a version comment" || fail "$f: pin carries a version comment"
   eq "$f: app-id" "$APP_ID" "$(q "[$step | .with[\"app-id\"]] | .[0]" "$file")"
   eq "$f: private-key" "$KEY" "$(q "[$step | .with[\"private-key\"]] | .[0]" "$file")"
-  eq "$f: only when both secrets are set" "steps.app.outputs.present == 'true'" "$(q "[$step | .if] | .[0]" "$file")"
+  # tauri-app also has a recreate-branch step (#138) that runs only with that input set; every app-token step must still require the secrets
+  conds="$(q "[$step | .if] | .[]" "$file" | sed -E "s/^\\$\\{\\{ inputs\\.recreate-branch != '' && (.*) \\}\\}$/\\1/" | sort -u)"
+  eq "$f: only when both secrets are set" "steps.app.outputs.present == 'true'" "$conds"
   eq "$f: CI_APP_ID is an optional secret" false "$(q '.on.workflow_call.secrets.CI_APP_ID.required' "$file")"
   eq "$f: CI_APP_PRIVATE_KEY is an optional secret" false "$(q '.on.workflow_call.secrets.CI_APP_PRIVATE_KEY.required' "$file")"
   eq "$f: GH_PAT stays an optional (deprecated) secret" false "$(q '.on.workflow_call.secrets.GH_PAT.required' "$file")"
