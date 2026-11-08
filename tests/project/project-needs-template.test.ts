@@ -3,7 +3,7 @@ import * as path from 'path';
 import { parse } from 'yaml';
 
 const root = path.resolve(__dirname, '../..');
-const tplDir = path.join(root, '.apm/skills/github-project/templates');
+const tplDir = path.join(root, '.agents/skills/github-project/templates');
 const read = (p: string) => fs.readFileSync(p, 'utf-8');
 
 type Wf = { jobs: Record<string, { with?: Record<string, unknown> }> };

@@ -6,7 +6,7 @@ import { createFakeGh } from '../helpers/fake-gh';
 
 const SCRIPT = path.resolve(
   __dirname,
-  '../../.apm/skills/github-project/scripts/Set-ProjectStandard.ps1'
+  '../../.agents/skills/github-project/scripts/Set-ProjectStandard.ps1'
 );
 const hasPwsh = spawnSync('pwsh', ['-NoProfile', '-Command', '1']).status === 0;
 

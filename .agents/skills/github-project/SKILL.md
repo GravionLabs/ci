@@ -14,11 +14,11 @@ One reproducible project standard for all GravionLabs repos. Paths are relative 
 
 ## Modes
 
-| Invocation | Does |
-|:--|:--|
+| Invocation           | Does                                                                                                                                           |
+| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apply <project-nr>` | Fields `Level`, `Needs` and `Current`; the five standard views plus `Current milestone`, `Needs me`, `Ready for loop`, `Blocked` (nine views). |
-| `sync <project-nr>` | `apply` plus item sync (Level) and the labels `planned`, `needs-review` in the repositories linked to the project. |
-| `new <repo>` | Copy the template project, link it to the repo, run `sync`. |
+| `sync <project-nr>`  | `apply` plus item sync (Level) and the labels `planned`, `needs-review` in the repositories linked to the project.                             |
+| `new <repo>`         | Copy the template project, link it to the repo, run `sync`.                                                                                    |
 
 ## apply / sync
 
