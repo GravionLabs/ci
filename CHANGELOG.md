@@ -6,6 +6,20 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.12.0] — 2026-11-08
+
+### Bug Fixes
+- Only deploying runs use the pages-deploy concurrency group (#218) (#219)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.11.0 [skip ci]
+
+
+### Features
+- Reusable VitePress Pages workflow with deploy input (#216) (#217)
+
+
 ## [1.11.0] — 2026-11-08
 
 ### Bug Fixes
