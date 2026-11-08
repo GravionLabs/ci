@@ -61,6 +61,10 @@ on:
         description: 'git-cliff configuration for the release notes and the changelog'
         type: string
         default: 'cliff.toml'
+      recreate-branch:
+        description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
+        type: string
+        default: ''
     secrets:
       TAURI_SIGNING_PRIVATE_KEY:
         required: false
@@ -195,6 +199,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # No persisted github.token header: it would shadow the push token of the recreate step.
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         if: ${{ inputs.cli-package != '' }}
         with:
@@ -264,6 +270,41 @@ jobs:
         continue-on-error: true
         with:
           version: ${{ needs.determine-version.outputs.semver }}
+      # Recreates the release branch (normally release/next) when the repository deleted it on merge. The push uses the
+      # CI app token or GH_PAT when set (a token's push starts release-branch.yml; github.token's does not).
+      - name: Check CI app
+        id: app
+        if: ${{ inputs.recreate-branch != '' }}
+        shell: bash
+        env:
+          HAS_APP: ${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}
+        run: echo "present=$HAS_APP" >> "$GITHUB_OUTPUT"
+      - name: Create CI app token
+        id: app-token
+        if: ${{ inputs.recreate-branch != '' && steps.app.outputs.present == 'true' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - name: Fetch recreate-branch.sh
+        if: ${{ inputs.recreate-branch != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: GravionLabs/ci
+          ref: v1
+          path: .gravionlabs-ci
+          sparse-checkout: versioning/gh-release
+      - name: Recreate the release branch
+        if: ${{ inputs.recreate-branch != '' }}
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.recreate-branch }}
+          SHA: ${{ github.sha }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
+          bash .gravionlabs-ci/versioning/gh-release/recreate-branch.sh
 
   update-changelog:
     name: update changelog
