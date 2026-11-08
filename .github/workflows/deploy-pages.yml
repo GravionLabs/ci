@@ -1,5 +1,7 @@
 name: Deploy GitHub Pages
 
+# Deprecated: use vitepress-pages.yml; this MkDocs workflow is removed in the next major.
+
 on:
   workflow_call:
     inputs:

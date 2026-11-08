@@ -1732,7 +1732,43 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 
 ## Pages Actions
 
+### `vitepress-pages.yml`
+
+Builds a VitePress site and deploys it to GitHub Pages; a repository needs only a short caller. Pull requests and manual runs build as a dry run (site tests, dead links, no upload); a push to `main` with `deploy: true` uploads `<site-path>/.vitepress/dist` and deploys (environment `github-pages`). The Node version comes from `.nvmrc`; install uses the lockfile (`npm ci` or `pnpm install --frozen-lockfile` in `site-path`), then `test`, then `build` with `SITE_BASE=/<repository>/`. A pull request replaces its own run, deployments queue.
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `site-path` | No | `site` | Directory of the VitePress site |
+| `package-manager` | No | `npm` | `npm` or `pnpm` |
+| `pre-build` | No | `""` | Shell command at the repository root after the install |
+| `deploy` | No | `true` | `false` builds only, also on `main` |
+
+```yaml
+name: Pages
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  pages:
+    uses: GravionLabs/ci/.github/workflows/vitepress-pages.yml@v1
+    with:
+      deploy: ${{ vars.DEPLOY_PAGES == 'true' }}
+```
+
+Settings -> Pages -> Source must be "GitHub Actions". Test: `bash tests/vitepress-pages-workflow.test.sh`.
+
+---
+
 ### `pages/deploy`
+
+> **Deprecated:** use the reusable workflow [`vitepress-pages.yml`](#vitepress-pagesyml). This action and `deploy-pages.yml` are removed in the next major.
 
 Builds a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) site and uploads it as a GitHub Pages artifact.
 **Does not perform a checkout** — the caller is responsible for checking out the repository first.

@@ -224,6 +224,10 @@ jobs:
         # inputs, permissions, no checkout, aggregate job "PR checks" against sample needs results
         run: bash tests/pr-checks-workflow.test.sh
 
+      - name: Test vitepress-pages.yml invariants
+        shell: bash
+        run: bash tests/vitepress-pages-workflow.test.sh
+
       # The reusable workflow references its actions at @v1, which point to this change only once released, so the
       # stub caller runs the action itself against this pull request (require-issue off: unrelated PRs stay green).
       - name: Run pr-checks/readiness against this pull request
