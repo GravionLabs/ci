@@ -110,5 +110,13 @@ check false false true;  eq "neither, require-pat: fails" 1 "$code"; eq "neither
 check true false true;   eq "app, require-pat: green" 0 "$code"
 check false true true;   eq "PAT, require-pat: green" 0 "$code"
 
+# --- this repository's caller ---
+CALLER="$ROOT/.github/workflows/release-branch-caller.yml"
+eq "caller exists" 1 "$([ -f "$CALLER" ] && echo 1 || echo 0)"
+eq "caller triggers on release/**" 'release/**' "$(q '.on.push.branches[0]' "$CALLER")"
+eq "caller offers workflow_dispatch" true "$(q '.on | has("workflow_dispatch")' "$CALLER")"
+eq "caller uses the local workflow" ./.github/workflows/release-branch.yml "$(q '.jobs["release-branch"].uses' "$CALLER")"
+eq "caller job permissions" '{"contents":"read","issues":"write","pull-requests":"write"}' "$(qj '.jobs["release-branch"].permissions' "$CALLER")"
+
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]
