@@ -8,7 +8,7 @@ on:
   workflow_call:
     inputs:
       site-path:
-        description: 'Directory of the VitePress site (package.json and lockfile), relative to the repository root'
+        description: 'Directory of the VitePress site, relative to the repository root; its lockfile, else the one at the root (workspace)'
         type: string
         required: false
         default: 'site'
@@ -59,18 +59,32 @@ jobs:
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # The site's own lockfile, else the one at the repository root (the site is a workspace member). The
+      # packageManager field for pnpm is read from the package.json next to that lockfile.
+      - name: Locate the lockfile
+        id: lockfile
+        shell: bash
+        run: |
+          if [ "$PACKAGE_MANAGER" = pnpm ]; then lock=pnpm-lock.yaml; else lock=package-lock.json; fi
+          if [ -f "$SITE_PATH/$lock" ]; then dir=$SITE_PATH
+          elif [ -f "$lock" ]; then dir=.
+          else echo "::error::no $lock in $SITE_PATH or at the repository root"; exit 1
+          fi
+          if [ "$dir" = . ]; then path=$lock; else path=$dir/$lock; fi
+          { echo "dir=$dir"; echo "path=$path"; } >>"$GITHUB_OUTPUT"
+
       - name: Set up pnpm
         if: inputs.package-manager == 'pnpm'
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          package_json_file: ${{ inputs.site-path }}/package.json
+          package_json_file: ${{ steps.lockfile.outputs.dir }}/package.json
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: ${{ inputs.package-manager }}
-          cache-dependency-path: ${{ inputs.site-path }}/${{ inputs.package-manager == 'pnpm' && 'pnpm-lock.yaml' || 'package-lock.json' }}
+          cache-dependency-path: ${{ steps.lockfile.outputs.path }}
 
       - name: Install
         shell: bash
