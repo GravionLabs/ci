@@ -40,7 +40,24 @@ eq "no input expanded in a run script" 0 "$(q '[.jobs[].steps[].run | select(. !
 
 pnpm_step='.jobs.build.steps[] | select(.uses != null and (.uses | test("pnpm/action-setup")))'
 eq "pnpm setup pinned to the v4 commit" 'pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1' "$(q "$pnpm_step | .uses" | sed 's/ #.*//')"
-eq "pnpm setup reads the packageManager field of the site" '${{ inputs.site-path }}/package.json' "$(q "$pnpm_step | .with.package_json_file")"
+eq "pnpm setup reads the packageManager field of the lockfile directory" '${{ steps.lockfile.outputs.dir }}/package.json' "$(q "$pnpm_step | .with.package_json_file")"
+eq "node cache uses the lockfile of the lockfile directory" '${{ steps.lockfile.outputs.path }}' "$(q '.jobs.build.steps[] | select(.uses != null and (.uses | test("setup-node"))) | .with["cache-dependency-path"]')"
+
+# Behavior of the "Locate the lockfile" step: the site's own lockfile, else the repository root (workspace).
+locate=$(q '.jobs.build.steps[] | select(.id == "lockfile") | .run')
+eq "lockfile step runs after checkout, before pnpm setup" 'checkout lockfile pnpm' "$(q '[.jobs.build.steps[] | select((.uses // "" | test("checkout|pnpm/action-setup")) or .id == "lockfile") | (.id // (.uses | sub("@.*"; "") | sub(".*/"; "") | sub("action-setup"; "pnpm")))] | join(" ")')"
+run_locate() { # <repo dir> <package manager> -> the GITHUB_OUTPUT lines
+  local out; out=$(mktemp)
+  (cd "$1" && SITE_PATH=site PACKAGE_MANAGER="$2" GITHUB_OUTPUT="$out" bash -c "$locate") || echo "exit=$?" >>"$out"
+  cat "$out"; rm -f "$out"
+}
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/own/site" "$tmp/ws/site" "$tmp/none/site" "$tmp/npmws/site"
+touch "$tmp/own/site/pnpm-lock.yaml" "$tmp/own/pnpm-lock.yaml" "$tmp/ws/pnpm-lock.yaml" "$tmp/npmws/package-lock.json"
+eq "own lockfile in site-path wins" $'dir=site\npath=site/pnpm-lock.yaml' "$(run_locate "$tmp/own" pnpm)"
+eq "pnpm workspace: lockfile at the root" $'dir=.\npath=pnpm-lock.yaml' "$(run_locate "$tmp/ws" pnpm)"
+eq "npm workspace: lockfile at the root" $'dir=.\npath=package-lock.json' "$(run_locate "$tmp/npmws" npm)"
+case "$(run_locate "$tmp/none" pnpm)" in *exit=1*) ok "no lockfile fails" ;; *) fail "no lockfile fails" ;; esac
 
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]

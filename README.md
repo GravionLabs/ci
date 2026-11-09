@@ -1734,7 +1734,7 @@ Composite action that lints, builds, and tests a Node.js project with a single s
 
 ### `vitepress-pages.yml`
 
-Builds a VitePress site and deploys it to GitHub Pages; a repository needs only a short caller. Pull requests and manual runs build as a dry run (site tests, dead links, no upload); a push to `main` with `deploy: true` uploads `<site-path>/.vitepress/dist` and deploys (environment `github-pages`). The Node version comes from `.nvmrc`; install uses the lockfile (`npm ci` or `pnpm install --frozen-lockfile` in `site-path`), then `test`, then `build` with `SITE_BASE=/<repository>/`. A pull request replaces its own run, deployments queue.
+Builds a VitePress site and deploys it to GitHub Pages; a repository needs only a short caller. Pull requests and manual runs build as a dry run (site tests, dead links, no upload); a push to `main` with `deploy: true` uploads `<site-path>/.vitepress/dist` and deploys (environment `github-pages`). The Node version comes from `.nvmrc`; install uses the lockfile (`npm ci` or `pnpm install --frozen-lockfile` in `site-path`; the lockfile and, for pnpm, the `packageManager` field come from `site-path`, else from the repository root when the site is a workspace member), then `test`, then `build` with `SITE_BASE=/<repository>/`. A pull request replaces its own run, deployments queue.
 
 | Input | Required | Default | Description |
 |---|---|---|---|
