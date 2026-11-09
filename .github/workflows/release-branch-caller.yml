@@ -1,0 +1,28 @@
+# This repository's caller of the reusable release-branch.yml (the file release-branch.yml itself is workflow_call only).
+# A push to a release branch keeps the release PR current, closes the issues merged into it and syncs the project field Needs.
+# workflow_dispatch with dry-run prints what would change: gh workflow run release-branch-caller.yml --ref release/next -f dry-run=true
+name: Release branch caller
+
+on:
+  push:
+    branches: ['release/**']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Print what would change without changing anything'
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  release-branch:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/release-branch.yml
+    with:
+      project-url: https://github.com/users/GravionLabs/projects/17
+      dry-run: ${{ inputs.dry-run || false }}
+    secrets: inherit
