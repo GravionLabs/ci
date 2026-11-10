@@ -88,6 +88,15 @@ eq "needs passes project-url and mode" \
 eq "add-to-project skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dispatch|inputs\.mode" <<<"$(q "$ATP.if")")"
 eq "conventions skips schedule/dispatch" 0 "$(grep -cE "schedule|workflow_dispatch|inputs\.mode" <<<"$(q "$CONV.if")")"
 
+# --- reopen-status job ---
+RS='.jobs["reopen-status"]'
+rs_if=$(q "$RS.if")
+case "$rs_if" in "inputs.project-url != '' &&"*) ok "reopen-status off without project-url" ;; *) fail "reopen-status off without project-url" ;; esac
+case "$rs_if" in *"github.event_name == 'issues' && github.event.action == 'reopened'"*) ok "reopen-status only on issues reopened" ;; *) fail "reopen-status only on issues reopened" ;; esac
+eq "reopen-status permissions empty" '{}' "$(qj "$RS.permissions")"
+eq "reopen-status uses project/reopen-status" 'GravionLabs/ci/project/reopen-status@v1' "$(q "$RS.steps[0].uses")"
+eq "reopen-status token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$RS.steps[0].with.token")"
+
 # --- caller ---
 eq "caller issue types are the union" 'closed,demilestoned,edited,labeled,milestoned,opened,reopened,transferred,unlabeled' "$(q '.on.issues.types | sort | join(",")' "$CALLER")"
 eq "caller PR types are the union" 'closed,opened,ready_for_review,reopened' "$(q '.on.pull_request_target.types | sort | join(",")' "$CALLER")"

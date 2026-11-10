@@ -847,6 +847,34 @@ steps:
 
 Test: `bash tests/project-needs.test.sh` (stub `pwsh`, no network).
 
+### `project/reopen-status`
+
+Sets the project field `Status` of the item of a reopened issue to `Todo` when it is `Done` (other values stay). Used by the `reopen-status` job of `issues.yml`; run it on `issues: reopened`. Without it the built-in project workflow "Auto-close issue" closes the reopened issue again. Nothing is checked out; the issue number reaches the script through the environment only. Token: classic PAT with the scope `project` (plus `repo` for a private repository); no token, an issue outside the project or an API error gives a warning or notice and a green step.
+
+```yaml
+on:
+  issues:
+    types: [reopened]
+permissions: {}
+
+steps:
+  - uses: GravionLabs/ci/project/reopen-status@v1
+    with:
+      project-url: https://github.com/users/<owner>/projects/<n>
+      token: ${{ secrets.PROJECT_TOKEN }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="project/reopen-status/action.yml" -->
+| Name          | Description                                                                                                  | Required | Default |
+|---------------|--------------------------------------------------------------------------------------------------------------|----------|---------|
+| `project-url` | Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>   | **Yes**  | —       |
+| `token`       | Classic PAT with the scope project, plus repo for a private repository; empty skips the reset with a warning | No       |         |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/project-reopen-status.test.sh` (stub `gh` with a GraphQL fixture, no network).
+
 ---
 
 ## Rust Actions
@@ -1539,10 +1567,11 @@ Renovate (`renovate.yml`) runs as the app, not as the PAT: it has its own rate l
 
 ### `issues.yml`
 
-Reusable workflow for issue and pull request events, three independent jobs:
+Reusable workflow for issue and pull request events, independent jobs:
 
 - **`add-to-project`** adds new issues and pull requests (`issues` opened, reopened, transferred; `pull_request_target` opened, reopened) to a project with the SHA-pinned `actions/add-to-project`. Off when `project-url` is empty.
 - **`conventions`** runs [`issues/conventions`](#issuesconventions) on open issues (`issues` opened, edited, labeled, unlabeled, reopened, milestoned, demilestoned).
+- **`reopen-status`** (`issues` reopened, needs `project-url`) runs [`project/reopen-status`](#projectreopen-status): a reopened issue whose project `Status` is `Done` gets `Todo`, so the project workflow "Auto-close issue" does not close it again. Independent of the other jobs; an issue outside the project or a missing token never fails the run.
 - **`needs`** (opt-in, input `needs: true`, requires `project-url`) keeps the project field `Needs` current with [`project/needs`](#projectneeds). Event mode: `issues` labeled, unlabeled, closed, reopened, milestoned, demilestoned and `pull_request_target` opened, closed, ready_for_review (the issue is taken from the head branch); with `mode: full` or on `schedule` / `workflow_dispatch` it syncs every item of the calling repository, with `mode: project` every item of the project, any repository. Per-issue concurrency group, newer runs cancel older ones; `permissions: {}`; never checks out the caller or PR code.
 
 **Usage:**
