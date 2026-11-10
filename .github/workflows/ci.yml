@@ -249,6 +249,11 @@ jobs:
         # needs.sh against a stub pwsh, token check step, action.yml invariants (yq is preinstalled)
         run: bash tests/project-needs.test.sh
 
+      - name: Unit tests project/reopen-status
+        shell: bash
+        # reopen-status.sh against a stub gh with a GraphQL fixture, action.yml invariants
+        run: bash tests/project-reopen-status.test.sh
+
   test-github-project:
     name: 'Test: github-project skill'
     runs-on: ubuntu-latest
