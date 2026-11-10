@@ -1626,6 +1626,8 @@ Reusable workflow for pushes to a release branch. One job, three steps in order;
 
 A reverted PR: its issues stay closed; reopen them by hand.
 
+This repository calls the workflow itself by its local path: `.github/workflows/release-branch-caller.yml` (push to `release/**`, plus `workflow_dispatch` with `dry-run`).
+
 **One-time run (`workflow_dispatch`):** the caller workflow can also trigger on `workflow_dispatch` with a boolean input `dry-run` that it passes on, so each repository can close today's issues that already carry `merged` without a new push:
 
 ```sh
