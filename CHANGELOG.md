@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.13.0] — 2026-11-10
+
+### Documentation
+- Update CHANGELOG.md for v1.12.2 [skip ci]
+
+
+### Features
+- **workflows**: A reopened issue gets the project status Todo (#228) (#229)
+
+
 ## [1.12.2] — 2026-11-10
 
 ### Documentation
