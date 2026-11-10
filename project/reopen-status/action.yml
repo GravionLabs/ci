@@ -1,0 +1,41 @@
+name: Project reopen status
+description: >-
+  Sets the project field Status of the item of a reopened issue to Todo when it is Done (other values stay), so the
+  built-in project workflow "Auto-close issue" does not close the issue again. Run it on issues: reopened. No checkout;
+  event data reaches the script through the environment only. No token: one warning and a green step; an issue outside
+  the project is not an error.
+
+inputs:
+  project-url:
+    description: Project URL, https://github.com/users/<owner>/projects/<n> or https://github.com/orgs/<owner>/projects/<n>
+    required: true
+  token:
+    description: Classic PAT with the scope project, plus repo for a private repository; empty skips the reset with a warning
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Check token
+      id: token
+      shell: bash
+      env:
+        HAS_TOKEN: ${{ inputs.token != '' }}
+      run: |
+        if [ "$HAS_TOKEN" = "true" ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::No token for project/reopen-status (pass a classic PAT with the scope project, plus repo for a private repository); skipping the Status reset."
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Reset Status to Todo
+      if: steps.token.outputs.present == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        PROJECT_URL: ${{ inputs.project-url }}
+        ISSUE_NUMBER: ${{ github.event.issue.number }}
+      run: bash "$GITHUB_ACTION_PATH/reopen-status.sh"

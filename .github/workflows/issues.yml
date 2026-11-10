@@ -10,6 +10,9 @@
 #   unlabeled, closed, reopened, milestoned, demilestoned; pull_request_target: opened, closed, ready_for_review, issue number from the head branch);
 #   mode full syncs every item of the repository, mode project every item of the project (any repository; central nightly sync). Token: PROJECT_TOKEN (classic PAT, scope project,
 #   plus repo for a private repository), else GH_PAT; none = one warning, green. Never checks out caller or PR code.
+# - reopen-status: on issues: reopened sets the project Status of the issue's item to Todo when it is Done (project/reopen-status),
+#   so the project workflow "Auto-close issue" does not close the issue again. Same token as add-to-project; independent of the other jobs;
+#   an issue outside the project or a missing token never fails the run.
 # Titles and bodies are untrusted: they are read through the API only, never through ${{ }} expressions.
 name: Issues
 
@@ -122,4 +125,21 @@ jobs:
         with:
           project-url: ${{ inputs.project-url }}
           mode: ${{ inputs.mode }}
+          token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
+
+  reopen-status:
+    name: Reopened issue Status
+    if: >-
+      inputs.project-url != '' &&
+      github.event_name == 'issues' && github.event.action == 'reopened'
+    runs-on: ubuntu-latest
+    permissions: {}
+    concurrency:
+      group: reopen-status-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Reset Status to Todo
+        uses: GravionLabs/ci/project/reopen-status@v1
+        with:
+          project-url: ${{ inputs.project-url }}
           token: ${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}
