@@ -80,7 +80,7 @@ runs:
   using: 'composite'
   steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         token: ${{ inputs.token }}
         fetch-depth: 0
@@ -103,14 +103,14 @@ runs:
     - name: Generate release notes with git-cliff
       id: cliff
       if: ${{ inputs.cliff-config != '' }}
-      uses: orhun/git-cliff-action@v4
+      uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
       with:
         config: ${{ inputs.cliff-config }}
         args: --unreleased --tag ${{ inputs.tag-prefix }}${{ inputs.version }}
 
     - name: Update CHANGELOG.md with git-cliff
       if: ${{ inputs.cliff-config != '' && inputs.update-changelog == 'true' }}
-      uses: orhun/git-cliff-action@v4
+      uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
       with:
         config: ${{ inputs.cliff-config }}
         args: --tag ${{ inputs.tag-prefix }}${{ inputs.version }}

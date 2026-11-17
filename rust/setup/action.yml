@@ -80,7 +80,7 @@ runs:
     - name: Install Linux packages (cached)
       if: ${{ steps.apt.outputs.packages != '' }}
       # awalsh128/cache-apt-pkgs-action v1.6.3
-      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9
+      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
       with:
         packages: ${{ steps.apt.outputs.packages }}
         version: ${{ steps.aptkey.outputs.key }}
@@ -129,7 +129,7 @@ runs:
 
     - name: Cache cargo builds
       if: ${{ inputs.cache == 'true' }}
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
         key: ${{ inputs.cache-key }}
         workspaces: ${{ inputs.workspaces }}

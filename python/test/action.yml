@@ -38,7 +38,7 @@ runs:
 
     - name: Upload test results artifact
       if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: test-results
         path: ${{ inputs.working-directory }}/test-results/results.xml
@@ -46,7 +46,7 @@ runs:
 
     - name: Upload coverage artifact
       if: ${{ inputs.upload-results == 'true' && inputs.coverage-report != '' && (success() || failure()) }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: coverage
         path: ${{ inputs.working-directory }}/coverage.${{ inputs.coverage-report }}
