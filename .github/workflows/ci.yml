@@ -104,6 +104,10 @@ jobs:
         shell: bash
         run: bash tests/versioning.test.sh
 
+      - name: Unit tests close-milestones (fake gh)
+        shell: bash
+        run: bash tests/close-milestones.test.sh
+
       - name: Smoke test mark-merged-issues (dry run, no-op path)
         uses: ./versioning/mark-merged-issues
         with:

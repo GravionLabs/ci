@@ -29,7 +29,8 @@ versioning/
 ├── gh-release/             # Create the GitHub Release; optionally recreate release/next afterwards
 ├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
 ├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
-└── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
+├── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
+└── close-milestones/       # Close the milestones shipped with a release tag and add the version to their title
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -527,6 +528,7 @@ Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELO
 | `update-changelog`       | When cliff-config is set, regenerate CHANGELOG.md from the full git history and commit it (with [skip ci]) before creating the release tag.                                                                                                                                                                                                                                           | No       | false               |
 | `version-command`        | Shell command run after the checkout with VERSION set (the version without tag prefix, e.g. 1.0.0-rc.1), before the changelog commit, to write the version into project files. Every file it changes is committed together with the changelog in the one [skip ci] commit that gets tagged. Empty = off.                                                                              | No       |                     |
 | `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR still open (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                      | No       | true                |
+| `close-milestones`       | After the release, close the milestones that shipped with it and add the version to their title (versioning/close-milestones). Needs issues: write; without it the step only prints a warning. A pre-release version closes nothing.                                                                                                                                                  | No       | true                |
 | `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
 | `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
@@ -663,6 +665,39 @@ steps:
 <!-- /action-docs:outputs -->
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
+
+---
+
+### `versioning/close-milestones`
+
+After the release tag `v<x.y.z>` exists, closes the open milestones that shipped with it and renames them to `M<nnn> [<Topic>] (x.y.z)` (`M016 Topic` becomes `M016 Topic (5.0.0)`; a legacy `x.y.z` title is closed without renaming). `gh-release` runs it by default (input `close-milestones`), `tauri-app.yml` runs it in `publish`; callers change nothing but the version of the reusable workflow (`issues: write` is already granted for `close-release-issues`).
+
+- **Shipped with the release** is decided from the release, not from the number: the pull requests named in the commit subjects of the previous stable tag to this tag (`(#n)`, `Merge pull request #n`) count, and so do the issues they close (`Closes`, `Fixes`, `Resolves #n`; `Refs` never). A milestone is shipped when one of those pull requests or issues belongs to it. Several milestones in one release all get the same version. A first release reads the whole history of the tag.
+- **Open issues keep it open:** a shipped milestone with open issues is never closed; the run prints a notice with the milestone and the open issues.
+- **Pre-release** versions (`1.2.0-rc.1`) close nothing. Titles that are neither `M<nnn>` nor `x.y.z` are left open with a notice.
+- Idempotent: a closed milestone is not listed again, so a second run changes nothing. `dry-run` prints `would close milestone '<title>' as '<new title>'`. API problems only warn (exit 0).
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`.
+
+```yaml
+steps:
+  - uses: GravionLabs/ci/versioning/close-milestones@v1
+    with:
+      version: ${{ needs.determine-version.outputs.semver }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/close-milestones/action.yml" -->
+| Name         | Description                                                                                     | Required | Default             |
+|--------------|-------------------------------------------------------------------------------------------------|----------|---------------------|
+| `version`    | Released version without prefix (e.g. 1.2.0); a pre-release version (1.2.0-rc.1) closes nothing | **Yes**  | —                   |
+| `tag-prefix` | Prefix of the release tag                                                                       | No       | v                   |
+| `token`      | GitHub token used for the gh CLI                                                                | No       | ${{ github.token }} |
+| `dry-run`    | Print what would change without closing or renaming anything                                    | No       | false               |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/close-milestones.test.sh` (fake `gh`).
 
 ---
 
