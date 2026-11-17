@@ -6,6 +6,18 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.14.0] — 2026-11-17
+
+### Documentation
+- Update CHANGELOG.md for v1.13.0 [skip ci]
+
+
+### Features
+- **checks**: Block background persistence in pull requests (#231) (#235)
+- **versioning**: The release closes the milestones it shipped (#233) (#237)
+- **pr-checks**: Retarget work-branch PRs from main to release/next (#232) (#238)
+
+
 ## [1.13.0] — 2026-11-10
 
 ### Documentation
