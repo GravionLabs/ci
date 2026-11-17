@@ -29,7 +29,8 @@ versioning/
 ├── gh-release/             # Create the GitHub Release; optionally recreate release/next afterwards
 ├── move-major-tag/         # Move the major tag (v1) to a release tag (v1.4.0)
 ├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
-└── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
+├── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
+└── close-milestones/       # Close the milestones shipped with a release tag and add the version to their title
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -417,12 +418,12 @@ jobs:
 **Inputs**
 
 <!-- action-docs:inputs source="versioning/determine-version/action.yml" -->
-| Name                      | Description                                                                                                                                                                                                                                                                    | Required | Default |
-|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                                                                                              | No       | 6.x     |
-| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                                                                                                  | No       |         |
-| `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.                                                                             | No       | true    |
-| `channel`                 | Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta; tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc<nnn> / -beta<nnn> (n = commits since the last version source, at least 1, zero-padded to 3 digits). | No       | auto    |
+| Name                      | Description                                                                                                                                                                                                                                                                      | Required | Default |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
+| `gitversion-version-spec` | GitVersion tool version to install (semver range)                                                                                                                                                                                                                                | No       | 6.x     |
+| `gitversion-config-file`  | Path to the GitVersion.yml configuration file (optional, uses GitVersion defaults if not set)                                                                                                                                                                                    | No       |         |
+| `conventional-commits`    | Bump the version from Conventional Commits (fix/perf/revert = patch, feat = minor, type! or BREAKING CHANGE = major; +semver: stays as escape hatch). 'false' keeps the plain GitVersion defaults.                                                                               | No       | true    |
+| `channel`                 | Release channel: 'auto' derives it from the branch (main = stable, release/* = rc, every other branch = beta; tags = stable); 'stable', 'rc' or 'beta' override it. rc and beta give <next stable>-rc<nnn> / -beta<nnn> (n = commits since the last version source, at least 1). | No       | auto    |
 <!-- /action-docs:inputs -->
 
 **Versioning model (Conventional Commits).** With `conventional-commits: true` (default) the bump comes from the commit messages that reach the branch: `fix:`, `perf:`, `revert:` (and any other type, e.g. `docs:`) give a patch, `feat:` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major. `+semver: major|minor|patch` stays as an escape hatch (for example the jump to 1.0.0). `conventional-commits: false` keeps the plain GitVersion defaults. The caller's `GitVersion.yml` needs only `mode`, `next-version` and an optional `label`.
@@ -527,6 +528,7 @@ Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELO
 | `update-changelog`       | When cliff-config is set, regenerate CHANGELOG.md from the full git history and commit it (with [skip ci]) before creating the release tag.                                                                                                                                                                                                                                           | No       | false               |
 | `version-command`        | Shell command run after the checkout with VERSION set (the version without tag prefix, e.g. 1.0.0-rc.1), before the changelog commit, to write the version into project files. Every file it changes is committed together with the changelog in the one [skip ci] commit that gets tagged. Empty = off.                                                                              | No       |                     |
 | `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR still open (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                      | No       | true                |
+| `close-milestones`       | After the release, close the milestones that shipped with it and add the version to their title (versioning/close-milestones). Needs issues: write; without it the step only prints a warning. A pre-release version closes nothing.                                                                                                                                                  | No       | true                |
 | `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
 | `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
@@ -666,6 +668,39 @@ Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true b
 
 ---
 
+### `versioning/close-milestones`
+
+After the release tag `v<x.y.z>` exists, closes the open milestones that shipped with it and renames them to `M<nnn> [<Topic>] (x.y.z)` (`M016 Topic` becomes `M016 Topic (5.0.0)`; a legacy `x.y.z` title is closed without renaming). `gh-release` runs it by default (input `close-milestones`), `tauri-app.yml` runs it in `publish`; callers change nothing but the version of the reusable workflow (`issues: write` is already granted for `close-release-issues`).
+
+- **Shipped with the release** is decided from the release, not from the number: the pull requests named in the commit subjects of the previous stable tag to this tag (`(#n)`, `Merge pull request #n`) count, and so do the issues they close (`Closes`, `Fixes`, `Resolves #n`; `Refs` never). A milestone is shipped when one of those pull requests or issues belongs to it. Several milestones in one release all get the same version. A first release reads the whole history of the tag.
+- **Open issues keep it open:** a shipped milestone with open issues is never closed; the run prints a notice with the milestone and the open issues.
+- **Pre-release** versions (`1.2.0-rc.1`) close nothing. Titles that are neither `M<nnn>` nor `x.y.z` are left open with a notice.
+- Idempotent: a closed milestone is not listed again, so a second run changes nothing. `dry-run` prints `would close milestone '<title>' as '<new title>'`. API problems only warn (exit 0).
+
+> **Prerequisite:** `permissions: contents: read`, `issues: write`.
+
+```yaml
+steps:
+  - uses: GravionLabs/ci/versioning/close-milestones@v1
+    with:
+      version: ${{ needs.determine-version.outputs.semver }}
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="versioning/close-milestones/action.yml" -->
+| Name         | Description                                                                                     | Required | Default             |
+|--------------|-------------------------------------------------------------------------------------------------|----------|---------------------|
+| `version`    | Released version without prefix (e.g. 1.2.0); a pre-release version (1.2.0-rc.1) closes nothing | **Yes**  | —                   |
+| `tag-prefix` | Prefix of the release tag                                                                       | No       | v                   |
+| `token`      | GitHub token used for the gh CLI                                                                | No       | ${{ github.token }} |
+| `dry-run`    | Print what would change without closing or renaming anything                                    | No       | false               |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/close-milestones.test.sh` (fake `gh`).
+
+---
+
 ### `pr-checks.yml`
 
 Reusable workflow with the pull request checks of a repository. Call it from a workflow on `pull_request`; it checks out no code and runs with `permissions: {}` at the top and the least per job.
@@ -674,6 +709,8 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 - **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
 - **`spec`** (input `spec`): runs [`pr-checks/spec`](#pr-checksspec). It reads `governance.specMap` and `governance.specMode` from `.agents/config.json` of the **base** branch; without a map it is skipped green with a notice. For each map entry (glob to spec path or list of spec paths) with a changed file under the glob but none of its specs changed, `specMode: warn` (default) writes a warning annotation and the summary and passes, `require` fails. A line `no spec change needed` in the PR body turns the failure into a warning, named in the summary. Tests and `.md` files under the globs are not counted. Needs `contents: read`, `pull-requests: read`.
 - **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored; the API lists at most 250 commits). Release PRs from `release/**` and merge-back PRs (head is the default branch) of the same repository are exempt; a fork branch with such a name is checked. Needs `pull-requests: read`.
+- **`retarget`** (input `retarget`, `release-branch` default `release/next`): runs [`pr-checks/retarget`](#pr-checksretarget). A PR from a work branch `feat|refactor|chore|docs|test|perf|build|ci/<nr>-…` of the same repository into the default branch (the usual result of "Compare & pull request") is moved to `release/next` and gets a comment. `release/**`, `fix/<nr>-<slug>` (hotfix) and fork PRs stay; a missing `release/next` fails the job with the command to fix it. It needs `pull-requests: write`: the calling job must grant it (a reusable workflow asking for more than its caller allows fails at startup). It uses the `GITHUB_TOKEN`, reads no title or body and checks out nothing. The failures of `title` and `readiness` name the `gh pr edit` command that fixes them.
+- **`persistence`** (input `persistence`): runs [`pr-checks/persistence`](#pr-checkspersistence). Fails a PR whose added lines install background persistence (scheduled tasks, Run keys, autostart, services, LaunchAgents, systemd timers, cron) or whose installer scripts start a script host; a file that references an accepted ADR with `persistence-allowed: <path>` passes. Needs `contents: read`, `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
 | Input | Default | Description |
@@ -682,6 +719,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 | `adr` | `true` | Run the adr job |
 | `spec` | `true` | Run the spec job |
 | `title` | `true` | Run the title job |
+| `persistence` | `true` | Run the persistence job |
 | `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
 | `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
 
@@ -703,7 +741,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-      pull-requests: read
+      pull-requests: write # the retarget job; without it the workflow fails at startup
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
 ```
 
@@ -713,12 +751,13 @@ A repository that wants only the title check turns the others off:
 jobs:
   pr-checks:
     permissions:
-      pull-requests: read
+      pull-requests: write # still needed: all jobs of the called workflow are validated
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
     with:
       readiness: false
       adr: false
       spec: false
+      retarget: false
 ```
 
 > The check name that reaches the ruleset is `<caller job id or name> / PR checks`; keep the caller job id `pr-checks` in every repository so the name is the same everywhere.
@@ -737,6 +776,13 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 | `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
 | `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
 | `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/retarget`
+
+Moves a pull request from a work branch (`feat|refactor|chore|docs|test|perf|build|ci/<nr>-…`) of the same repository that targets the default branch to `release/next` (input `release-branch`) and comments on it. `release/**` and `fix/**` PRs stay; a missing `release/next` fails with a hint. Needs `pull-requests: write`.
+
+<!-- action-docs:inputs source="pr-checks/retarget/action.yml" -->
 <!-- /action-docs:inputs -->
 
 ### `pr-checks/title`
@@ -766,6 +812,33 @@ Limits: glob patterns support `**`, `*` and `?` but not `{a,b}` or `[...]` (such
 Warns (`governance.specMode: warn`, default) or fails (`require`) when a pull request changes files under a glob of `governance.specMap` (glob to spec path, or to a list of spec paths) without changing any mapped spec. A line `no spec change needed` in the PR body (plain, as list item or ticked checkbox) turns a failure into a warning and the summary names it. Tests (`tests/`, `*.test.*`, `*_test.*`, `*.Tests/`) and `.md` files are not counted. Config is read from the base branch through the API; without `governance.specMap` the action is skipped green. Needs `contents: read`, `pull-requests: read`. Same glob limits as `pr-checks/adr`.
 
 <!-- action-docs:inputs source="pr-checks/spec/action.yml" -->
+| Name    | Description                                       | Required | Default             |
+|---------|---------------------------------------------------|----------|---------------------|
+| `token` | Token with contents and pull-requests read access | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/persistence`
+
+GravionLabs apps never install background persistence: a scheduled task of an app got a machine flagged by Microsoft Defender and cut off the network (#231). The action fails a pull request whose **added lines** contain one of these mechanisms; each hit is an error annotation with file, line, pattern and the rule, and the job summary lists them.
+
+| Rule | Found by |
+|---|---|
+| Windows scheduled task | `schtasks`, `Register-`/`New-`/`Set-ScheduledTask*`, `ITaskService`, `Schedule.Service`, the task XML namespace `…/2004/02/mit/task` |
+| Run key | `CurrentVersion\Run`, `CurrentVersion\RunOnce` |
+| Autostart | `tauri-plugin-autostart`, `@tauri-apps/plugin-autostart`, `auto-launch`/`auto_launch`, `setLoginItemSettings`, `SMAppService`, `SMLoginItemSetEnabled` |
+| Windows service | `New-Service`, `sc create`, `CreateService(` |
+| LaunchAgent/LaunchDaemon | `LaunchAgents`, `LaunchDaemons`, `launchctl load\|bootstrap\|enable\|submit`, an added file under `LaunchAgents/` or `LaunchDaemons/` |
+| systemd user unit or timer | `systemctl --user enable\|start\|link`, `OnCalendar=`, `OnUnitActiveSec=`, `OnBootSec=`, an added `*.timer` file |
+| cron | `crontab` |
+| Script host in an installer | in `*.nsh`, `*.nsi`, `*.wxs`, `*.wxi`: `powershell`, `pwsh`, `nsExec::`, `ExecWait` of `cmd`/`wscript`/`cscript`/`mshta` |
+
+Lock files count (a dependency on an autostart library is a hit). Markdown files (`.md`, `.mdx`) and removed lines are not scanned. A file without a diff from the API (binary or too large) is not scanned and gets a warning.
+
+**Exception:** only with an accepted ADR. The file with the hits contains a line `persistence-allowed: <path of the ADR>` (any comment style); the file is read from the head of the PR, the ADR from the **base** branch, where it must already have `Status: Accepted` (a PR cannot accept its own exception: merge the ADR first). A missing or not accepted ADR keeps the hits as failures. The persistence must then be opt-in and removed by the uninstaller.
+
+Needs `contents: read`, `pull-requests: read`. This repository's own caller keeps the job off, because the action ships the patterns and their fixtures.
+
+<!-- action-docs:inputs source="pr-checks/persistence/action.yml" -->
 | Name    | Description                                       | Required | Default             |
 |---------|---------------------------------------------------|----------|---------------------|
 | `token` | Token with contents and pull-requests read access | No       | ${{ github.token }} |
@@ -1031,7 +1104,7 @@ Sets the version in `package.json`, `src-tauri/tauri.conf.json` and `Cargo.toml`
 <!-- action-docs:inputs source="tauri/installers/action.yml" -->
 | Name                           | Description                                                                                                                                                                                  | Required | Default                                |
 |--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------------------------------------|
-| `version`                      | Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc003 the MSI is skipped on Windows and only the NSIS installer is built)                                  | **Yes**  | —                                      |
+| `version`                      | Version to build (SemVer; WiX/MSI needs a numeric one: with a suffix such as 1.2.0-rc003 the MSI is skipped on Windows and only the NSIS installer is built)                                 | **Yes**  | —                                      |
 | `target`                       | Rust target triple of this matrix entry                                                                                                                                                      | **Yes**  | —                                      |
 | `release-id`                   | Id of the draft release to attach the installers to (output of tauri/draft-release). Empty: build only, upload nothing.                                                                      | No       |                                        |
 | `args`                         | Extra arguments for tauri build (for example --config src-tauri/tauri.bundle.conf.json)                                                                                                      | No       |                                        |

@@ -299,6 +299,11 @@ jobs:
         continue-on-error: true
         with:
           version: ${{ needs.determine-version.outputs.semver }}
+      # Closes the milestones that shipped with the release and adds the version to their title.
+      - uses: GravionLabs/ci/versioning/close-milestones@v1
+        continue-on-error: true
+        with:
+          version: ${{ needs.determine-version.outputs.semver }}
       # Recreates the release branch (normally release/next) when the repository deleted it on merge. The push uses the
       # CI app token or GH_PAT when set (a token's push starts release-branch.yml; github.token's does not).
       - name: Check CI app

@@ -160,6 +160,7 @@ describe('run', () => {
       await run(h);
       assert.equal(h.calls.failed.length, 1, head);
       assert.match(h.calls.failed[0], /"wip" is not a Conventional Commit/);
+    assert.match(h.calls.failed[0], /gh pr edit 5 --title "<type>\(scope\): description \(#n\)"/);
     }
   });
   it('does not exempt a PR whose head repository was deleted', async () => {

@@ -18,8 +18,8 @@ command -v yq >/dev/null || { echo "yq is required"; exit 1; }
 command -v jq >/dev/null || { echo "jq is required"; exit 1; }
 
 # --- inputs ---
-eq "inputs" 'adr,not-ready-labels,readiness,require-issue,spec,title' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
-for name in readiness adr spec title require-issue; do
+eq "inputs" 'adr,not-ready-labels,persistence,readiness,release-branch,require-issue,retarget,spec,title' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
+for name in readiness adr spec title persistence retarget require-issue; do
   eq "input $name is a boolean defaulting to true" 'boolean true' "$(q ".on.workflow_call.inputs[\"$name\"] | .type + \" \" + (.default | tostring)")"
 done
 eq "not-ready-labels default" 'needs-refinement,needs-decision' "$(q '.on.workflow_call.inputs["not-ready-labels"].default')"
@@ -31,6 +31,11 @@ eq "readiness permissions" '{"issues":"read","pull-requests":"read"}' "$(qj '.jo
 eq "adr permissions" '{"contents":"read","issues":"read","pull-requests":"read"}' "$(qj '.jobs.adr.permissions')"
 eq "spec permissions" '{"contents":"read","pull-requests":"read"}' "$(qj '.jobs.spec.permissions')"
 eq "title permissions" '{"pull-requests":"read"}' "$(qj '.jobs.title.permissions')"
+eq "persistence permissions" '{"contents":"read","pull-requests":"read"}' "$(qj '.jobs.persistence.permissions')"
+eq "retarget permissions" '{"pull-requests":"write"}' "$(qj '.jobs.retarget.permissions')"
+eq "release-branch default" 'release/next' "$(q '.on.workflow_call.inputs["release-branch"].default')"
+eq "retarget is skipped by its input" 'inputs.retarget' "$(q '.jobs.retarget.if')"
+eq "retarget job uses the retarget action" 'GravionLabs/ci/pr-checks/retarget@v1' "$(q '.jobs.retarget.steps[0].uses')"
 eq "result permissions empty" '{}' "$(qj '.jobs.result.permissions')"
 eq "every job sets permissions" 0 "$(q '[.jobs[] | select(has("permissions") | not)] | length')"
 
@@ -51,6 +56,8 @@ eq "spec job uses the spec action" 'GravionLabs/ci/pr-checks/spec@v1' "$(q '.job
 
 eq "title is skipped by its input" 'inputs.title' "$(q '.jobs.title.if')"
 eq "title job uses the title action" 'GravionLabs/ci/pr-checks/title@v1' "$(q '.jobs.title.steps[0].uses')"
+eq "persistence is skipped by its input" 'inputs.persistence' "$(q '.jobs.persistence.if')"
+eq "persistence job uses the persistence action" 'GravionLabs/ci/pr-checks/persistence@v1' "$(q '.jobs.persistence.steps[0].uses')"
 
 CALLER="$(dirname "$WF")/pr-checks-caller.yml"
 cq() { yq -r "$1" "$CALLER"; }
@@ -60,6 +67,7 @@ eq "caller uses the local workflow" './.github/workflows/pr-checks.yml' "$(cq '.
 eq "caller turns readiness on" 'true' "$(cq '.jobs.pr-checks.with.readiness')"
 eq "caller keeps adr off" 'false' "$(cq '.jobs.pr-checks.with.adr')"
 eq "caller keeps spec off" 'false' "$(cq '.jobs.pr-checks.with.spec')"
+eq "caller keeps persistence off" 'false' "$(cq '.jobs.pr-checks.with.persistence')"
 
 script=$(q '.jobs.result.steps[0].run')
 aggregate() { NEEDS="$1" bash -c "$script" >/dev/null 2>&1; echo $?; }
