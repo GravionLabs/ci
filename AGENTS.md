@@ -16,6 +16,7 @@ versioning/
   close-release-issues/ — After a release/<x.y> branch merged into main, closes the delivered issues (Closes #n in the merged PRs, their sub-issues, fully delivered pbi/feature parents) and removes their `merged` label
   mark-merged-issues/   — On every push to release/* (incl. release/next), labels the open issues merged into it `merged` (Closes #n in merged PRs, Closes/Refs #n in commits, complete pbi/feature parents; optional project Status via `project-status`)
   close-merged-issues/  — On every push to release/*, closes the open issues merged into it as completed with one comment `Merged into <branch> in #<pr>, ships with <milestone>` (Closes/Fixes/Resolves #n in merged PRs and commit footers, never Refs; complete pbi/feature parents, never epics; removes `merged`; output `closed`)
+  close-milestones/    — After the release tag `v<x.y.z>`, closes the open milestones that shipped with it (no open issue; a PR of the release or an issue it closes belongs to it) and renames `M<nnn> [<Topic>]` to `… (x.y.z)` (legacy `x.y.z` closed as is); pre-releases close nothing; run by `gh-release` (`close-milestones`) and `tauri-app.yml`; test `tests/close-milestones.test.sh`
 
 pr-checks/
   readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)

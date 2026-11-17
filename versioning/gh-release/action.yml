@@ -54,6 +54,13 @@ inputs:
       them the step only prints a warning. A no-op for commits that are not a merged release PR.
     required: false
     default: 'true'
+  close-milestones:
+    description: >
+      After the release, close the milestones that shipped with it and add the version to their title
+      (versioning/close-milestones). Needs issues: write; without it the step only prints a warning.
+      A pre-release version closes nothing.
+    required: false
+    default: 'true'
   recreate-branch:
     description: >
       Branch to recreate after the release, normally release/next. When set and the branch does not
@@ -177,6 +184,15 @@ runs:
       uses: GravionLabs/ci/versioning/close-release-issues@v1
       with:
         version: ${{ inputs.version }}
+        token: ${{ inputs.token }}
+
+    - name: Close the milestones shipped with the release
+      if: ${{ inputs.close-milestones == 'true' }}
+      continue-on-error: true
+      uses: GravionLabs/ci/versioning/close-milestones@v1
+      with:
+        version: ${{ inputs.version }}
+        tag-prefix: ${{ inputs.tag-prefix }}
         token: ${{ inputs.token }}
 
     - name: Recreate the release branch
