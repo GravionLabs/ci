@@ -7,6 +7,12 @@
     {
       "matchManagers": ["github-actions"],
       "addLabels": ["github-actions"]
+    },
+    {
+      "description": "Self-references follow the major tag (tests/self-references.test.sh): never pinned or raised by Renovate.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["GravionLabs/ci", "GravionLabs/ci/**"],
+      "enabled": false
     }
   ]
 }
