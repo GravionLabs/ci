@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "extends": ["config:recommended", "github>GravionLabs/ci"],
   "labels": ["dependencies"],
   "schedule": ["before 6am on Monday"],
   "packageRules": [

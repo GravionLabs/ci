@@ -1986,6 +1986,16 @@ SHA without the full version comment. Renovate raises SHA and comment together (
 
 ---
 
+## Renovate Preset
+
+`default.json` is the shared Renovate preset: `extends: ['config:recommended', 'github>GravionLabs/ci']`. It holds a
+release back for 7 days (`minimumReleaseAge`, `internalChecksFilter: 'strict'`), pins action digests and exempts
+security fixes and `GravionLabs/ci` itself from the age. pnpm and npm have their own setting for installs
+(`minimumReleaseAge: 10080` in `pnpm-workspace.yaml`, `min-release-age=7` in `.npmrc`). How a repository adopts it and
+how a package is exempted: [docs/project-standard.md](docs/project-standard.md#dependency-updates-and-minimum-release-age).
+
+---
+
 ## Pinning to a Specific Version
 
 > **Use the moving major tag `@v1`.** The `release` job moves `v1` to every 1.x release: fixes and features arrive
