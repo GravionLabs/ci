@@ -674,6 +674,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 - **`adr`** (input `adr`): runs [`pr-checks/adr`](#pr-checksadr). It reads `.agents/config.json` of the **base** branch; without `governance.adrPaths` it is skipped green with a notice. A PR whose changed files match `governance.adrPaths` (globs), or that closes an issue labelled `needs-decision`, must add or change a `<governance.adrDir>/*.md`; a new ADR needs a `Status:` line (`Proposed`, `Accepted`, `Superseded`, `Deprecated`) and a number not used in `adrDir` of the base branch. A label of `governance.skipLabels` (default `skip-adr`) skips the check and the summary says so. Needs `contents: read`, `issues: read`, `pull-requests: read`.
 - **`spec`** (input `spec`): runs [`pr-checks/spec`](#pr-checksspec). It reads `governance.specMap` and `governance.specMode` from `.agents/config.json` of the **base** branch; without a map it is skipped green with a notice. For each map entry (glob to spec path or list of spec paths) with a changed file under the glob but none of its specs changed, `specMode: warn` (default) writes a warning annotation and the summary and passes, `require` fails. A line `no spec change needed` in the PR body turns the failure into a warning, named in the summary. Tests and `.md` files under the globs are not counted. Needs `contents: read`, `pull-requests: read`.
 - **`title`** (input `title`): runs [`pr-checks/title`](#pr-checkstitle). The PR title, read through the API (so also after an `edited` event), must match `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+`. It must agree with the commits (`pulls/<nr>/commits`): if a commit has `!` after its type or a `BREAKING CHANGE:` or `BREAKING-CHANGE:` footer the title needs `!`, and if a commit is `feat:` the title must be `feat`. A PR into the default branch from a branch other than `release/**` (hotfix) also needs every commit to be a Conventional Commit (merge commits are ignored; the API lists at most 250 commits). Release PRs from `release/**` and merge-back PRs (head is the default branch) of the same repository are exempt; a fork branch with such a name is checked. Needs `pull-requests: read`.
+- **`retarget`** (input `retarget`, `release-branch` default `release/next`): runs [`pr-checks/retarget`](#pr-checksretarget). A PR from a work branch `feat|refactor|chore|docs|test|perf|build|ci/<nr>-…` of the same repository into the default branch (the usual result of "Compare & pull request") is moved to `release/next` and gets a comment. `release/**`, `fix/<nr>-<slug>` (hotfix) and fork PRs stay; a missing `release/next` fails the job with the command to fix it. It needs `pull-requests: write`: the calling job must grant it (a reusable workflow asking for more than its caller allows fails at startup). It uses the `GITHUB_TOKEN`, reads no title or body and checks out nothing. The failures of `title` and `readiness` name the `gh pr edit` command that fixes them.
 - **`persistence`** (input `persistence`): runs [`pr-checks/persistence`](#pr-checkspersistence). Fails a PR whose added lines install background persistence (scheduled tasks, Run keys, autostart, services, LaunchAgents, systemd timers, cron) or whose installer scripts start a script host; a file that references an accepted ADR with `persistence-allowed: <path>` passes. Needs `contents: read`, `pull-requests: read`.
 - **`result`**, named **`PR checks`**: needs every job, runs always, fails when a job failed or was cancelled and passes on skipped jobs. **This is the only check a ruleset requires**; job names may change, this one must not.
 
@@ -705,7 +706,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-      pull-requests: read
+      pull-requests: write # the retarget job; without it the workflow fails at startup
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
 ```
 
@@ -715,12 +716,13 @@ A repository that wants only the title check turns the others off:
 jobs:
   pr-checks:
     permissions:
-      pull-requests: read
+      pull-requests: write # still needed: all jobs of the called workflow are validated
     uses: GravionLabs/ci/.github/workflows/pr-checks.yml@v1
     with:
       readiness: false
       adr: false
       spec: false
+      retarget: false
 ```
 
 > The check name that reaches the ruleset is `<caller job id or name> / PR checks`; keep the caller job id `pr-checks` in every repository so the name is the same everywhere.
@@ -739,6 +741,13 @@ Fails when a pull request closes no issue (release PRs exempt) or closes an issu
 | `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
 | `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
 | `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+<!-- /action-docs:inputs -->
+
+### `pr-checks/retarget`
+
+Moves a pull request from a work branch (`feat|refactor|chore|docs|test|perf|build|ci/<nr>-…`) of the same repository that targets the default branch to `release/next` (input `release-branch`) and comments on it. `release/**` and `fix/**` PRs stay; a missing `release/next` fails with a hint. Needs `pull-requests: write`.
+
+<!-- action-docs:inputs source="pr-checks/retarget/action.yml" -->
 <!-- /action-docs:inputs -->
 
 ### `pr-checks/title`
