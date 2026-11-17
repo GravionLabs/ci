@@ -96,3 +96,23 @@ With `-Sync` the script ensures `planned` and `needs-review` (colour and descrip
 | hotfix into `main` | merge commit | same reason |
 
 Limit in 0.x: a breaking change jumps to 1.0.0; avoid `!` there or use `+semver: minor` deliberately.
+
+## Dependency updates and minimum release age
+
+A release of a dependency that is younger than 7 days reaches neither a lockfile nor a build (owner decision 2026-11-17, GravionLabs/ci#239). A compromised release of a package, crate or action is usually withdrawn within days; the lockfile already protects installs in CI, the age protects the moment the lockfile changes (Renovate, lockfile maintenance, a local install). Three settings, one per place:
+
+| Where | Setting |
+|:--|:--|
+| Renovate (npm, cargo, NuGet, GitHub Actions, Docker) | `extends: ['config:recommended', 'github>GravionLabs/ci']` in `renovate.json` or `.github/renovate.json5`; no `minimumReleaseAge` of its own |
+| pnpm | `minimumReleaseAge: 10080` in `pnpm-workspace.yaml` (minutes) |
+| npm | `min-release-age=7` in `.npmrc`, next to every `package-lock.json` (days) |
+
+The preset is [`default.json`](../default.json) of this repository: `minimumReleaseAge: '7 days'`, `internalChecksFilter: 'strict'` (a version that is too young is not proposed at all) and `helpers:pinGitHubActionDigests` (every action is a commit SHA with the version as a comment). It sets no schedule, labels, groups or automerge: those stay with the repository.
+
+Exemptions:
+
+- **Security fixes:** a pull request for a known vulnerability is not held back by Renovate (`vulnerabilityAlerts.minimumReleaseAge: null`). The age of the package manager still applies on install; exempt the fixed version there when it is younger.
+- **GravionLabs/ci:** exempt in the preset (own code), so a repository that pins the shared workflows by commit SHA gets a new release at once. A repository that follows `@v1` instead keeps `GravionLabs/ci` away from the digest pin with a package rule (`matchPackageNames: ['GravionLabs/ci', 'GravionLabs/ci/**']`, `pinDigests: false`).
+- **An own package that must be installed at once** (for example `@gravionlabs/helix-ui` right after its release): `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` with the exact version (`'@gravionlabs/helix-ui@22.2.17'`), removed again with the next update; in Renovate a package rule with `minimumReleaseAge: null` for `@gravionlabs/**`.
+
+Check: `bash tests/renovate-preset.test.sh`; the job `Test: Renovate preset` of `ci.yml` also runs `renovate-config-validator --strict` on `default.json` and `renovate.json`.
