@@ -136,6 +136,7 @@ describe('run', () => {
     await run({ ...h, inputs: inputs() });
     assert.equal(h.calls.failed.length, 1);
     assert.match(h.calls.failed[0], /closes no issue/);
+    assert.match(h.calls.failed[0], /gh pr edit \d+ --body "Closes #n"/);
   });
 
   it('passes a PR without a closing issue when require-issue is off', async () => {

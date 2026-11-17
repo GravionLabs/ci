@@ -13,7 +13,7 @@ export default async function run({ github, context, core, inputs }) {
 
   if (refs.length === 0) {
     if (inputs.requireIssue && !isReleaseBranch(pr.head.ref)) {
-      const message = 'This PR closes no issue: add "Closes #n" to its body.';
+      const message = `This PR closes no issue: add "Closes #n" to its body, for example: gh pr edit ${pull_number} --body "Closes #n"`;
       await summary(`Not ready:\n\n- ${message}`);
       core.setFailed(message);
     } else {
@@ -51,5 +51,10 @@ export default async function run({ github, context, core, inputs }) {
   await summary(
     problems.length ? `Not ready:\n\n${lines}` : `Ready: ${refs.map((n) => `#${n}`).join(', ')}`,
   );
-  if (problems.length) core.setFailed(`Issues closed by this PR are not ready:\n${lines}`);
+  if (problems.length) {
+    core.setFailed(
+      `Issues closed by this PR are not ready:\n${lines}\n` +
+        `Make the issues ready, or change the closed issue with: gh pr edit ${pull_number} --body "Closes #n"`,
+    );
+  }
 }

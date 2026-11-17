@@ -30,6 +30,7 @@ export default async function run({ github, context, core }) {
   const problems = titleProblems(pr.title, commits, { everyCommit });
 
   const lines = problems.map((problem) => `- ${problem}`).join('\n');
-  await summary(problems.length ? `Not valid:\n\n${lines}` : `Valid: ${pr.title}`);
-  if (problems.length) core.setFailed(`The title or commits are not valid:\n${lines}`);
+  const fix = `Fix the title with: gh pr edit ${pull_number} --title "<type>(scope): description (#n)"`;
+  await summary(problems.length ? `Not valid:\n\n${lines}\n\n${fix}` : `Valid: ${pr.title}`);
+  if (problems.length) core.setFailed(`The title or commits are not valid:\n${lines}\n${fix}`);
 }
