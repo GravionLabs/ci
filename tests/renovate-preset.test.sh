@@ -26,10 +26,13 @@ eq "preset: the helix rule is for the npm datasource" '["npm"]' "$(jq -c "$helix
 eq "preset: the helix rule matches nothing but @gravionlabs/helix-*" '["@gravionlabs/helix-*"]' "$(jq -c "$helix | .matchPackageNames" "$P")"
 eq "preset: only GravionLabs/ci and the helix packages are exempt from the age" 2 "$(jq -r '[.packageRules[] | select(has("minimumReleaseAge") and .minimumReleaseAge == null)] | length' "$P")"
 eq "preset: the helix rule says it is own code" true "$(jq -r "$helix | .description | test(\"[Oo]wn code\")" "$P")"
+eq "preset: at most two open pull requests" 2 "$(jq -r '.prConcurrentLimit' "$P")"
+eq "preset: no base branch (the default branch)" null "$(jq -r '.baseBranchPatterns' "$P")"
 eq "preset: no schedule, labels or automerge (the repository decides)" 0 "$(jq -r '[.schedule, .labels, .automerge] | map(select(. != null)) | length' "$P")"
 
 eq "renovate.json: extends the preset" true "$(jq -r '.extends | index("github>GravionLabs/ci") != null' "$R")"
 eq "renovate.json: sets no minimum release age of its own" 0 "$(jq -r '[.. | objects | select(has("minimumReleaseAge"))] | length' "$R")"
+eq "renovate.json: pull requests target the default branch" null "$(jq -r '.baseBranchPatterns' "$R")"
 eq "renovate.json: self-references are left alone" false "$(jq -r "$own | .enabled" "$R")"
 
 eq ".npmrc: npm holds releases back for 7 days" "min-release-age=7" "$(grep -E '^min-release-age=' "$ROOT/.npmrc" 2>/dev/null)"
