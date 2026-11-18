@@ -19,7 +19,7 @@ command -v jq >/dev/null || { echo "jq is required"; exit 1; }
 
 # --- inputs ---
 eq "inputs" 'adr,not-ready-labels,persistence,readiness,release-branch,require-issue,retarget,spec,title' "$(q '.on.workflow_call.inputs | keys | sort | join(",")')"
-for name in readiness adr spec title persistence retarget require-issue; do
+for name in readiness adr spec title persistence require-issue; do
   eq "input $name is a boolean defaulting to true" 'boolean true' "$(q ".on.workflow_call.inputs[\"$name\"] | .type + \" \" + (.default | tostring)")"
 done
 eq "not-ready-labels default" 'needs-refinement,needs-decision' "$(q '.on.workflow_call.inputs["not-ready-labels"].default')"
@@ -32,10 +32,12 @@ eq "adr permissions" '{"contents":"read","issues":"read","pull-requests":"read"}
 eq "spec permissions" '{"contents":"read","pull-requests":"read"}' "$(qj '.jobs.spec.permissions')"
 eq "title permissions" '{"pull-requests":"read"}' "$(qj '.jobs.title.permissions')"
 eq "persistence permissions" '{"contents":"read","pull-requests":"read"}' "$(qj '.jobs.persistence.permissions')"
-eq "retarget permissions" '{"pull-requests":"write"}' "$(qj '.jobs.retarget.permissions')"
-eq "release-branch default" 'release/next' "$(q '.on.workflow_call.inputs["release-branch"].default')"
-eq "retarget is skipped by its input" 'inputs.retarget' "$(q '.jobs.retarget.if')"
-eq "retarget job uses the retarget action" 'GravionLabs/ci/pr-checks/retarget@v1' "$(q '.jobs.retarget.steps[0].uses')"
+# the retarget job is gone (ci#260): its inputs stay as no-ops, and no job asks for a write permission
+eq "no retarget job" 'null' "$(q '.jobs.retarget')"
+eq "retarget input is still accepted" 'boolean' "$(q '.on.workflow_call.inputs.retarget.type')"
+eq "release-branch input is still accepted" 'string' "$(q '.on.workflow_call.inputs["release-branch"].type')"
+eq "no job requests a write permission" 0 "$(q '[.jobs[].permissions | select(. != null) | to_entries[] | select(.value == "write")] | length')"
+eq "result needs no retarget" 0 "$(q '[.jobs.result.needs[] | select(. == "retarget")] | length')"
 eq "result permissions empty" '{}' "$(qj '.jobs.result.permissions')"
 eq "every job sets permissions" 0 "$(q '[.jobs[] | select(has("permissions") | not)] | length')"
 
