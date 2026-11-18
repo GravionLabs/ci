@@ -139,7 +139,7 @@ on:
         description: 'Private key (PEM) of the GitHub App GravionLabs CI'
         required: false
       GH_PAT:
-        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY (fallback when no app is configured). PAT of an admin of the repository: gh-release pushes the changelog commit straight to the default branch, which a ruleset usually lets only admins update without a pull request'
+        description: 'Deprecated and ignored (accepted so existing callers do not fail); use CI_APP_ID/CI_APP_PRIVATE_KEY'
         required: false
 
 jobs:
@@ -244,6 +244,13 @@ jobs:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
 
+      - name: Require CI app
+        if: ${{ (inputs.update-changelog || inputs.recreate-branch != '') && steps.app.outputs.present != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required for update-changelog and recreate-branch: only the GravionLabs CI app token may push to the protected default branch and start release-branch.yml (the GH_PAT fallback was removed)."
+          exit 1
+
       - name: Create GitHub Release
         uses: GravionLabs/ci/versioning/gh-release@v1
         with:
@@ -254,5 +261,5 @@ jobs:
           recreate-branch: ${{ inputs.recreate-branch }}
           sbom: ${{ inputs.sbom }}
           update-changelog: ${{ inputs.update-changelog }}
-          # The default branch usually requires a pull request; only an admin's token (the GitHub App as ruleset bypass actor, or GH_PAT) may push the changelog commit.
-          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          # The default branch usually requires a pull request; only an admin's token (the GitHub App as ruleset bypass actor) may push the changelog commit.
+          token: ${{ steps.app-token.outputs.token || github.token }}

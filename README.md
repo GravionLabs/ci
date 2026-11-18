@@ -1553,7 +1553,7 @@ jobs:
 | `feed-token`      | Token for the private restore feed | No       |
 | `publish-api-key` | Token for the publish feed         | **Yes**  |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
-| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 > The `publish` job uses `environment: nuget-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1608,7 +1608,7 @@ jobs:
 |----------------------|---------------------------------------------------------|----------|
 | `publish-api-key`    | API token for private feeds; omit for PyPI Trusted Publishing | No |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
-| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 > The `publish` job uses `environment: pypi-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1668,11 +1668,11 @@ jobs:
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above); its token pushes the changelog commit of `update-changelog` |
-| `GH_PAT`            | No       | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 ### GitHub App `GravionLabs CI` (CI token)
 
-The CI automation runs as a GitHub App instead of the user PAT `GH_PAT`: an installation token has its own rate limit, so CI no longer competes with local agents for the 5000 GraphQL points per hour of one user. The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) and `ci.yml` mint the token with the SHA-pinned `actions/create-github-app-token` when both secrets are set, and pass it where `GH_PAT` was used (release PR, changelog commit). Without the app they fall back to `GH_PAT` (deprecated) and then to `github.token`.
+The CI automation runs as a GitHub App instead of the user PAT `GH_PAT`: an installation token has its own rate limit, so CI no longer competes with local agents for the 5000 GraphQL points per hour of one user. The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) and `ci.yml` mint the token with the SHA-pinned `actions/create-github-app-token` when both secrets are set, and pass it where `GH_PAT` was used (release PR, changelog commit). The `GH_PAT` fallback was removed (#245): without the app, a step that needs it (release PR, changelog commit, `recreate-branch`) fails with an error naming the two secrets instead of silently using `github.token`; the secret `GH_PAT` is still accepted, and ignored, so a caller that passes it does not fail.
 
 | Secret | Description |
 |---|---|
@@ -1685,7 +1685,7 @@ Setup (maintainer, once):
 2. Generate a private key, install the app on all GravionLabs repositories.
 3. Store `CI_APP_ID` and `CI_APP_PRIVATE_KEY` as organization or per repository secrets (a caller without `secrets: inherit` passes both: `CI_APP_ID: ${{ secrets.CI_APP_ID }}`).
 4. Add the app as bypass actor to the rulesets `main` (changelog commit on the default branch requires a pull request) and, where release PRs are created, as needed.
-5. Delete the secret `GH_PAT` once every repository runs on the app (it stays supported as a fallback until then).
+5. Delete the secret `GH_PAT` and revoke the PAT once every repository runs on the app (the workflows no longer read it; `issues.yml` still takes it as the fallback of `PROJECT_TOKEN`).
 
 Project steps keep a classic PAT: project 17 belongs to the user `GravionLabs`, and a GitHub App cannot access user-owned projects (only organization projects; moving to an organization is GravionLabs/ci#128). `PROJECT_TOKEN` is therefore used for `add-to-project`, the Needs sync and the project Status. The Needs sync and the project Status read and write through the REST `projectsV2` endpoints (`GET /users|orgs/<owner>/projectsV2/<n>/fields` and `/items?fields[]=<id>&q=repo:<o/r>`, `PATCH .../items/<id>`) plus the REST issue endpoints (`sub_issues`, `dependencies/blocked_by`, `dependencies/blocking`, `pulls`), so they draw on the REST budget only and make no GraphQL call. What stays on GraphQL: `actions/add-to-project` (external action) and the field/option/view administration of `Set-ProjectStandard.ps1` (no REST update endpoint for single-select options; not part of the CI steps).
 
@@ -1832,7 +1832,7 @@ jobs:
 | `label`          | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
 | `project-status` | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
 | `project-url`    | No       | `""`          | Project URL for the Needs sync of the closed issues; empty disables the sync                           |
-| `require-pat`    | No       | `false`       | Fail instead of warning when neither the app secrets nor `GH_PAT` are set                                              |
+| `require-pat`    | No       | `false`       | Deprecated no-op: the workflow always fails without the app secrets                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 
 **Secrets**
@@ -1840,13 +1840,13 @@ jobs:
 | Secret          | Required | Description                                                                                                  |
 |-----------------|----------|--------------------------------------------------------------------------------------------------------------|
 | `CI_APP_ID`, `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above): its installation token creates the release PR, so the required checks run |
-| `GH_PAT`        | No       | Deprecated, fallback without the app: classic PAT with the scope `repo` (and `workflow`) for the release PR |
-| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs; falls back to `GH_PAT` |
+| `GH_PAT`        | No       | Deprecated and ignored (the fallback was removed, #245); accepted so a caller that passes it does not fail |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs |
 
 **Token requirements**
 
-- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass the app secrets (or the deprecated `GH_PAT`). Without them the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
-- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
+- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass the app secrets. Without them the job fails with an error (the `GH_PAT` fallback and the warning mode were removed, #245; `require-pat` is a no-op).
+- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`). Without a project token the project steps warn and the job stays green.
 - The secret names match `issues.yml`, so `secrets: inherit` works.
 - The actions are referenced at `@v1`, the moving major tag (see "Pinning to a Specific Version").
 - Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow.

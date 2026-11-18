@@ -81,7 +81,7 @@ on:
         description: 'Private key (PEM) of the GitHub App GravionLabs CI'
         required: false
       GH_PAT:
-        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY (fallback when no app is configured). PAT of an admin of the repository: the changelog commit goes straight to the default branch, which a ruleset only lets admins update without a pull request'
+        description: 'Deprecated and ignored (accepted so existing callers do not fail); use CI_APP_ID/CI_APP_PRIVATE_KEY'
         required: false
 
 permissions:
@@ -339,7 +339,7 @@ jobs:
         with:
           version: ${{ needs.determine-version.outputs.semver }}
       # Recreates the release branch (normally release/next) when the repository deleted it on merge. The push uses the
-      # CI app token or GH_PAT when set (a token's push starts release-branch.yml; github.token's does not).
+      # CI app token (required: a token's push starts release-branch.yml; github.token's does not).
       - name: Check CI app
         id: app
         if: ${{ inputs.recreate-branch != '' }}
@@ -354,6 +354,12 @@ jobs:
         with:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - name: Require CI app
+        if: ${{ inputs.recreate-branch != '' && steps.app.outputs.present != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required for recreate-branch: only the CI app token's push starts release-branch.yml (the GH_PAT fallback was removed)."
+          exit 1
       - name: Fetch recreate-branch.sh
         if: ${{ inputs.recreate-branch != '' }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -368,7 +374,7 @@ jobs:
         env:
           BRANCH: ${{ inputs.recreate-branch }}
           SHA: ${{ github.sha }}
-          PUSH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           REPO: ${{ github.repository }}
         run: |
           git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
@@ -376,8 +382,8 @@ jobs:
 
   update-changelog:
     name: update changelog
-    # After the release is published, so the new tag is part of the history. The commit is pushed with the CI app token (or GH_PAT)
-    # when one is set (a token's push does start runs), so its message carries [skip ci].
+    # After the release is published, so the new tag is part of the history. The commit is pushed with the CI app token
+    # (a token's push does start runs), so its message carries [skip ci].
     needs: [determine-version, publish]
     if: ${{ needs.determine-version.outputs.release == 'true' }}
     runs-on: ubuntu-latest
@@ -399,12 +405,19 @@ jobs:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
 
+      - name: Require CI app
+        if: steps.app.outputs.present != 'true'
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required to push the changelog commit to the protected default branch (the GH_PAT fallback was removed)."
+          exit 1
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           # The default branch requires a pull request; only an admin's token may push the changelog commit.
-          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
       - name: Generate the changelog
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
