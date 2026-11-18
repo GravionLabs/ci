@@ -18,6 +18,12 @@
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["GravionLabs/ci", "GravionLabs/ci/**"],
       "minimumReleaseAge": null
+    },
+    {
+      "description": "Own code: the helix packages (@gravionlabs/helix-*) reach an app at once, like GravionLabs/ci. No other package is exempt.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["@gravionlabs/helix-*"],
+      "minimumReleaseAge": null
     }
   ]
 }

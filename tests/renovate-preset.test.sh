@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The shared Renovate preset (#241): default.json holds releases back for 7 days, pins action digests, exempts security
-# fixes and GravionLabs/ci itself; this repository extends it and npm has the same age on install.
+# fixes, GravionLabs/ci itself and the helix packages (#253); this repository extends it and npm has the same age on install.
 # Run: bash tests/renovate-preset.test.sh
 set -uo pipefail
 
@@ -20,6 +20,12 @@ eq "preset: security fixes are not held back" null "$(jq -r '.vulnerabilityAlert
 own='.packageRules[] | select((.matchPackageNames // []) | index("GravionLabs/ci") != null)'
 eq "preset: GravionLabs/ci is exempt from the age" null "$(jq -r "$own | if has(\"minimumReleaseAge\") then .minimumReleaseAge else \"missing\" end" "$P")"
 eq "preset: the exemption covers the action paths" true "$(jq -r "$own | .matchPackageNames | index(\"GravionLabs/ci/**\") != null" "$P")"
+helix='.packageRules[] | select((.matchPackageNames // []) | index("@gravionlabs/helix-*") != null)'
+eq "preset: the helix packages are exempt from the age" null "$(jq -r "$helix | if has(\"minimumReleaseAge\") then .minimumReleaseAge else \"missing\" end" "$P")"
+eq "preset: the helix rule is for the npm datasource" '["npm"]' "$(jq -c "$helix | .matchDatasources" "$P")"
+eq "preset: the helix rule matches nothing but @gravionlabs/helix-*" '["@gravionlabs/helix-*"]' "$(jq -c "$helix | .matchPackageNames" "$P")"
+eq "preset: only GravionLabs/ci and the helix packages are exempt from the age" 2 "$(jq -r '[.packageRules[] | select(has("minimumReleaseAge") and .minimumReleaseAge == null)] | length' "$P")"
+eq "preset: the helix rule says it is own code" true "$(jq -r "$helix | .description | test(\"[Oo]wn code\")" "$P")"
 eq "preset: no schedule, labels or automerge (the repository decides)" 0 "$(jq -r '[.schedule, .labels, .automerge] | map(select(. != null)) | length' "$P")"
 
 eq "renovate.json: extends the preset" true "$(jq -r '.extends | index("github>GravionLabs/ci") != null' "$R")"
