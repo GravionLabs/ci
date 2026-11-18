@@ -47,7 +47,6 @@ eq "renovate: uses the app token" '${{ steps.app-token.outputs.token }}' "$(q '.
 eq "renovate: no GH_PAT in the code" 0 "$(grep -v '^ *#' "$W/renovate.yml" | grep -c GH_PAT)"
 # without a repository Renovate ends green and does nothing (#250)
 eq "renovate: names its repository" '${{ github.repository }}' "$(q '.jobs.renovate.steps[] | select(.uses | test("^renovatebot/")) | .env.RENOVATE_REPOSITORIES' "$W/renovate.yml")"
-eq "renovate: pull requests target release/next" 'release/next' "$(jq -r '.baseBranchPatterns[0]' "$ROOT/renovate.json")"
 
 # the project callers pass only PROJECT_TOKEN (a GitHub App cannot write to a user-owned project)
 for f in issue-events project-needs; do

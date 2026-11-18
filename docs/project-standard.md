@@ -109,6 +109,8 @@ A release of a dependency that is younger than 7 days reaches neither a lockfile
 
 The preset is [`default.json`](../default.json) of this repository: `minimumReleaseAge: '7 days'`, `internalChecksFilter: 'strict'` (a version that is too young is not proposed at all) and `helpers:pinGitHubActionDigests` (every action is a commit SHA with the version as a comment). It sets no schedule, labels, groups or automerge: those stay with the repository.
 
+Renovate opens its pull requests against the default branch (no `baseBranchPatterns` in a repository) and keeps at most two open at a time (`prConcurrentLimit: 2` in the preset); `release/next` is for the work of a milestone (owner decision 2026-11-18, GravionLabs/ci#261).
+
 Exemptions:
 
 - **Security fixes:** a pull request for a known vulnerability is not held back by Renovate (`vulnerabilityAlerts.minimumReleaseAge: null`). The age of the package manager still applies on install; exempt the fixed version there when it is younger.

@@ -10,9 +10,6 @@
 # - persistence: the added lines install no background persistence (scheduled tasks, Run keys, autostart, services,
 #   LaunchAgents, systemd timers, cron) and installer scripts start no script host; a file referencing an accepted ADR
 #   with `persistence-allowed: <path>` passes (ci#231).
-# - retarget: a PR from a work branch (feat|refactor|chore|docs|test|perf|build|ci/<nr>-...) of the same repository into the
-#   default branch is moved to release/next with a comment; release/** and fix/** stay; a missing release/next fails the job.
-#   Needs pull-requests: write (GITHUB_TOKEN), so the calling job must grant it; reads no title or body (ci#232).
 # - result ("PR checks"): needs every job above, runs always, fails when one failed or was cancelled, passes on skipped.
 #   This is the only name a ruleset requires; job names may change, this one must not.
 # No job checks out caller or PR code; titles and bodies are read through the API only, never through ${{ }}.
@@ -47,12 +44,12 @@ on:
         required: false
         default: true
       retarget:
-        description: 'Run the retarget job (move work-branch PRs from the default branch to release-branch)'
+        description: 'Deprecated no-op, kept for one major: the retarget job is gone (ci#260), pull requests may target the default branch'
         type: boolean
         required: false
         default: true
       release-branch:
-        description: 'Branch that the retarget job moves work-branch PRs to'
+        description: 'Deprecated no-op, kept for one major (ci#260)'
         type: string
         required: false
         default: 'release/next'
@@ -137,23 +134,10 @@ jobs:
         with:
           token: ${{ github.token }}
 
-  retarget:
-    name: Retarget
-    if: inputs.retarget
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Move a work-branch pull request to the release branch
-        uses: GravionLabs/ci/pr-checks/retarget@v1
-        with:
-          release-branch: ${{ inputs.release-branch }}
-          token: ${{ github.token }}
-
   result:
     name: PR checks
     if: always()
-    needs: [readiness, adr, spec, title, persistence, retarget]
+    needs: [readiness, adr, spec, title, persistence]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
