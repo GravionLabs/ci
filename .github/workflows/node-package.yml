@@ -92,6 +92,10 @@ on:
         type: string
         required: false
         default: ''
+      sbom:
+        description: 'Generate an SBOM (SPDX JSON, resolved lockfile versions) for the release and attach it as release asset and attest it when the calling job grants id-token: write and attestations: write; false turns it off'
+        type: boolean
+        default: true
       changelog-file:
         description: 'Path to a CHANGELOG.md file to use for release notes'
         type: string
@@ -214,3 +218,4 @@ jobs:
           changelog-file: ${{ inputs.changelog-file }}
           cliff-config: ${{ inputs.cliff-config }}
           recreate-branch: ${{ inputs.recreate-branch }}
+          sbom: ${{ inputs.sbom }}

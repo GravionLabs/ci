@@ -65,6 +65,10 @@ on:
         description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
         type: string
         default: ''
+      sbom:
+        description: 'Generate an SBOM (SPDX JSON, resolved lockfile versions) for the release and attach it as release asset and attest it when the calling job grants id-token: write and attestations: write; false turns it off'
+        type: boolean
+        default: true
     secrets:
       TAURI_SIGNING_PRIVATE_KEY:
         required: false
@@ -293,6 +297,20 @@ jobs:
           sha256sum -c "$work/SHA256SUMS"
           gh release upload "$tag" "$work/SHA256SUMS" --clobber --repo "$repo"
           echo "SHA256SUMS_PATH=$work/SHA256SUMS" >> "$GITHUB_ENV"
+      # SBOM of the release commit (resolved versions of Cargo.lock and the frontend lockfile), a release asset and,
+      # when the caller grants id-token: write and attestations: write, attested (a failed attestation only warns).
+      - name: Generate the SBOM
+        if: ${{ inputs.sbom }}
+        uses: GravionLabs/ci/sbom/generate@v1
+        with:
+          output-file: ${{ runner.temp }}/sbom.spdx.json
+      - name: Upload the SBOM
+        if: ${{ inputs.sbom }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          gh release upload "$tag" "$RUNNER_TEMP/sbom.spdx.json" --clobber --repo "${{ github.repository }}"
       # Attestations need a public repository (or a plan that supports them for private ones); private callers
       # keep SHA256SUMS and skip the attestation.
       - name: Attest the build provenance

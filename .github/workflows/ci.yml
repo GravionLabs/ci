@@ -250,6 +250,21 @@ jobs:
         with:
           require-issue: 'false'
 
+  test-sbom:
+    name: 'Test: SBOM'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+
+      - name: Unit tests and lockfile fixture
+        shell: bash
+        run: bash tests/sbom.test.sh
+
   test-project-needs:
     name: 'Test: project/needs'
     runs-on: ubuntu-latest
@@ -314,7 +329,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test-determine-version, test-self-references, actionlint, test-issue-conventions, test-pr-checks, test-project-needs, test-github-project]
+    needs: [test-determine-version, test-self-references, actionlint, test-issue-conventions, test-pr-checks, test-sbom, test-project-needs, test-github-project]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
