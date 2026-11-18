@@ -323,17 +323,6 @@ jobs:
         with:
           fetch-depth: 0       # required by GitVersion
 
-      - name: Create version tag
-        uses: ./versioning/create-version-tag
-        with:
-          version: ${{ needs.test-determine-version.outputs.semver }}
-
-      # Callers use @v<major>; it follows every release of that major (README, "Pinning to a Specific Version").
-      - name: Move major tag
-        uses: ./versioning/move-major-tag
-        with:
-          version: ${{ needs.test-determine-version.outputs.semver }}
-
       - name: Check CI app
         id: app
         shell: bash
@@ -348,6 +337,26 @@ jobs:
         with:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+      # The major tag is protected by a ruleset (#249): only the CI app may move it, so the release cannot go on without it.
+      - name: Require CI app
+        if: steps.app.outputs.present != 'true'
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required: the major tag can only be moved by the GravionLabs CI app (ruleset 'major tags')."
+          exit 1
+
+      - name: Create version tag
+        uses: ./versioning/create-version-tag
+        with:
+          version: ${{ needs.test-determine-version.outputs.semver }}
+
+      # Callers use @v<major>; it follows every release of that major (README, "Pinning to a Specific Version").
+      - name: Move major tag
+        uses: ./versioning/move-major-tag
+        with:
+          version: ${{ needs.test-determine-version.outputs.semver }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Create GitHub Release
         uses: ./versioning/gh-release

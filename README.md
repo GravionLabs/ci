@@ -542,7 +542,9 @@ every 1.x release. A pre-release (`1.5.0-beta.1`) is skipped; a new major create
 Idempotent. Run it after `create-version-tag`; the `release` job of this repository's `ci.yml` does.
 
 > **Prerequisite:** The calling workflow must grant `permissions: contents: write`, and no tag ruleset may block
-> force-pushing `v*` tags for the workflow token.
+> force-pushing `v*` tags for the token used. With a ruleset on the major tag (this repository: `major tags`, only
+> the GitHub App `GravionLabs CI` may create, move or delete `v*`; see `docs/project-standard.md`) pass the installation
+> token of the app as `token`.
 
 **Usage:**
 
@@ -556,6 +558,7 @@ Idempotent. Run it after `create-version-tag`; the `release` job of this reposit
     uses: GravionLabs/ci/versioning/move-major-tag@v1
     with:
       version: ${{ steps.version.outputs.semver }}
+      token: ${{ steps.app-token.outputs.token }}   # optional; default: the workflow token
 ```
 
 **Inputs**
@@ -565,6 +568,7 @@ Idempotent. Run it after `create-version-tag`; the `release` job of this reposit
 |--------------|---------------------------------------------------------------------------------------------------------------------|----------|---------|
 | `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped | **Yes**  | —       |
 | `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                              | No       | v       |
+| `token`      | Token used to push the major tag; a repository with a ruleset on the major tag passes the app installation token    | No       | `${{ github.token }}` |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/move-major-tag.test.sh`.
@@ -1969,7 +1973,7 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets only `branches: release: { regex: ^release/next$ }` (no `increment`): the version follows the Conventional Commits, on `release/next` and on `main` alike. `release/next` carries a pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
-- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1`, never `@main` or a commit SHA.
+- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1` (repositories with signing secrets pin the SHA of a release tag, see "Pinning to a Specific Version"), never `@main`. `v1` is protected by the ruleset `major tags`: only the CI app moves it, so the release job needs `CI_APP_ID` and `CI_APP_PRIVATE_KEY`.
 - **Self-references follow the major tag.** Every `uses: GravionLabs/ci/...` inside this repository (reusable workflows, composite actions) is `@v<major>` of the next release, so a caller on `@v1` runs the actions of the same line. `tests/self-references.test.sh` fails on `@main`, a SHA or another major; a breaking change (`feat!:`) raises them to `@v2` in the same pull request. A caller pinned to an exact `@v1.x.y` still gets the nested actions of `@v1`.
 - **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
@@ -2000,8 +2004,15 @@ how a package is exempted: [docs/project-standard.md](docs/project-standard.md#d
 
 > **Use the moving major tag `@v1`.** The `release` job moves `v1` to every 1.x release: fixes and features arrive
 > without a pull request, a breaking change becomes `v2` and is taken over deliberately. Do not use `@main` (every
-> merge reaches you, breaking or not) or a commit SHA (nobody moves it; the reusable workflows call their actions at
-> `@v1` anyway). Renovate: keep `GravionLabs/ci` out of `helpers:pinGitHubActionDigests` (`pinDigests: false`).
+> merge reaches you, breaking or not). Renovate: a repository that follows `@v1` keeps `GravionLabs/ci` out of
+> `helpers:pinGitHubActionDigests` (`pinDigests: false`).
+>
+> **What a commit SHA pin covers.** `v1` is protected by the ruleset `major tags` (only the CI app moves it), so
+> `@v1` is a reasonable choice. A repository with signing secrets or published packages (poimen, nixe, agentlens,
+> mcp-studio, helix) pins `GravionLabs/ci` to the commit SHA of a release tag and lets Renovate raise it (the preset
+> exempts `GravionLabs/ci` from the minimum release age). The SHA covers the outer reference only: the reusable
+> workflows and composite actions of this repository call each other at `@v1` (a commit cannot contain its own SHA),
+> so the nested actions of a caller pinned by SHA still follow `v1`.
 
 ```yaml
 # Recommended — follows latest v1.x.y patches and features, no breaking changes

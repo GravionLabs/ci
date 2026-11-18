@@ -12,6 +12,12 @@ inputs:
     description: 'Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)'
     required: false
     default: 'v'
+  token:
+    description: >
+      Token used to push the major tag. The default is the workflow token. A repository with a ruleset on the major
+      tag (only the GitHub App may move it) passes the installation token of the app.
+    required: false
+    default: ${{ github.token }}
 
 outputs:
   major-tag:
@@ -27,4 +33,5 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         TAG_PREFIX: ${{ inputs.tag-prefix }}
+        PUSH_TOKEN: ${{ inputs.token }}
       run: bash "$GITHUB_ACTION_PATH/move.sh"

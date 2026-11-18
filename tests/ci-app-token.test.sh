@@ -39,6 +39,13 @@ done
 # ci.yml: the app, else github.token (this repository has no GH_PAT any more)
 eq "ci.yml: release token is app, else github.token" '${{ steps.app-token.outputs.token || github.token }}' "$(q '.jobs.release.steps[] | select(.uses == "./versioning/gh-release") | .with.token' "$W/ci.yml")"
 eq "ci.yml: mints the token" "$PIN" "$(q '.jobs.release.steps[] | select(.id == "app-token") | .uses' "$W/ci.yml")"
+# the major tag is moved with the app token (#249): the app is created, and required, before the tag steps
+R='.jobs.release.steps'
+idx() { q "[$R | to_entries[] | select($1) | .key] | .[0]" "$W/ci.yml"; }
+eq "ci.yml: move-major-tag pushes with the app token" '${{ steps.app-token.outputs.token }}' "$(q "$R[] | select(.uses == \"./versioning/move-major-tag\") | .with.token" "$W/ci.yml")"
+[ "$(idx '.value.id == "app-token"')" -lt "$(idx '.value.uses == "./versioning/move-major-tag"')" ] && ok "ci.yml: the app token exists before the major tag moves" || fail "ci.yml: the app token exists before the major tag moves"
+[ "$(idx '.value.id == "app-token"')" -lt "$(idx '.value.uses == "./versioning/create-version-tag"')" ] && ok "ci.yml: the release stops without the app before it tags" || fail "ci.yml: the release stops without the app before it tags"
+eq "ci.yml: a release without the app fails with a message" "steps.app.outputs.present != 'true'" "$(q "$R[] | select(.name == \"Require CI app\") | .if" "$W/ci.yml")"
 eq "ci.yml: no GH_PAT in the code" 0 "$(grep -v '^ *#' "$W/ci.yml" | grep -c GH_PAT)"
 
 # renovate runs as the app
