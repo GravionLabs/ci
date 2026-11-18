@@ -51,6 +51,22 @@ eq "checksums come after the last asset upload" after "$r"
 if [ "$(idx 'Attest the build provenance')" -gt "$(idx 'Checksum the release assets')" ]; then r=after; else r=before; fi
 eq "attestation comes after the checksums" after "$r"
 
+# #243: the release stays a draft until every asset is uploaded; publishing is the last write to the release.
+PUB="$P.steps[] | select(.name == \"Publish the release\")"
+PREP="$P.steps[] | select(.name == \"Prepare the draft release\")"
+eq "publish step sets --draft=false" 1 "$(q "[$PUB | select(.run | test(\"--draft=false\"))] | length")"
+eq "no other step undrafts the release" 0 "$(q "[$P.steps[] | select(.name != \"Publish the release\") | select(.run != null) | select(.run | test(\"--draft=false\"))] | length")"
+eq "prepare step creates a draft" 1 "$(q "[$PREP | select(.run | test(\"release create .*--draft\"))] | length")"
+eq "prepare step fails on a published release" 1 "$(q "[$PREP | select(.run | test(\"already published\"))] | length")"
+pubidx=$(idx 'Publish the release')
+late=$(yq -r "[$P.steps | to_entries | .[] | select(.key > $pubidx) | select(.value.run != null) | select(.value.run | test(\"release (upload|create|edit|delete)\"))] | length" "$WF")
+eq "no upload step after the publish step" 0 "$late"
+if [ "$(idx 'Publish the release')" -gt "$(idx 'Attest the build provenance')" ]; then r=after; else r=before; fi
+eq "publish comes after the attestation" after "$r"
+if [ "$(idx 'Pin the updater URLs to the release')" -gt "$(idx 'Prepare the draft release')" ]; then r=after; else r=before; fi
+eq "pinning comes after the draft is prepared" after "$r"
+eq "pinned URLs name the tag of the release" 1 "$(q "$P.steps[] | select(.name == \"Pin the updater URLs to the release\") | .run" | grep -c 'releases/download/\$tag/')"
+
 # The README usage example must grant every permission the publish job requests (a caller granting less fails at startup, #207).
 EX=$(awk '/^## Reusable Workflow: `tauri-app.yml`/{s=1;next} s&&/^## /{exit} s&&/^```yaml/{b=1;buf="";hit=0;next} s&&/^```/{if(b&&hit){printf "%s",buf;exit} b=0;next} b{buf=buf $0 "\n"; if($0~/tauri-app\.yml@/)hit=1}' "$ROOT/README.md")
 eq "publish requests exactly five permissions" 5 "$(q "$P.permissions | length")"
