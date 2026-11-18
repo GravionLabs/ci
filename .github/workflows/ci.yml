@@ -189,6 +189,11 @@ jobs:
         # every foreign `uses:` in the workflows and composite actions is a commit SHA with a version comment
         run: bash tests/pinned-actions.test.sh
 
+      - name: Test that run blocks take tokens and keys from env
+        shell: bash
+        # no `${{ inputs.*token|key|password* }}` or `secrets.*` inside a run block of an action.yml
+        run: bash tests/action-secrets-env.test.sh
+
       - name: Test the GitHub App token wiring
         shell: bash
         # app token step pinned, github.token fallbacks, no GH_PAT left in this repository's own workflows

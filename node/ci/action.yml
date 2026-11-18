@@ -67,8 +67,10 @@ runs:
     - name: Install dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        case "${{ inputs.package-manager }}" in
+        case "${PACKAGE_MANAGER}" in
           pnpm) pnpm install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           *) npm ci ;;
@@ -78,10 +80,13 @@ runs:
       if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || inputs.run-lint == 'true' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        LINT_COMMAND: ${{ inputs.lint-command }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        cmd="${{ inputs.lint-command }}"
+        cmd="${LINT_COMMAND}"
         if [ -z "${cmd}" ]; then
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             pnpm) cmd="pnpm run lint" ;;
             yarn) cmd="yarn run lint" ;;
             *) cmd="npm run lint" ;;
@@ -93,10 +98,13 @@ runs:
     - name: Build
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        cmd="${{ inputs.build-command }}"
+        cmd="${BUILD_COMMAND}"
         if [ -z "${cmd}" ]; then
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             pnpm) cmd="pnpm run build" ;;
             yarn) cmd="yarn run build" ;;
             *) cmd="npm run build" ;;
@@ -109,10 +117,13 @@ runs:
       if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || inputs.run-tests == 'true' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        TEST_COMMAND: ${{ inputs.test-command }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        cmd="${{ inputs.test-command }}"
+        cmd="${TEST_COMMAND}"
         if [ -z "${cmd}" ]; then
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             pnpm) cmd="pnpm run test:ci" ;;
             yarn) cmd="yarn run test:ci" ;;
             *) cmd="npm run test:ci" ;;

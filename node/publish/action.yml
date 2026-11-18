@@ -92,8 +92,9 @@ runs:
       env:
         PUBLISH_DIRECTORY: ${{ inputs.publish-directory }}
         PUBLISH_DIRECTORIES: ${{ inputs.publish-directories }}
+        VERSION: ${{ inputs.version }}
       run: |
-        version="${{ inputs.version }}"
+        version="${VERSION}"
         dirs="$(printf '%s\n%s\n' "$PUBLISH_DIRECTORY" "$PUBLISH_DIRECTORIES" | sed '/^[[:space:]]*$/d')"
         [ -n "$dirs" ] || dirs="."
         while IFS= read -r target; do
@@ -103,16 +104,17 @@ runs:
     - name: Configure npm registry authentication
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        REGISTRY_URL: ${{ inputs.registry-url }}
+        NPM_TOKEN: ${{ inputs.npm-token }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        REGISTRY_URL="${{ inputs.registry-url }}"
-        NPM_TOKEN="${{ inputs.npm-token }}"
-
         # Strip protocol and trailing slash to get the host part for .npmrc auth key
         HOST="${REGISTRY_URL#https://}"
         HOST="${HOST#http://}"
         HOST="${HOST%/}"
 
-        case "${{ inputs.package-manager }}" in
+        case "${PACKAGE_MANAGER}" in
           pnpm)
             # Write auth into the user-level .npmrc so that env vars are expanded
             # (pnpm >= 11.6 only expands env vars in trusted config: user, global, CLI).
@@ -138,15 +140,17 @@ runs:
         NODE_AUTH_TOKEN: ${{ inputs.npm-token }}
         PUBLISH_DIRECTORY: ${{ inputs.publish-directory }}
         PUBLISH_DIRECTORIES: ${{ inputs.publish-directories }}
+        PUBLISH_COMMAND: ${{ inputs.publish-command }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        override="${{ inputs.publish-command }}"
+        override="${PUBLISH_COMMAND}"
         dirs="$(printf '%s\n%s\n' "$PUBLISH_DIRECTORY" "$PUBLISH_DIRECTORIES" | sed '/^[[:space:]]*$/d')"
         [ -n "$dirs" ] || dirs="."
         while IFS= read -r dir; do
           [ "$dir" = "." ] && dir=""
           cmd="${override}"
           if [ -z "${cmd}" ]; then
-            case "${{ inputs.package-manager }}" in
+            case "${PACKAGE_MANAGER}" in
               pnpm)
                 cmd="pnpm publish ${dir} --no-git-checks"
                 ;;

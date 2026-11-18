@@ -42,9 +42,14 @@ runs:
       - name: Add private NuGet feed
         if: ${{ inputs.feed-url != '' }}
         shell: bash
+        env:
+          FEED_URL: ${{ inputs.feed-url }}
+          FEED_NAME: ${{ inputs.feed-name }}
+          FEED_USERNAME: ${{ inputs.feed-username }}
+          FEED_TOKEN: ${{ inputs.feed-token }}
         run: |
-          dotnet nuget add source "${{ inputs.feed-url }}" \
-            --name "${{ inputs.feed-name }}" \
-            --username "${{ inputs.feed-username }}" \
-            --password "${{ inputs.feed-token }}" \
+          dotnet nuget add source "$FEED_URL" \
+            --name "$FEED_NAME" \
+            --username "$FEED_USERNAME" \
+            --password "$FEED_TOKEN" \
             --store-password-in-clear-text
