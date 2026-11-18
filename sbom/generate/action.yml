@@ -1,0 +1,110 @@
+name: 'Generate SBOM'
+description: >
+  Writes a Software Bill of Materials in SPDX JSON (2.3) for a path (the resolved versions of its lockfiles) or a
+  container image, with Syft (anchore/sbom-action, pinned to a commit SHA), and attests it with actions/attest-sbom
+  when the calling job grants id-token: write and attestations: write. Without them (or in a private repository
+  without a plan that supports attestations) it only generates the file and says so in the log; it never fails
+  because of the attestation.
+
+inputs:
+  path:
+    description: 'Directory to catalog (lockfiles are read, not the manifest ranges). Ignored when image is set'
+    required: false
+    default: '.'
+  image:
+    description: 'Container image to catalog (e.g. ghcr.io/org/app:1.2.3) instead of a path; the runner must be able to pull it'
+    required: false
+    default: ''
+  output-file:
+    description: 'File the SBOM is written to'
+    required: false
+    default: 'sbom.spdx.json'
+  generate:
+    description: 'Set to false to skip the generation and only attest the file already at output-file'
+    required: false
+    default: 'true'
+  attest:
+    description: 'Attest the SBOM (actions/attest-sbom) when the permissions are granted'
+    required: false
+    default: 'true'
+  subject-path:
+    description: 'File the attestation is about (e.g. the package); default: the SBOM file itself. Ignored when subject-name is set'
+    required: false
+    default: ''
+  subject-name:
+    description: 'Image name without tag for the attestation of an image (e.g. ghcr.io/org/app); needs subject-digest'
+    required: false
+    default: ''
+  subject-digest:
+    description: 'Image digest (sha256:...) for the attestation of an image'
+    required: false
+    default: ''
+  push-to-registry:
+    description: 'Push the attestation to the registry of the image, attaching it to the image (needs subject-name and subject-digest)'
+    required: false
+    default: 'true'
+  github-token:
+    description: 'Token for the attestation'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sbom-path:
+    description: 'Path of the SBOM file'
+    value: ${{ inputs.output-file }}
+  attested:
+    description: '`true` when the attestation was created, `false` otherwise'
+    value: ${{ steps.attest-result.outputs.attested }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate the SBOM
+      if: ${{ inputs.generate == 'true' }}
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+      with:
+        path: ${{ inputs.image == '' && inputs.path || '' }}
+        image: ${{ inputs.image }}
+        format: spdx-json
+        output-file: ${{ inputs.output-file }}
+        upload-artifact: 'false'
+        upload-release-assets: 'false'
+
+    - name: Check the attestation permissions
+      id: can
+      shell: bash
+      env:
+        ATTEST: ${{ inputs.attest }}
+        SUBJECT_PATH: ${{ inputs.subject-path }}
+        SBOM: ${{ inputs.output-file }}
+        SUBJECT_NAME: ${{ inputs.subject-name }}
+        SUBJECT_DIGEST: ${{ inputs.subject-digest }}
+      run: bash "${{ github.action_path }}/can-attest.sh"
+
+    - name: Attest the SBOM
+      id: attest
+      if: ${{ steps.can.outputs.attest == 'true' }}
+      continue-on-error: true
+      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+      with:
+        sbom-path: ${{ inputs.output-file }}
+        subject-path: ${{ steps.can.outputs.subject-path }}
+        subject-name: ${{ inputs.subject-name }}
+        subject-digest: ${{ inputs.subject-digest }}
+        push-to-registry: ${{ inputs.subject-name != '' && inputs.push-to-registry || 'false' }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Report the attestation
+      id: attest-result
+      shell: bash
+      env:
+        OUTCOME: ${{ steps.attest.outcome }}
+      run: |
+        if [ "$OUTCOME" = "success" ]; then
+          echo "attested=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "attested=false" >> "$GITHUB_OUTPUT"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "::warning::The SBOM was generated but not attested (private repository without attestation support, or missing attestations: write)."
+          fi
+        fi

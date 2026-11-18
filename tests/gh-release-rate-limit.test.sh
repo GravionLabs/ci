@@ -82,5 +82,21 @@ eq "release: created once" 1 "$(creates)"
 reset; VERSION=1.2.3-rc.1 GENERATE_NOTES=true bash "$ROOT/versioning/gh-release/release.sh" >/dev/null 2>&1
 grep -q -- '--prerelease' "$STUB_LOG" && ok "release: pre-release flag" || fail "release: pre-release flag"
 
+# SBOM: the release is created as a draft with the SBOM as asset, then published.
+echo '{}' > "$DIR/sbom-in.json"
+reset; SBOM=true SBOM_GENERATED="$DIR/sbom-in.json" bash "$ROOT/versioning/gh-release/release.sh" >/dev/null 2>&1; eq "sbom: release created" 0 $?
+grep '^gh release create' "$STUB_LOG" | grep -q -- '--draft' && ok "sbom: created as draft" || fail "sbom: created as draft"
+grep '^gh release create' "$STUB_LOG" | grep -q 'sbom.spdx.json' && ok "sbom: asset named sbom.spdx.json" || fail "sbom: asset named sbom.spdx.json"
+[ "$(grep -n '^gh release create' "$STUB_LOG" | cut -d: -f1)" -lt "$(grep -n '^gh release edit .*--draft=false' "$STUB_LOG" | cut -d: -f1)" ] && ok "sbom: published after the create" || fail "sbom: published after the create"
+
+reset; SBOM=true SBOM_GIVEN="$DIR/sbom-in.json" SBOM_GENERATED="$DIR/none.json" bash "$ROOT/versioning/gh-release/release.sh" >/dev/null 2>&1
+grep '^gh release create' "$STUB_LOG" | grep -q -- '--draft' && ok "sbom: given file is attached" || fail "sbom: given file is attached"
+
+reset; SBOM=true SBOM_GENERATED="$DIR/none.json" bash "$ROOT/versioning/gh-release/release.sh" >/dev/null 2>&1; eq "sbom: missing file still releases" 0 $?
+grep '^gh release create' "$STUB_LOG" | grep -q -- '--draft' && fail "sbom: missing file creates no draft" || ok "sbom: missing file creates no draft"
+
+reset; SBOM=false SBOM_GENERATED="$DIR/sbom-in.json" bash "$ROOT/versioning/gh-release/release.sh" >/dev/null 2>&1
+grep '^gh release create' "$STUB_LOG" | grep -q -- '--draft' && fail "sbom: off creates no draft" || ok "sbom: off creates no draft"
+
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]

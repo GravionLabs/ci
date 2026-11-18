@@ -31,6 +31,8 @@ versioning/
 ├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
 ├── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
 └── close-milestones/       # Close the milestones shipped with a release tag and add the version to their title
+sbom/
+└── generate/               # SBOM (SPDX JSON) of a path or an image, attested when the permissions are granted
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -530,6 +532,9 @@ Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELO
 | `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR still open (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                      | No       | true                |
 | `close-milestones`       | After the release, close the milestones that shipped with it and add the version to their title (versioning/close-milestones). Needs issues: write; without it the step only prints a warning. A pre-release version closes nothing.                                                                                                                                                  | No       | true                |
 | `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
+| `sbom`                   | Generate an SBOM (sbom/generate, SPDX JSON) of the release commit, attach it to the release as sbom.spdx.json and attest it when the job grants id-token: write and attestations: write. The release is created as a draft with the SBOM and published afterwards (an immutable release accepts no upload once published).                                                            | No       | true                |
+| `sbom-path`              | Directory the SBOM catalogs (lockfiles at their resolved versions)                                                                                                                                                                                                                                                                                                                    | No       | .                   |
+| `sbom-file`              | An SBOM file already written (e.g. of a container image) to attach instead of generating one; it is attested like a generated one                                                                                                                                                                                                                                                     | No       |                     |
 | `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
@@ -564,11 +569,11 @@ Idempotent. Run it after `create-version-tag`; the `release` job of this reposit
 **Inputs**
 
 <!-- action-docs:inputs source="versioning/move-major-tag/action.yml" -->
-| Name         | Description                                                                                                         | Required | Default |
-|--------------|---------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped | **Yes**  | —       |
-| `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                              | No       | v       |
-| `token`      | Token used to push the major tag; a repository with a ruleset on the major tag passes the app installation token    | No       | `${{ github.token }}` |
+| Name         | Description                                                                                                                                                                                   | Required | Default             |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------|
+| `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped                                                                           | **Yes**  | —                   |
+| `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                                                                                                        | No       | v                   |
+| `token`      | Token used to push the major tag. The default is the workflow token. A repository with a ruleset on the major tag (only the GitHub App may move it) passes the installation token of the app. | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/move-major-tag.test.sh`.
@@ -669,6 +674,56 @@ steps:
 <!-- /action-docs:outputs -->
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
+
+---
+
+### `sbom/generate`
+
+Writes a Software Bill of Materials for a path or a container image and attests it. Every release of the reusable workflows carries one (`gh-release` input `sbom`, default `true`; `tauri-app.yml` and `docker-package.yml` do it in their own release path): "which releases contain package X in version Y" is answered without rebuilding. GitHub's own SBOM (dependency graph export) describes the manifests of the default branch; this one describes the lockfiles of the released commit or the image that was pushed.
+
+- **Format: SPDX JSON (2.3)**, one format for every release. SPDX is the format GitHub's dependency graph export and `gh attestation` tooling use, so a consumer reads release SBOMs and the repository SBOM the same way, and `actions/attest-sbom` attests it with the predicate type `https://spdx.dev/Document/v2.3`.
+- **Generator:** Syft (`anchore/sbom-action`, pinned to a commit SHA, raised by Renovate). It reads the lockfiles (`package-lock.json`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `packages.lock.json`, …), so the SBOM lists the resolved versions, not the ranges of the manifest; `tests/sbom.test.sh` checks this on a fixture (`tests/fixtures/sbom/node`). A project without a lockfile yields only what Syft finds in the manifests.
+- **Release asset:** `gh-release` creates the release as a draft with `sbom.spdx.json`, then publishes it (an immutable release (#243) accepts no upload once published). For an image, `docker-package.yml` generates the SBOM of the pushed image by digest and hands it to the release job.
+- **Attestation:** `actions/attest-sbom` runs when the job grants `id-token: write` and `attestations: write`. Without `id-token` the action only generates and logs that it did not attest; a failing attestation (private repository without a plan that supports them) is a warning, never a failure. For an image (`subject-name`, `subject-digest`) the attestation is pushed to the registry and so attached to the image.
+- **Reusable workflows:** `tauri-app.yml` already grants both permissions in its `publish` job, so its SBOM is attested. The job permissions of `node-package.yml`, `angular-package.yml`, `nuget-package.yml`, `python-package.yml` and `docker-package.yml` do not include them (adding them would fail callers that do not grant them, a breaking change in v1): their SBOM is generated and attached, attested only when a caller's own job calls `sbom/generate` with the permissions. Input `sbom: false` turns it off in every workflow.
+
+> **Prerequisite for the attestation:** `permissions: id-token: write`, `attestations: write` (and `packages: write` for an image).
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: GravionLabs/ci/sbom/generate@v1
+    with:
+      output-file: sbom.spdx.json
+```
+
+**Verify** a downloaded asset against the attestation:
+
+```bash
+gh release download v1.2.3 --repo <owner>/<repo> --pattern sbom.spdx.json
+gh attestation verify sbom.spdx.json --repo <owner>/<repo> --predicate-type https://spdx.dev/Document/v2.3
+# an image
+gh attestation verify oci://ghcr.io/<owner>/<image>:1.2.3 --repo <owner>/<repo> --predicate-type https://spdx.dev/Document/v2.3
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="sbom/generate/action.yml" -->
+| Name               | Description                                                                                                          | Required | Default             |
+|--------------------|----------------------------------------------------------------------------------------------------------------------|----------|---------------------|
+| `path`             | Directory to catalog (lockfiles are read, not the manifest ranges). Ignored when image is set                        | No       | .                   |
+| `image`            | Container image to catalog (e.g. ghcr.io/org/app:1.2.3) instead of a path; the runner must be able to pull it        | No       |                     |
+| `output-file`      | File the SBOM is written to                                                                                          | No       | sbom.spdx.json      |
+| `generate`         | Set to false to skip the generation and only attest the file already at output-file                                  | No       | true                |
+| `attest`           | Attest the SBOM (actions/attest-sbom) when the permissions are granted                                               | No       | true                |
+| `subject-path`     | File the attestation is about (e.g. the package); default: the SBOM file itself. Ignored when subject-name is set    | No       |                     |
+| `subject-name`     | Image name without tag for the attestation of an image (e.g. ghcr.io/org/app); needs subject-digest                  | No       |                     |
+| `subject-digest`   | Image digest (sha256:...) for the attestation of an image                                                            | No       |                     |
+| `push-to-registry` | Push the attestation to the registry of the image, attaching it to the image (needs subject-name and subject-digest) | No       | true                |
+| `github-token`     | Token for the attestation                                                                                            | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/sbom.test.sh` (the lockfile check needs `syft`; the CI job installs it).
 
 ---
 

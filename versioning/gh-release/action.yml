@@ -69,6 +69,21 @@ inputs:
       triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml).
     required: false
     default: ''
+  sbom:
+    description: >
+      Generate an SBOM (sbom/generate, SPDX JSON) of the release commit, attach it to the release as sbom.spdx.json
+      and attest it when the job grants id-token: write and attestations: write. The release is created as a draft
+      with the SBOM and published afterwards (an immutable release accepts no upload once published).
+    required: false
+    default: 'true'
+  sbom-path:
+    description: 'Directory the SBOM catalogs (lockfiles at their resolved versions)'
+    required: false
+    default: '.'
+  sbom-file:
+    description: 'An SBOM file already written (e.g. of a container image) to attach instead of generating one; it is attested like a generated one'
+    required: false
+    default: ''
   token:
     description: >
       GitHub token used for checkout and git push operations.
@@ -167,6 +182,23 @@ runs:
           } >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Generate the SBOM
+      id: sbom
+      if: ${{ inputs.sbom == 'true' && inputs.sbom-file == '' }}
+      uses: GravionLabs/ci/sbom/generate@v1
+      with:
+        path: ${{ inputs.sbom-path }}
+        output-file: ${{ runner.temp }}/sbom.spdx.json
+        github-token: ${{ inputs.token }}
+
+    - name: Attest the given SBOM
+      if: ${{ inputs.sbom == 'true' && inputs.sbom-file != '' }}
+      uses: GravionLabs/ci/sbom/generate@v1
+      with:
+        generate: 'false'
+        output-file: ${{ inputs.sbom-file }}
+        github-token: ${{ inputs.token }}
+
     - name: Create GitHub Release
       shell: bash
       env:
@@ -175,6 +207,9 @@ runs:
         VERSION: ${{ inputs.version }}
         NOTES: ${{ steps.changelog.outputs.notes }}
         CLIFF_NOTES: ${{ steps.cliff.outputs.content }}
+        SBOM: ${{ inputs.sbom }}
+        SBOM_GIVEN: ${{ inputs.sbom-file }}
+        SBOM_GENERATED: ${{ runner.temp }}/sbom.spdx.json
         GENERATE_NOTES: ${{ inputs.generate-release-notes }}
       run: bash "${{ github.action_path }}/release.sh"
 

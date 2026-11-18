@@ -76,6 +76,10 @@ on:
         type: string
         required: false
         default: ''
+      sbom:
+        description: 'Generate an SBOM (SPDX JSON, resolved lockfile versions) for the release: the SBOM of the published image (attached to the image when the attestation is possible) is a release asset and attest it when the calling job grants id-token: write and attestations: write; false turns it off'
+        type: boolean
+        default: true
       release-tag-prefix:
         description: 'Prefix for the release git tag (e.g. "v" → v1.2.3)'
         type: string
@@ -148,6 +152,7 @@ jobs:
           build-args: ${{ inputs.build-args }}
 
       - name: Publish
+        id: publish
         uses: GravionLabs/ci/docker/publish@v1
         with:
           image-name: ${{ inputs.image-name }}
@@ -163,6 +168,24 @@ jobs:
           minor: ${{ needs.determine-version.outputs.minor }}
           patch: ${{ needs.determine-version.outputs.patch }}
           main-branch: ${{ inputs.main-branch }}
+
+      # The SBOM of the pushed image. With id-token: write and attestations: write granted by the caller it is
+      # attested and attached to the image in the registry; the release gets the file either way.
+      - name: Generate the SBOM of the image
+        if: ${{ inputs.sbom }}
+        uses: GravionLabs/ci/sbom/generate@v1
+        with:
+          image: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ steps.publish.outputs.digest }}
+          output-file: ${{ runner.temp }}/sbom/sbom.spdx.json
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+
+      - name: Keep the SBOM for the release
+        if: ${{ inputs.sbom }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/sbom/sbom.spdx.json
 
   release:
     name: Release
@@ -196,6 +219,13 @@ jobs:
           echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required for update-changelog and recreate-branch: only the GravionLabs CI app token may push to the protected default branch and start release-branch.yml (the GH_PAT fallback was removed)."
           exit 1
 
+      - name: Download the SBOM of the image
+        if: ${{ inputs.sbom }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/sbom
+
       - name: Create GitHub Release
         uses: GravionLabs/ci/versioning/gh-release@v1
         with:
@@ -204,6 +234,8 @@ jobs:
           changelog-file: ${{ inputs.changelog-file }}
           cliff-config: ${{ inputs.cliff-config }}
           recreate-branch: ${{ inputs.recreate-branch }}
+          sbom: ${{ inputs.sbom }}
+          sbom-file: ${{ inputs.sbom && format('{0}/sbom/sbom.spdx.json', runner.temp) || '' }}
           update-changelog: ${{ inputs.update-changelog }}
           # The default branch usually requires a pull request; only an admin's token (the GitHub App as ruleset bypass actor) may push the changelog commit.
           token: ${{ steps.app-token.outputs.token || github.token }}
