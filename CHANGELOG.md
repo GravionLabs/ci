@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.15.0] — 2026-11-18
+
+### Documentation
+- Update CHANGELOG.md for v1.14.0 [skip ci]
+
+
+### Features
+- **renovate**: Shared preset with a 7-day minimum release age (#241) (#248)
+
+
 ## [1.14.0] — 2026-11-17
 
 ### Documentation
