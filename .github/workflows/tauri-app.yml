@@ -261,7 +261,9 @@ jobs:
         run: |
           tag="v${{ needs.determine-version.outputs.semver }}"
           repo="${{ github.repository }}"
-          if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' | grep -qx 'latest.json'; then
+          # A failing lookup (draft not found) must not look like "no latest.json".
+          names=$(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')
+          if ! printf '%s\n' "$names" | grep -qx 'latest.json'; then
             echo "$tag has no latest.json; nothing to pin"
             exit 0
           fi
