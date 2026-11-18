@@ -51,8 +51,10 @@ runs:
     - name: Install dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        case "${{ inputs.package-manager }}" in
+        case "${PACKAGE_MANAGER}" in
           pnpm) pnpm install --frozen-lockfile ;;
           yarn) yarn install --frozen-lockfile ;;
           *) npm ci ;;
@@ -61,10 +63,13 @@ runs:
     - name: Run tests
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        TEST_COMMAND: ${{ inputs.test-command }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
       run: |
-        cmd="${{ inputs.test-command }}"
+        cmd="${TEST_COMMAND}"
         if [ -z "${cmd}" ]; then
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             pnpm) cmd="pnpm run test:ci" ;;
             yarn) cmd="yarn run test:ci" ;;
             *) cmd="npm run test:ci" ;;

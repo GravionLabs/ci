@@ -25,12 +25,14 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
+        TOKEN: ${{ inputs.token }}
+        REPOSITORY: ${{ inputs.repository }}
       run: |
-        WIKI_URL="https://x-access-token:${{ inputs.token }}@github.com/${{ inputs.repository }}.wiki.git"
+        WIKI_URL="https://x-access-token:${TOKEN}@github.com/${REPOSITORY}.wiki.git"
 
-        HAS_WIKI=$(gh api "repos/${{ inputs.repository }}" --jq '.has_wiki' 2>/dev/null || echo "false")
+        HAS_WIKI=$(gh api "repos/${REPOSITORY}" --jq '.has_wiki' 2>/dev/null || echo "false")
         if [ "$HAS_WIKI" != "true" ]; then
-          echo "::warning::Wiki is disabled for ${{ inputs.repository }}. Enable it under Settings → General → Features → Wikis."
+          echo "::warning::Wiki is disabled for ${REPOSITORY}. Enable it under Settings → General → Features → Wikis."
           echo "WIKI_SKIP=true" >> "$GITHUB_ENV"
           exit 0
         fi
@@ -46,7 +48,7 @@ runs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           echo "# Wiki" > Home.md
           echo "" >> Home.md
-          echo "This wiki is automatically synced from the [${{ inputs.repository }}](https://github.com/${{ inputs.repository }}) repository." >> Home.md
+          echo "This wiki is automatically synced from the [${REPOSITORY}](https://github.com/${REPOSITORY}) repository." >> Home.md
           git add Home.md
           git commit -m "Initialize wiki"
           git remote add origin "$WIKI_URL"
@@ -62,15 +64,18 @@ runs:
     - name: Copy docs to wiki
       if: env.WIKI_SKIP != 'true'
       shell: bash
+      env:
+        README_PATH: ${{ inputs.readme-path }}
+        DOCS_PATH: ${{ inputs.docs-path }}
       run: |
         # README.md → Home.md
-        cp "${{ inputs.readme-path }}" wiki/Home.md
+        cp "${README_PATH}" wiki/Home.md
 
         # docs/**/*.md → flat wiki pages with capitalized path-based names:
         #   docs/overview.md              → Overview.md
         #   docs/concepts/plugins.md      → Concepts-Plugins.md
-        find "${{ inputs.docs-path }}" -name '*.md' | sort | while IFS= read -r file; do
-          rel="${file#${{ inputs.docs-path }}/}"
+        find "${DOCS_PATH}" -name '*.md' | sort | while IFS= read -r file; do
+          rel="${file#${DOCS_PATH}/}"
           wiki_name=$(echo "$rel" | awk -F'/' '{
             for (i = 1; i <= NF; i++) {
               w = $i
