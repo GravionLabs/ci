@@ -76,6 +76,15 @@ Copies of `add-to-project.yml`, `issue-conventions.yml` or `issue-title.yml` are
 
 A repository's own project-needs workflow (running `Sync-ProjectNeeds.ps1` itself) is replaced by `needs: true` in that caller (add `closed` to the `issues` types and `closed`, `ready_for_review` to the `pull_request_target` types). No scheduled caller is needed: the central nightly sync of GravionLabs/ci (mode `project`) covers the repository. Pass the secret `PROJECT_TOKEN` (classic PAT, scope `project`) or let it fall back to `GH_PAT`.
 
+## Removal of the `GH_PAT` fallback
+
+The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) no longer read the secret `GH_PAT`; the release token is the installation token of the GitHub App `GravionLabs CI` only. What a caller changes:
+
+- Store `CI_APP_ID` and `CI_APP_PRIVATE_KEY` (organization secrets, or per repository; pass both when the caller does not use `secrets: inherit`). Without them the steps that need the app (release PR of `release-branch.yml`, `update-changelog`, `recreate-branch`, the changelog commit of `tauri-app.yml`) fail with an error that names the two secrets; there is no silent fallback to `github.token`.
+- A caller that still passes `GH_PAT` keeps working: the secret stays declared, unused. The input `require-pat` of `release-branch.yml` is a no-op (the workflow always fails without the app).
+- Project steps are unchanged: `PROJECT_TOKEN` (classic PAT, scope `project`; an app cannot write a user-owned project). `issues.yml` still accepts `GH_PAT` as the fallback of `PROJECT_TOKEN`; `release-branch.yml` reads `PROJECT_TOKEN` only, so pass it.
+- Repositories that still read `GH_PAT` in their own workflows and have to switch to the app token (`actions/create-github-app-token`) or `PROJECT_TOKEN` before the secret is deleted: **poimen** and **nixe** (their own `release.yml`). poimen has no `CI_APP_ID`/`CI_APP_PRIVATE_KEY` secret yet, although its `renovate.yml` reads them. The secret `GH_PAT` exists in ci, skills, poimen, nixe, ariadne, elysion, agentlens, mcp-studio and helix; the owner deletes it and revokes the PAT after the callers are migrated.
+
 ## Checklist
 
 - [ ] `GitVersion.yml` present, no `next-version` pinned to an old minor.
