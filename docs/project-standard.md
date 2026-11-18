@@ -97,6 +97,19 @@ With `-Sync` the script ensures `planned` and `needs-review` (colour and descrip
 
 Limit in 0.x: a breaking change jumps to 1.0.0; avoid `!` there or use `+semver: minor` deliberately.
 
+## Moving major tag
+
+A repository whose callers use a moving major tag (`GravionLabs/ci/...@v1`) protects that tag with the ruleset `major tags` (GravionLabs/ci#249):
+
+| Setting | Value |
+|:--|:--|
+| Target | tag |
+| Include / exclude | `refs/tags/v*` / `refs/tags/v*.*.*` (the exact release tags belong to the ruleset `version tags`, which nobody bypasses) |
+| Rules | creation, update, deletion, non-fast-forward |
+| Bypass actors | only the GitHub App `GravionLabs CI` (always); no repository role |
+
+The release job creates the app token before it tags and moves `v<major>` with `versioning/move-major-tag` and `token: <app token>`; without the app secrets the job fails at the step `Require CI app`, not with a rejected push. Create the ruleset only after the release job moves the tag with the app token (the other order blocks the next release). It protects against a leaked token with `contents: write` (workflow token, fine-grained PAT, app token of another repository); the owner of the repository can still edit or disable it, so it does not protect against a taken-over owner account.
+
 ## Dependency updates and minimum release age
 
 A release of a dependency that is younger than 7 days reaches neither a lockfile nor a build (owner decision 2026-11-17, GravionLabs/ci#239). A compromised release of a package, crate or action is usually withdrawn within days; the lockfile already protects installs in CI, the age protects the moment the lockfile changes (Renovate, lockfile maintenance, a local install). Three settings, one per place:

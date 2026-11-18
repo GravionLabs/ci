@@ -52,5 +52,26 @@ git tag x3.0.0 HEAD && git push -q origin x3.0.0
 move 3.0.0 x
 eq "custom prefix" "$(git rev-parse x3.0.0)" "$(remote x3)"
 
+# token input (#249): PUSH_TOKEN replaces the checkout credentials for the push; without it git is called as before.
+REAL_GIT=$(command -v git)
+mkdir -p "$DIR/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'case " $* " in *" push "*) printf "%s\n" "$*" >> "$GIT_LOG" ;; esac' "exec $REAL_GIT \"\$@\"" > "$DIR/bin/git"
+chmod +x "$DIR/bin/git"
+release 1.6.0
+export GIT_LOG="$DIR/gitlog"; : > "$GIT_LOG"
+OUT="$DIR/out"; : > "$OUT"
+PATH="$DIR/bin:$PATH" PUSH_TOKEN="s3cret-token" VERSION=1.6.0 GITHUB_OUTPUT="$OUT" bash "$SCRIPT" >"$DIR/log" 2>&1; eq "push with a token exits 0" 0 $?
+eq "token: v1 moved to v1.6.0" "$(git rev-parse v1.6.0)" "$(remote v1)"
+EXPECTED=$(printf 'x-access-token:s3cret-token' | base64 | tr -d '\n')
+grep -q "http.https://github.com/.extraheader=AUTHORIZATION: basic $EXPECTED" "$GIT_LOG" && ok "token: pushed with the Authorization header of the token" || fail "token: pushed with the Authorization header of the token"
+grep -q "http.https://github.com/.extraheader= " "$GIT_LOG" && ok "token: checkout header reset before" || fail "token: checkout header reset before"
+grep -v "^::add-mask::" "$DIR/log" | grep -q "s3cret-token" && fail "token: not printed" || ok "token: not printed"
+grep -q "::add-mask::s3cret-token" "$DIR/log" && ok "token: masked" || fail "token: masked"
+
+release 1.7.0
+: > "$GIT_LOG"
+PATH="$DIR/bin:$PATH" VERSION=1.7.0 GITHUB_OUTPUT="$OUT" bash "$SCRIPT" >"$DIR/log" 2>&1; eq "push without a token exits 0" 0 $?
+grep -q "extraheader" "$GIT_LOG" && fail "no token: checkout credentials are used as they are" || ok "no token: checkout credentials are used as they are"
+
 echo "$((total - failures))/$total passed"
 [ "$failures" -eq 0 ]
