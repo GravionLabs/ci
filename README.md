@@ -1142,6 +1142,8 @@ determine-version → ci → draft ─→ installers ─┐
                         └──────→ build (CLI) ─┴→ publish → update-changelog
 ```
 
+The release stays a draft until the CLI archives, the installers, the pinned `latest.json` and `SHA256SUMS` are uploaded; publishing is the last write to it. Callers can therefore turn on immutable releases (a published release, its assets and its tag can no longer be changed). A rerun of a failed run works while the release is a draft; a rerun after publishing fails with a clear message instead of changing assets.
+
 **Usage:**
 
 ```yaml

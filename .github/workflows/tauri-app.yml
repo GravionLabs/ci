@@ -230,22 +230,26 @@ jobs:
               git log -1 --format=%b | grep -E '^\* (feat|fix|docs|perf|refactor)' | awk '!seen[$0]++'
             } > RELEASE_NOTES.md
           fi
-      - name: Publish the release
+      # The release stays a draft until every asset is uploaded; the last step of the job publishes it
+      # ("Publish the release"). A published release of an immutable-releases repository accepts no upload.
+      - name: Prepare the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${{ needs.determine-version.outputs.semver }}"
-          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            [ -d dist ] && gh release upload "$tag" dist/* --clobber --repo "${{ github.repository }}"
+          repo="${{ github.repository }}"
+          # The API lists drafts too (a tag lookup does not always find them).
+          state=$(gh api --paginate "repos/$repo/releases" --jq ".[] | select(.tag_name == \"$tag\") | .draft" | head -n 1)
+          if [ "$state" = "false" ]; then
+            echo "::error::$tag is already published and its assets can no longer change. Rerun only while the release is a draft; for a published release cut a new version."
+            exit 1
+          elif [ "$state" = "true" ]; then
+            if [ -d dist ]; then gh release upload "$tag" dist/* --clobber --repo "$repo"; fi
           else
             if [ -d dist ]; then files="dist/*"; else files=""; fi
             gh release create "$tag" $files --draft --target "${{ github.sha }}" \
-              --title "$tag" --repo "${{ github.repository }}"
+              --title "$tag" --repo "$repo"
           fi
-          # A version with a pre-release label (0.1.0-beta.28) is a pre-release, not the "latest" release.
-          if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
-          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
-            --title "$tag" --repo "${{ github.repository }}"
       # tauri-action writes the asset URLs of latest.json as releases/latest/download/<file>. "latest" moves
       # to the next release, so an update that was offered could no longer be downloaded (404) once a newer
       # release existed. The URLs are pinned to the tag of their own release; the endpoint the application
@@ -294,6 +298,16 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ${{ env.SHA256SUMS_PATH }}
+      # Last write to the release: every asset (archives, installers, latest.json, SHA256SUMS) is uploaded.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          # A version with a pre-release label (0.1.0-beta.28) is a pre-release, not the "latest" release.
+          if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
+          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
+            --title "$tag" --repo "${{ github.repository }}"
       # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
