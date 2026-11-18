@@ -55,7 +55,7 @@ runs:
   using: 'composite'
   steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Set up Node.js
       uses: GravionLabs/ci/node/setup@v1
@@ -124,7 +124,7 @@ runs:
     - name: Upload test results artifact
       if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
       continue-on-error: true
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: test-results
         path: ${{ inputs.working-directory }}/test-results/junit.xml
@@ -133,7 +133,7 @@ runs:
     - name: Upload coverage artifact
       if: ${{ inputs.upload-results == 'true' && (success() || failure()) }}
       continue-on-error: true
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: coverage
         path: ${{ inputs.working-directory }}/coverage/
@@ -142,7 +142,7 @@ runs:
     - name: Publish test results
       if: ${{ inputs.publish-results == 'true' && (success() || failure()) }}
       continue-on-error: true
-      uses: dorny/test-reporter@v1
+      uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
       with:
         name: Test Results
         path: ${{ inputs.working-directory }}/test-results/junit.xml
@@ -152,7 +152,7 @@ runs:
     - name: Publish coverage summary
       if: ${{ inputs.publish-results == 'true' && (success() || failure()) }}
       continue-on-error: true
-      uses: irongut/CodeCoverageSummary@v1.3.0
+      uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
       with:
         filename: ${{ inputs.working-directory }}/coverage/cobertura-coverage.xml
         badge: true

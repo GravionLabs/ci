@@ -1976,6 +1976,26 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 ---
 
+## Third-party Actions
+
+Every action outside GravionLabs that a workflow or composite action of this repository uses is pinned to the commit
+of a release tag, with the version as a comment (`actions/checkout@<sha> # v4.4.0`). A tag such as `@v4` can be moved
+by the owner of the action; the next run of every caller would then execute the new code, in some jobs with signing
+keys and release tokens. `tests/pinned-actions.test.sh` (job `actionlint` of `ci.yml`) fails on a tag, a branch or a
+SHA without the full version comment. Renovate raises SHA and comment together (`helpers:pinGitHubActionDigests`).
+
+---
+
+## Renovate Preset
+
+`default.json` is the shared Renovate preset: `extends: ['config:recommended', 'github>GravionLabs/ci']`. It holds a
+release back for 7 days (`minimumReleaseAge`, `internalChecksFilter: 'strict'`), pins action digests and exempts
+security fixes and `GravionLabs/ci` itself from the age. pnpm and npm have their own setting for installs
+(`minimumReleaseAge: 10080` in `pnpm-workspace.yaml`, `min-release-age=7` in `.npmrc`). How a repository adopts it and
+how a package is exempted: [docs/project-standard.md](docs/project-standard.md#dependency-updates-and-minimum-release-age).
+
+---
+
 ## Pinning to a Specific Version
 
 > **Use the moving major tag `@v1`.** The `release` job moves `v1` to every 1.x release: fixes and features arrive

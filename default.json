@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Shared Renovate preset of GravionLabs (extends: github>GravionLabs/ci).",
+    "No pull request for a release younger than 7 days: a compromised release of a package, crate or action is usually withdrawn within days.",
+    "Actions are pinned to a commit SHA with the version as a comment."
+  ],
+  "extends": ["helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "vulnerabilityAlerts": {
+    "description": "A fix for a known vulnerability is not held back.",
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Own code: a repository that pins the shared workflows by commit SHA gets a new release of GravionLabs/ci at once.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["GravionLabs/ci", "GravionLabs/ci/**"],
+      "minimumReleaseAge": null
+    }
+  ]
+}

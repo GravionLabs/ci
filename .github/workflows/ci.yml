@@ -19,7 +19,7 @@ jobs:
       semver: ${{ steps.version.outputs.semver }}
       major: ${{ steps.version.outputs.major }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0       # required by GitVersion
 
@@ -66,7 +66,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Self-references are @v<major> of the next release
         shell: bash
@@ -98,7 +98,7 @@ jobs:
       issues: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Unit tests (fake gh)
         shell: bash
@@ -147,9 +147,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: stable
           cache: false
@@ -184,6 +184,11 @@ jobs:
         shell: bash
         run: bash tests/rust-setup.test.sh
 
+      - name: Test the pins of third-party actions
+        shell: bash
+        # every foreign `uses:` in the workflows and composite actions is a commit SHA with a version comment
+        run: bash tests/pinned-actions.test.sh
+
       - name: Test the GitHub App token wiring
         shell: bash
         # app token step pinned, github.token fallbacks, no GH_PAT left in this repository's own workflows
@@ -195,9 +200,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '26'   # node --test with a quoted glob needs Node 21+
 
@@ -213,9 +218,9 @@ jobs:
       issues: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '26'   # node --test with a quoted glob needs Node 21+
 
@@ -246,7 +251,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Unit tests
         shell: bash
@@ -258,15 +263,39 @@ jobs:
         # reopen-status.sh against a stub gh with a GraphQL fixture, action.yml invariants
         run: bash tests/project-reopen-status.test.sh
 
+  test-renovate-preset:
+    name: 'Test: Renovate preset'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Test the preset (jq is preinstalled)
+        shell: bash
+        # 7 days, strict, digest pins, exemptions; renovate.json extends it; .npmrc has the same age
+        run: bash tests/renovate-preset.test.sh
+
+      - name: Validate the Renovate configuration
+        shell: bash
+        env:
+          # An exact version that was older than 7 days when it was set; raise it by hand.
+          RENOVATE_VERSION: 44.224.2
+        run: npx --yes --package="renovate@${RENOVATE_VERSION}" -- renovate-config-validator --strict default.json renovate.json
+
   test-github-project:
     name: 'Test: github-project skill'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '26'
           cache: npm
@@ -285,7 +314,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0       # required by GitVersion
 
