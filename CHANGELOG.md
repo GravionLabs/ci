@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.15.1] — 2026-11-18
+
+### Bug Fixes
+- Renovate workflow names its repository and targets release/next (#250)
+
+
+### Documentation
+- Update CHANGELOG.md for v1.15.0 [skip ci]
+
+
 ## [1.15.0] — 2026-11-18
 
 ### Documentation
