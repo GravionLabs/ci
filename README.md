@@ -1982,7 +1982,8 @@ SHA without the full version comment. Renovate raises SHA and comment together (
 
 `default.json` is the shared Renovate preset: `extends: ['config:recommended', 'github>GravionLabs/ci']`. It holds a
 release back for 7 days (`minimumReleaseAge`, `internalChecksFilter: 'strict'`), pins action digests and exempts
-security fixes and `GravionLabs/ci` itself from the age. pnpm and npm have their own setting for installs
+security fixes and `GravionLabs/ci` itself from the age. It keeps at most two pull requests open at a time (`prConcurrentLimit`);
+they target the default branch, so a repository sets no `baseBranchPatterns`. pnpm and npm have their own setting for installs
 (`minimumReleaseAge: 10080` in `pnpm-workspace.yaml`, `min-release-age=7` in `.npmrc`). How a repository adopts it and
 how a package is exempted: [docs/project-standard.md](docs/project-standard.md#dependency-updates-and-minimum-release-age).
 

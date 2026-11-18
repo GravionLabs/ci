@@ -3,11 +3,13 @@
   "description": [
     "Shared Renovate preset of GravionLabs (extends: github>GravionLabs/ci).",
     "No pull request for a release younger than 7 days: a compromised release of a package, crate or action is usually withdrawn within days.",
-    "Actions are pinned to a commit SHA with the version as a comment."
+    "Actions are pinned to a commit SHA with the version as a comment.",
+    "At most two open pull requests at a time, against the default branch."
   ],
   "extends": ["helpers:pinGitHubActionDigests"],
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",
+  "prConcurrentLimit": 2,
   "vulnerabilityAlerts": {
     "description": "A fix for a known vulnerability is not held back.",
     "minimumReleaseAge": null

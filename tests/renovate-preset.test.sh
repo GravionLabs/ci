@@ -20,10 +20,13 @@ eq "preset: security fixes are not held back" null "$(jq -r '.vulnerabilityAlert
 own='.packageRules[] | select((.matchPackageNames // []) | index("GravionLabs/ci") != null)'
 eq "preset: GravionLabs/ci is exempt from the age" null "$(jq -r "$own | if has(\"minimumReleaseAge\") then .minimumReleaseAge else \"missing\" end" "$P")"
 eq "preset: the exemption covers the action paths" true "$(jq -r "$own | .matchPackageNames | index(\"GravionLabs/ci/**\") != null" "$P")"
+eq "preset: at most two open pull requests" 2 "$(jq -r '.prConcurrentLimit' "$P")"
+eq "preset: no base branch (the default branch)" null "$(jq -r '.baseBranchPatterns' "$P")"
 eq "preset: no schedule, labels or automerge (the repository decides)" 0 "$(jq -r '[.schedule, .labels, .automerge] | map(select(. != null)) | length' "$P")"
 
 eq "renovate.json: extends the preset" true "$(jq -r '.extends | index("github>GravionLabs/ci") != null' "$R")"
 eq "renovate.json: sets no minimum release age of its own" 0 "$(jq -r '[.. | objects | select(has("minimumReleaseAge"))] | length' "$R")"
+eq "renovate.json: pull requests target the default branch" null "$(jq -r '.baseBranchPatterns' "$R")"
 eq "renovate.json: self-references are left alone" false "$(jq -r "$own | .enabled" "$R")"
 
 eq ".npmrc: npm holds releases back for 7 days" "min-release-age=7" "$(grep -E '^min-release-age=' "$ROOT/.npmrc" 2>/dev/null)"
