@@ -50,10 +50,10 @@ eq "app token only with the secrets" "steps.app.outputs.present == 'true'" "$(q 
 eq "app token wiring" 'app-id=${{ secrets.CI_APP_ID }},private-key=${{ secrets.CI_APP_PRIVATE_KEY }}' "$(q "$APP | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "action order" 'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510,GravionLabs/ci/versioning/release-pr@v1,GravionLabs/ci/versioning/close-merged-issues@v1,GravionLabs/ci/project/needs@v1' \
   "$(q "[$S[].uses | select(. != null)] | join(\",\")")"
-eq "release-pr token app, else GH_PAT, else GITHUB_TOKEN" '${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}' "$(q "$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .with.token")"
+eq "release-pr token is the app token only" '${{ steps.app-token.outputs.token }}' "$(q "$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .with.token")"
 MARK="$S[] | select(.id == \"close\")"
 NEEDS="$S[] | select(.uses == \"GravionLabs/ci/project/needs@v1\")"
-eq "needs token PROJECT_TOKEN, else GH_PAT" '${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' "$(q "$NEEDS | .with.token")"
+eq "needs token is PROJECT_TOKEN" '${{ secrets.PROJECT_TOKEN }}' "$(q "$NEEDS | .with.token")"
 eq "needs syncs the closed issues" '${{ steps.close.outputs.closed }}' "$(q "$NEEDS | .with.issues")"
 needs_if=$(q "$NEEDS | .if")
 case "$needs_if" in *"inputs.project-url != ''"*) ok "needs off without project-url" ;; *) fail "needs off without project-url" ;; esac
@@ -62,11 +62,11 @@ case "$needs_if" in "!inputs.dry-run"*) ok "needs skipped on dry run" ;; *) fail
 
 # --- complete wiring ---
 RP="$S[] | select(.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .with"
-eq "release-pr wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},release-branch=${{ inputs.release-branch }},token=${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}' \
+eq "release-pr wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},release-branch=${{ inputs.release-branch }},token=${{ steps.app-token.outputs.token }}' \
   "$(q "$RP | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "close wiring" 'base=${{ inputs.base }},dry-run=${{ inputs.dry-run }},release-branch=${{ inputs.release-branch }},token=${{ github.token }}' \
   "$(q "$MARK | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
-eq "needs wiring" 'issues=${{ steps.close.outputs.closed }},project-url=${{ inputs.project-url }},token=${{ secrets.PROJECT_TOKEN || secrets.GH_PAT }}' \
+eq "needs wiring" 'issues=${{ steps.close.outputs.closed }},project-url=${{ inputs.project-url }},token=${{ secrets.PROJECT_TOKEN }}' \
   "$(q "$NEEDS | .with | to_entries | map(.key + \"=\" + .value) | sort | join(\",\")")"
 eq "needs if exact" "!inputs.dry-run && inputs.project-url != '' && steps.close.outputs.closed != ''" "$needs_if"
 eq "concurrency group" 'release-branch-${{ github.repository }}-${{ inputs.release-branch || github.ref_name }}' "$(q "$JOB.concurrency.group")"
@@ -98,17 +98,13 @@ HAS_APP=true GITHUB_OUTPUT="$app_out" bash -c "$app_script"; eq "app secrets set
 rm -f "$app_out"
 eq "app presence needs both secrets" "\${{ secrets.CI_APP_ID != '' && secrets.CI_APP_PRIVATE_KEY != '' }}" "$(q "$S[] | select(.id == \"app\") | .env.HAS_APP")"
 
-# --- token check: run its script ---
-script=$(q "$S[] | select(.name == \"Check release PR token\") | .run")
-check() {
-  out=$(HAS_APP="$1" HAS_PAT="$2" REQUIRE_PAT="$3" bash -c "$script" 2>&1); code=$?
-}
-check true false false;  eq "app: green" 0 "$code"; eq "app: no output" '' "$out"
-check false true false;  eq "PAT only: green" 0 "$code"; eq "PAT only: no output" '' "$out"
-check false false false; eq "neither: green" 0 "$code"; eq "neither: one warning" 1 "$(grep -c '^::warning::' <<<"$out")"
-check false false true;  eq "neither, require-pat: fails" 1 "$code"; eq "neither, require-pat: error" 1 "$(grep -c '^::error::' <<<"$out")"
-check true false true;   eq "app, require-pat: green" 0 "$code"
-check false true true;   eq "PAT, require-pat: green" 0 "$code"
+# --- without the app the workflow fails (the GH_PAT fallback was removed, #245) ---
+REQ="$S[] | select(.name == \"Require CI app\")"
+eq "require step runs without the app" "steps.app.outputs.present != 'true'" "$(q "$REQ | .if")"
+out=$(bash -c "$(q "$REQ | .run")" 2>&1); code=$?
+eq "no app: fails" 1 "$code"; eq "no app: one error naming the secrets" 1 "$(grep -c '^::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required' <<<"$out")"
+ri=$(q "[$S | to_entries[] | select(.value.name == \"Require CI app\") | .key] | .[0]"); pi=$(q "[$S | to_entries[] | select(.value.uses == \"GravionLabs/ci/versioning/release-pr@v1\") | .key] | .[0]")
+[ "$ri" -lt "$pi" ] && ok "require step comes before the release PR" || fail "require step comes before the release PR"
 
 # --- this repository's caller ---
 CALLER="$ROOT/.github/workflows/release-branch-caller.yml"

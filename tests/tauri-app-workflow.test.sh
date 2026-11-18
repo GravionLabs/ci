@@ -23,7 +23,7 @@ eq "publish has contents: write" write "$(q "$P.permissions.contents")"
 eq "recreate step runs recreate-branch.sh" 1 "$(q "[$STEP | select(.run | test(\"gh-release/recreate-branch.sh\"))] | length")"
 eq "recreate step is off without the input" "\${{ inputs.recreate-branch != '' }}" "$(q "$STEP | .if")"
 eq "recreate step passes the branch through env" '${{ inputs.recreate-branch }}' "$(q "$STEP | .env.BRANCH")"
-eq "recreate step pushes with app token, PAT, then github.token" '${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}' "$(q "$STEP | .env.PUSH_TOKEN")"
+eq "recreate step pushes with app token, then github.token" '${{ steps.app-token.outputs.token || github.token }}' "$(q "$STEP | .env.PUSH_TOKEN")"
 eq "recreate step never forces" 0 "$(q "[$STEP | select(.run | test(\"--force|-f \"))] | length")"
 idx() { yq -r "$P.steps | to_entries | .[] | select(.value.name == \"$1\") | .key" "$WF"; }
 if [ "$(idx 'Recreate the release branch')" -gt "$(idx 'Publish the release')" ]; then r=after; else r=before; fi
