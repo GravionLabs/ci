@@ -6,6 +6,16 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.18.0] — 2026-11-19
+
+### Documentation
+- Update CHANGELOG.md for v1.17.0 [skip ci]
+
+
+### Features
+- **project**: The project standard sets the security settings (#271)
+
+
 ## [1.17.0] — 2026-11-19
 
 ### Documentation
