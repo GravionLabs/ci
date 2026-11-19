@@ -68,6 +68,7 @@ node/
 
 scripts/
   Set-RepoRulesets.ps1  — Requires the check `PR checks` in the rulesets `main` and `release` of each repository and sets the merge methods of their `pull_request` rule (`main` merge only, `release` merge and squash) (`-Repo`/`-All`, `-Replace`, `-Context`, dry run without `-Apply`); tests `tests/project/set-repo-rulesets.test.ts`
+  Set-RepoSecurity.ps1  — Sets and checks the security settings per repository (Dependabot alerts; public: secret scanning with push protection, private vulnerability reporting, fork PR approval, tag ruleset `version tags`; `-ImmutableReleases` per repository) (`-Repo`/`-All`, dry run without `-Apply`, idempotent); tests `tests/project/set-repo-security.test.ts`
 
 .github/workflows/
   nuget-package.yml     — Full NuGet CI/CD: determine-version → build-test-pack (+ verify) → publish (main only)

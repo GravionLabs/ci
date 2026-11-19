@@ -97,6 +97,21 @@ With `-Sync` the script ensures `planned` and `needs-review` (colour and descrip
 
 Limit in 0.x: a breaking change jumps to 1.0.0; avoid `!` there or use `+semver: minor` deliberately.
 
+## Repository security settings
+
+Set by `scripts/Set-RepoSecurity.ps1` (dry run without `-Apply`, idempotent; GravionLabs/ci#239, #244). They were applied by hand on 2026-11-17; the script sets them on a new repository and shows a changed one as `PLAN`.
+
+| Where | Setting | Why |
+|:--|:--|:--|
+| all repositories | Dependabot alerts | A known vulnerability in a dependency is reported even where Renovate is not configured |
+| public repositories | Secret scanning and push protection | A token or key in a push is blocked before it is public |
+| public repositories | Private vulnerability reporting | A finding reaches the owner without a public issue |
+| public repositories | Approval of fork pull requests: `all_external_contributors` | A workflow of an outside contributor runs only after the owner approved it, so it cannot reach secrets |
+| public repositories | Tag ruleset `version tags` on `refs/tags/v*.*.*`: `deletion`, `update`, `non_fast_forward`, no bypass actor | A release tag cannot be moved or deleted, not even with a stolen token; callers that pin a commit SHA of a tag rely on it |
+| per repository, `-ImmutableReleases` | Immutable releases | A published release, its assets and its tag can no longer be changed |
+
+Settings that need a public repository are skipped for a private one with a line that says so. **Immutable releases are a switch per repository and off by default** (the script never switches them off): a release workflow that uploads assets after it published the release breaks with it. `tauri-app.yml` uploads everything first and publishes last, so its callers can turn them on; poimen and nixe have their own `release.yml` and get the same order first. Not set: "require actions to be pinned to a full-length commit SHA" (open decision of GravionLabs/ci#239; it stays off where `@v1` is used).
+
 ## Moving major tag
 
 A repository whose callers use a moving major tag (`GravionLabs/ci/...@v1`) protects that tag with the ruleset `major tags` (GravionLabs/ci#249):

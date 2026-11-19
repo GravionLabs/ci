@@ -2018,6 +2018,37 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 - Rollback: delete the ruleset (the dry run prints the id of each ruleset it would change; Settings > Rules > Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`) and recreate it from the dry run output without the check.
 - Tests: `npm test` (`tests/project/set-repo-rulesets.test.ts`, stubbed `gh`, needs pwsh).
 
+
+## `scripts/Set-RepoSecurity.ps1`
+
+Sets and checks the security settings of the project standard (`docs/project-standard.md`, "Repository security settings") per repository, through `gh api`:
+
+| Repositories | Setting |
+|---|---|
+| all | Dependabot alerts |
+| public | secret scanning and push protection; private vulnerability reporting; approval of fork pull requests from all outside contributors; the tag ruleset `version tags` on `refs/tags/v*.*.*` (rules `deletion`, `update`, `non_fast_forward`, no bypass actor) |
+| named with `-ImmutableReleases` | immutable releases |
+
+A second run changes nothing. A private repository gets a `SKIP ... needs a public repository` line for each setting that needs a public one; archived repositories are skipped.
+
+```powershell
+pwsh scripts/Set-RepoSecurity.ps1 -All                                       # dry run: PLAN lines for what would change, OK lines for the rest
+pwsh scripts/Set-RepoSecurity.ps1 -Repo ci -Apply                            # one repository
+pwsh scripts/Set-RepoSecurity.ps1 -All -ImmutableReleases ci,skills,helix -Apply
+```
+
+| Parameter | Description |
+|---|---|
+| `-Repo` | Repository names (`name` or `owner/name`) |
+| `-All` | Every non-archived repository of `-Owner` (default `GravionLabs`), private ones included; the account of the token must be `-Owner` |
+| `-ImmutableReleases` | Repositories that get immutable releases. Off by default and never switched off by the script: a release workflow that uploads assets after it published the release breaks with it (`tauri-app.yml` uploads before it publishes) |
+| `-Apply` | Write the changes; without it the script is a dry run and makes no write call |
+
+- Not set here: "require actions to be pinned to a full-length commit SHA" (open decision of GravionLabs/ci#239).
+- Token: `gh` with a classic PAT with scope `repo` or a fine-grained token with `Administration: write`.
+- Rollback: switch the setting off (Settings > Code security, Settings > General) or delete the ruleset `version tags` (Settings > Rules).
+- Tests: `npm test` (`tests/project/set-repo-security.test.ts`, stubbed `gh`, needs pwsh).
+
 ## Releasing ci
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
