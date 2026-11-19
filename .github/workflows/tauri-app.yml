@@ -65,6 +65,10 @@ on:
         description: 'Branch to recreate from the released commit when it does not exist on origin after the release, e.g. release/next (set it when the repository deletes merged branches); empty = off. An existing branch is never moved'
         type: string
         default: ''
+      sbom:
+        description: 'Generate an SBOM (SPDX JSON, resolved lockfile versions) for the release and attach it as release asset and attest it when the calling job grants id-token: write and attestations: write; false turns it off'
+        type: boolean
+        default: true
     secrets:
       TAURI_SIGNING_PRIVATE_KEY:
         required: false
@@ -77,7 +81,7 @@ on:
         description: 'Private key (PEM) of the GitHub App GravionLabs CI'
         required: false
       GH_PAT:
-        description: 'Deprecated, use CI_APP_ID/CI_APP_PRIVATE_KEY (fallback when no app is configured). PAT of an admin of the repository: the changelog commit goes straight to the default branch, which a ruleset only lets admins update without a pull request'
+        description: 'Deprecated and ignored (accepted so existing callers do not fail); use CI_APP_ID/CI_APP_PRIVATE_KEY'
         required: false
 
 permissions:
@@ -230,22 +234,26 @@ jobs:
               git log -1 --format=%b | grep -E '^\* (feat|fix|docs|perf|refactor)' | awk '!seen[$0]++'
             } > RELEASE_NOTES.md
           fi
-      - name: Publish the release
+      # The release stays a draft until every asset is uploaded; the last step of the job publishes it
+      # ("Publish the release"). A published release of an immutable-releases repository accepts no upload.
+      - name: Prepare the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${{ needs.determine-version.outputs.semver }}"
-          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            [ -d dist ] && gh release upload "$tag" dist/* --clobber --repo "${{ github.repository }}"
+          repo="${{ github.repository }}"
+          # The API lists drafts too (a tag lookup does not always find them).
+          state=$(gh api --paginate "repos/$repo/releases" --jq ".[] | select(.tag_name == \"$tag\") | .draft" | head -n 1)
+          if [ "$state" = "false" ]; then
+            echo "::error::$tag is already published and its assets can no longer change. Rerun only while the release is a draft; for a published release cut a new version."
+            exit 1
+          elif [ "$state" = "true" ]; then
+            if [ -d dist ]; then gh release upload "$tag" dist/* --clobber --repo "$repo"; fi
           else
             if [ -d dist ]; then files="dist/*"; else files=""; fi
             gh release create "$tag" $files --draft --target "${{ github.sha }}" \
-              --title "$tag" --repo "${{ github.repository }}"
+              --title "$tag" --repo "$repo"
           fi
-          # A version with a pre-release label (0.1.0-beta.28) is a pre-release, not the "latest" release.
-          if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
-          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
-            --title "$tag" --repo "${{ github.repository }}"
       # tauri-action writes the asset URLs of latest.json as releases/latest/download/<file>. "latest" moves
       # to the next release, so an update that was offered could no longer be downloaded (404) once a newer
       # release existed. The URLs are pinned to the tag of their own release; the endpoint the application
@@ -257,7 +265,9 @@ jobs:
         run: |
           tag="v${{ needs.determine-version.outputs.semver }}"
           repo="${{ github.repository }}"
-          if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' | grep -qx 'latest.json'; then
+          # A failing lookup (draft not found) must not look like "no latest.json".
+          names=$(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')
+          if ! printf '%s\n' "$names" | grep -qx 'latest.json'; then
             echo "$tag has no latest.json; nothing to pin"
             exit 0
           fi
@@ -287,6 +297,20 @@ jobs:
           sha256sum -c "$work/SHA256SUMS"
           gh release upload "$tag" "$work/SHA256SUMS" --clobber --repo "$repo"
           echo "SHA256SUMS_PATH=$work/SHA256SUMS" >> "$GITHUB_ENV"
+      # SBOM of the release commit (resolved versions of Cargo.lock and the frontend lockfile), a release asset and,
+      # when the caller grants id-token: write and attestations: write, attested (a failed attestation only warns).
+      - name: Generate the SBOM
+        if: ${{ inputs.sbom }}
+        uses: GravionLabs/ci/sbom/generate@v1
+        with:
+          output-file: ${{ runner.temp }}/sbom.spdx.json
+      - name: Upload the SBOM
+        if: ${{ inputs.sbom }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          gh release upload "$tag" "$RUNNER_TEMP/sbom.spdx.json" --clobber --repo "${{ github.repository }}"
       # Attestations need a public repository (or a plan that supports them for private ones); private callers
       # keep SHA256SUMS and skip the attestation.
       - name: Attest the build provenance
@@ -294,6 +318,16 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ${{ env.SHA256SUMS_PATH }}
+      # Last write to the release: every asset (archives, installers, latest.json, SHA256SUMS) is uploaded.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.determine-version.outputs.semver }}"
+          # A version with a pre-release label (0.1.0-beta.28) is a pre-release, not the "latest" release.
+          if [[ "$tag" == *-* ]]; then prerelease="--prerelease"; else prerelease="--prerelease=false"; fi
+          gh release edit "$tag" --notes-file RELEASE_NOTES.md --draft=false "$prerelease" \
+            --title "$tag" --repo "${{ github.repository }}"
       # After a merged release/<x.y> PR: safety net that closes the delivered issues still open ("Shipped in v...").
       - uses: GravionLabs/ci/versioning/close-release-issues@v1
         continue-on-error: true
@@ -305,7 +339,7 @@ jobs:
         with:
           version: ${{ needs.determine-version.outputs.semver }}
       # Recreates the release branch (normally release/next) when the repository deleted it on merge. The push uses the
-      # CI app token or GH_PAT when set (a token's push starts release-branch.yml; github.token's does not).
+      # CI app token (required: a token's push starts release-branch.yml; github.token's does not).
       - name: Check CI app
         id: app
         if: ${{ inputs.recreate-branch != '' }}
@@ -320,6 +354,12 @@ jobs:
         with:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      - name: Require CI app
+        if: ${{ inputs.recreate-branch != '' && steps.app.outputs.present != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required for recreate-branch: only the CI app token's push starts release-branch.yml (the GH_PAT fallback was removed)."
+          exit 1
       - name: Fetch recreate-branch.sh
         if: ${{ inputs.recreate-branch != '' }}
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -334,7 +374,7 @@ jobs:
         env:
           BRANCH: ${{ inputs.recreate-branch }}
           SHA: ${{ github.sha }}
-          PUSH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           REPO: ${{ github.repository }}
         run: |
           git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
@@ -342,8 +382,8 @@ jobs:
 
   update-changelog:
     name: update changelog
-    # After the release is published, so the new tag is part of the history. The commit is pushed with the CI app token (or GH_PAT)
-    # when one is set (a token's push does start runs), so its message carries [skip ci].
+    # After the release is published, so the new tag is part of the history. The commit is pushed with the CI app token
+    # (a token's push does start runs), so its message carries [skip ci].
     needs: [determine-version, publish]
     if: ${{ needs.determine-version.outputs.release == 'true' }}
     runs-on: ubuntu-latest
@@ -365,12 +405,19 @@ jobs:
           app-id: ${{ secrets.CI_APP_ID }}
           private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
 
+      - name: Require CI app
+        if: steps.app.outputs.present != 'true'
+        shell: bash
+        run: |
+          echo "::error::CI_APP_ID and CI_APP_PRIVATE_KEY are required to push the changelog commit to the protected default branch (the GH_PAT fallback was removed)."
+          exit 1
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           # The default branch requires a pull request; only an admin's token may push the changelog commit.
-          token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
       - name: Generate the changelog
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:

@@ -15,7 +15,7 @@ command -v yq >/dev/null || { echo "yq is required"; exit 1; }
 PIN='actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
 APP_ID='${{ secrets.CI_APP_ID }}'
 KEY='${{ secrets.CI_APP_PRIVATE_KEY }}'
-TOKEN_FALLBACK='${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}'
+TOKEN_FALLBACK='${{ steps.app-token.outputs.token || github.token }}'
 
 for f in nuget-package python-package docker-package tauri-app release-branch; do
   file="$W/$f.yml"
@@ -29,16 +29,30 @@ for f in nuget-package python-package docker-package tauri-app release-branch; d
   eq "$f: only when both secrets are set" "steps.app.outputs.present == 'true'" "$conds"
   eq "$f: CI_APP_ID is an optional secret" false "$(q '.on.workflow_call.secrets.CI_APP_ID.required' "$file")"
   eq "$f: CI_APP_PRIVATE_KEY is an optional secret" false "$(q '.on.workflow_call.secrets.CI_APP_PRIVATE_KEY.required' "$file")"
-  eq "$f: GH_PAT stays an optional (deprecated) secret" false "$(q '.on.workflow_call.secrets.GH_PAT.required' "$file")"
+  eq "$f: GH_PAT stays an optional (ignored) secret" false "$(q '.on.workflow_call.secrets.GH_PAT.required' "$file")"
 done
 
-for f in nuget-package python-package docker-package tauri-app; do
-  eq "$f: token is app, else GH_PAT, else github.token" "$TOKEN_FALLBACK" "$(q '[.. | select(has("token")) | .token] | map(select(test("GH_PAT"))) | unique | .[0]' "$W/$f.yml")"
+# GH_PAT fallback removed (#245): the secret stays declared (callers that still pass it do not fail) but no code reads it
+for f in nuget-package python-package docker-package tauri-app release-branch; do
+  eq "$f: no GH_PAT read in the code" 0 "$(grep -v '^ *#' "$W/$f.yml" | grep -c 'secrets\.GH_PAT')"
+  eq "$f: GH_PAT is declared as ignored" 1 "$(q '.on.workflow_call.secrets.GH_PAT.description | test("ignored") | if . then 1 else 0 end' "$W/$f.yml")"
+  eq "$f: a caller without the app gets an error" 1 "$(q '[.. | select(has("name") and .name == "Require CI app")] | length | if . > 0 then 1 else 0 end' "$W/$f.yml")"
 done
+for f in nuget-package python-package docker-package tauri-app; do
+  eq "$f: token is app, else github.token" "$TOKEN_FALLBACK" "$(q '[.. | select(has("token")) | .token] | map(select(test("app-token"))) | unique | .[0]' "$W/$f.yml")"
+done
+eq "release-branch: release-pr token is the app token only" '${{ steps.app-token.outputs.token }}' "$(q '.jobs[].steps[] | select(.uses == "GravionLabs/ci/versioning/release-pr@v1") | .with.token' "$W/release-branch.yml")"
 
 # ci.yml: the app, else github.token (this repository has no GH_PAT any more)
 eq "ci.yml: release token is app, else github.token" '${{ steps.app-token.outputs.token || github.token }}' "$(q '.jobs.release.steps[] | select(.uses == "./versioning/gh-release") | .with.token' "$W/ci.yml")"
 eq "ci.yml: mints the token" "$PIN" "$(q '.jobs.release.steps[] | select(.id == "app-token") | .uses' "$W/ci.yml")"
+# the major tag is moved with the app token (#249): the app is created, and required, before the tag steps
+R='.jobs.release.steps'
+idx() { q "[$R | to_entries[] | select($1) | .key] | .[0]" "$W/ci.yml"; }
+eq "ci.yml: move-major-tag pushes with the app token" '${{ steps.app-token.outputs.token }}' "$(q "$R[] | select(.uses == \"./versioning/move-major-tag\") | .with.token" "$W/ci.yml")"
+[ "$(idx '.value.id == "app-token"')" -lt "$(idx '.value.uses == "./versioning/move-major-tag"')" ] && ok "ci.yml: the app token exists before the major tag moves" || fail "ci.yml: the app token exists before the major tag moves"
+[ "$(idx '.value.id == "app-token"')" -lt "$(idx '.value.uses == "./versioning/create-version-tag"')" ] && ok "ci.yml: the release stops without the app before it tags" || fail "ci.yml: the release stops without the app before it tags"
+eq "ci.yml: a release without the app fails with a message" "steps.app.outputs.present != 'true'" "$(q "$R[] | select(.name == \"Require CI app\") | .if" "$W/ci.yml")"
 eq "ci.yml: no GH_PAT in the code" 0 "$(grep -v '^ *#' "$W/ci.yml" | grep -c GH_PAT)"
 
 # renovate runs as the app

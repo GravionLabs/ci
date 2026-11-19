@@ -97,6 +97,19 @@ With `-Sync` the script ensures `planned` and `needs-review` (colour and descrip
 
 Limit in 0.x: a breaking change jumps to 1.0.0; avoid `!` there or use `+semver: minor` deliberately.
 
+## Moving major tag
+
+A repository whose callers use a moving major tag (`GravionLabs/ci/...@v1`) protects that tag with the ruleset `major tags` (GravionLabs/ci#249):
+
+| Setting | Value |
+|:--|:--|
+| Target | tag |
+| Include / exclude | `refs/tags/v*` / `refs/tags/v*.*.*` (the exact release tags belong to the ruleset `version tags`, which nobody bypasses) |
+| Rules | creation, update, deletion, non-fast-forward |
+| Bypass actors | only the GitHub App `GravionLabs CI` (always); no repository role |
+
+The release job creates the app token before it tags and moves `v<major>` with `versioning/move-major-tag` and `token: <app token>`; without the app secrets the job fails at the step `Require CI app`, not with a rejected push. Create the ruleset only after the release job moves the tag with the app token (the other order blocks the next release). It protects against a leaked token with `contents: write` (workflow token, fine-grained PAT, app token of another repository); the owner of the repository can still edit or disable it, so it does not protect against a taken-over owner account.
+
 ## Dependency updates and minimum release age
 
 A release of a dependency that is younger than 7 days reaches neither a lockfile nor a build (owner decision 2026-11-17, GravionLabs/ci#239). A compromised release of a package, crate or action is usually withdrawn within days; the lockfile already protects installs in CI, the age protects the moment the lockfile changes (Renovate, lockfile maintenance, a local install). Three settings, one per place:
@@ -115,6 +128,6 @@ Exemptions:
 
 - **Security fixes:** a pull request for a known vulnerability is not held back by Renovate (`vulnerabilityAlerts.minimumReleaseAge: null`). The age of the package manager still applies on install; exempt the fixed version there when it is younger.
 - **GravionLabs/ci:** exempt in the preset (own code), so a repository that pins the shared workflows by commit SHA gets a new release at once. A repository that follows `@v1` instead keeps `GravionLabs/ci` away from the digest pin with a package rule (`matchPackageNames: ['GravionLabs/ci', 'GravionLabs/ci/**']`, `pinDigests: false`).
-- **An own package that must be installed at once** (for example `@gravionlabs/helix-ui` right after its release): `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` with the exact version (`'@gravionlabs/helix-ui@22.2.17'`), removed again with the next update; in Renovate a package rule with `minimumReleaseAge: null` for `@gravionlabs/**`.
+- **The helix packages (`@gravionlabs/helix-*`):** exempt in the preset (own code, owner decision 2026-11-18, GravionLabs/ci#253): a package rule for the npm datasource sets `minimumReleaseAge: null`, so an app gets a new helix release at once. No other `@gravionlabs/*` package and no third-party package is exempt. The age of the package manager still applies on install, so an app that follows helix closely exempts the packages there permanently, not with an exact version that is removed again: `minimumReleaseAgeExclude: ['@gravionlabs/helix-*']` in `pnpm-workspace.yaml`. pnpm takes the pattern (verified with pnpm 12.9.1: an excluded name matched by `m*` installs, without the entry the install fails). npm has the same setting for `.npmrc` (`min-release-age-exclude`, present in npm 11.20; the pattern syntax is not verified here).
 
 Check: `bash tests/renovate-preset.test.sh`; the job `Test: Renovate preset` of `ci.yml` also runs `renovate-config-validator --strict` on `default.json` and `renovate.json`.

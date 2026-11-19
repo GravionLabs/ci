@@ -31,6 +31,8 @@ versioning/
 ├── mark-merged-issues/     # Label issues merged into a release/* branch (removed again by close-release-issues)
 ├── close-merged-issues/    # Close the issues merged into a release/* branch and comment where they ship
 └── close-milestones/       # Close the milestones shipped with a release tag and add the version to their title
+sbom/
+└── generate/               # SBOM (SPDX JSON) of a path or an image, attested when the permissions are granted
 issues/
 └── conventions/            # Set the "[Level] " title prefix and flag missing required sections of issues
 project/
@@ -530,6 +532,9 @@ Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELO
 | `close-issues`           | After the release, close the issues delivered by a merged release/<x.y> PR still open (versioning/close-release-issues, a safety net: close-merged-issues closes them at merge). Needs issues: write and pull-requests: read; without them the step only prints a warning. A no-op for commits that are not a merged release PR.                                                      | No       | true                |
 | `close-milestones`       | After the release, close the milestones that shipped with it and add the version to their title (versioning/close-milestones). Needs issues: write; without it the step only prints a warning. A pre-release version closes nothing.                                                                                                                                                  | No       | true                |
 | `recreate-branch`        | Branch to recreate after the release, normally release/next. When set and the branch does not exist on origin, it is pushed from the released commit; an existing branch is never moved or force-pushed. Empty = off. Needs contents: write; a push made with the default GITHUB_TOKEN triggers no workflows, pass a PAT as token when the new branch must (e.g. release-branch.yml). | No       |                     |
+| `sbom`                   | Generate an SBOM (sbom/generate, SPDX JSON) of the release commit, attach it to the release as sbom.spdx.json and attest it when the job grants id-token: write and attestations: write. The release is created as a draft with the SBOM and published afterwards (an immutable release accepts no upload once published).                                                            | No       | true                |
+| `sbom-path`              | Directory the SBOM catalogs (lockfiles at their resolved versions)                                                                                                                                                                                                                                                                                                                    | No       | .                   |
+| `sbom-file`              | An SBOM file already written (e.g. of a container image) to attach instead of generating one; it is attested like a generated one                                                                                                                                                                                                                                                     | No       |                     |
 | `token`                  | GitHub token used for checkout and git push operations. Override with a PAT when the default GITHUB_TOKEN cannot push to protected branches.                                                                                                                                                                                                                                          | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
@@ -542,7 +547,9 @@ every 1.x release. A pre-release (`1.5.0-beta.1`) is skipped; a new major create
 Idempotent. Run it after `create-version-tag`; the `release` job of this repository's `ci.yml` does.
 
 > **Prerequisite:** The calling workflow must grant `permissions: contents: write`, and no tag ruleset may block
-> force-pushing `v*` tags for the workflow token.
+> force-pushing `v*` tags for the token used. With a ruleset on the major tag (this repository: `major tags`, only
+> the GitHub App `GravionLabs CI` may create, move or delete `v*`; see `docs/project-standard.md`) pass the installation
+> token of the app as `token`.
 
 **Usage:**
 
@@ -556,15 +563,17 @@ Idempotent. Run it after `create-version-tag`; the `release` job of this reposit
     uses: GravionLabs/ci/versioning/move-major-tag@v1
     with:
       version: ${{ steps.version.outputs.semver }}
+      token: ${{ steps.app-token.outputs.token }}   # optional; default: the workflow token
 ```
 
 **Inputs**
 
 <!-- action-docs:inputs source="versioning/move-major-tag/action.yml" -->
-| Name         | Description                                                                                                         | Required | Default |
-|--------------|---------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped | **Yes**  | —       |
-| `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                              | No       | v       |
+| Name         | Description                                                                                                                                                                                   | Required | Default             |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------|
+| `version`    | Released version (e.g. the semver output of determine-version, e.g. 1.4.0); a pre-release (1.4.0-beta.1) is skipped                                                                           | **Yes**  | —                   |
+| `tag-prefix` | Prefix of the release tag and the major tag (e.g. "v" → v1.4.0 and v1)                                                                                                                        | No       | v                   |
+| `token`      | Token used to push the major tag. The default is the workflow token. A repository with a ruleset on the major tag (only the GitHub App may move it) passes the installation token of the app. | No       | ${{ github.token }} |
 <!-- /action-docs:inputs -->
 
 Test: `bash tests/move-major-tag.test.sh`.
@@ -665,6 +674,56 @@ steps:
 <!-- /action-docs:outputs -->
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
+
+---
+
+### `sbom/generate`
+
+Writes a Software Bill of Materials for a path or a container image and attests it. Every release of the reusable workflows carries one (`gh-release` input `sbom`, default `true`; `tauri-app.yml` and `docker-package.yml` do it in their own release path): "which releases contain package X in version Y" is answered without rebuilding. GitHub's own SBOM (dependency graph export) describes the manifests of the default branch; this one describes the lockfiles of the released commit or the image that was pushed.
+
+- **Format: SPDX JSON (2.3)**, one format for every release. SPDX is the format GitHub's dependency graph export and `gh attestation` tooling use, so a consumer reads release SBOMs and the repository SBOM the same way, and `actions/attest-sbom` attests it with the predicate type `https://spdx.dev/Document/v2.3`.
+- **Generator:** Syft (`anchore/sbom-action`, pinned to a commit SHA, raised by Renovate). It reads the lockfiles (`package-lock.json`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `packages.lock.json`, …), so the SBOM lists the resolved versions, not the ranges of the manifest; `tests/sbom.test.sh` checks this on a fixture (`tests/fixtures/sbom/node`). A project without a lockfile yields only what Syft finds in the manifests.
+- **Release asset:** `gh-release` creates the release as a draft with `sbom.spdx.json`, then publishes it (an immutable release (#243) accepts no upload once published). For an image, `docker-package.yml` generates the SBOM of the pushed image by digest and hands it to the release job.
+- **Attestation:** `actions/attest-sbom` runs when the job grants `id-token: write` and `attestations: write`. Without `id-token` the action only generates and logs that it did not attest; a failing attestation (private repository without a plan that supports them) is a warning, never a failure. For an image (`subject-name`, `subject-digest`) the attestation is pushed to the registry and so attached to the image.
+- **Reusable workflows:** `tauri-app.yml` already grants both permissions in its `publish` job, so its SBOM is attested. The job permissions of `node-package.yml`, `angular-package.yml`, `nuget-package.yml`, `python-package.yml` and `docker-package.yml` do not include them (adding them would fail callers that do not grant them, a breaking change in v1): their SBOM is generated and attached, attested only when a caller's own job calls `sbom/generate` with the permissions. Input `sbom: false` turns it off in every workflow.
+
+> **Prerequisite for the attestation:** `permissions: id-token: write`, `attestations: write` (and `packages: write` for an image).
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: GravionLabs/ci/sbom/generate@v1
+    with:
+      output-file: sbom.spdx.json
+```
+
+**Verify** a downloaded asset against the attestation:
+
+```bash
+gh release download v1.2.3 --repo <owner>/<repo> --pattern sbom.spdx.json
+gh attestation verify sbom.spdx.json --repo <owner>/<repo> --predicate-type https://spdx.dev/Document/v2.3
+# an image
+gh attestation verify oci://ghcr.io/<owner>/<image>:1.2.3 --repo <owner>/<repo> --predicate-type https://spdx.dev/Document/v2.3
+```
+
+**Inputs**
+
+<!-- action-docs:inputs source="sbom/generate/action.yml" -->
+| Name               | Description                                                                                                          | Required | Default             |
+|--------------------|----------------------------------------------------------------------------------------------------------------------|----------|---------------------|
+| `path`             | Directory to catalog (lockfiles are read, not the manifest ranges). Ignored when image is set                        | No       | .                   |
+| `image`            | Container image to catalog (e.g. ghcr.io/org/app:1.2.3) instead of a path; the runner must be able to pull it        | No       |                     |
+| `output-file`      | File the SBOM is written to                                                                                          | No       | sbom.spdx.json      |
+| `generate`         | Set to false to skip the generation and only attest the file already at output-file                                  | No       | true                |
+| `attest`           | Attest the SBOM (actions/attest-sbom) when the permissions are granted                                               | No       | true                |
+| `subject-path`     | File the attestation is about (e.g. the package); default: the SBOM file itself. Ignored when subject-name is set    | No       |                     |
+| `subject-name`     | Image name without tag for the attestation of an image (e.g. ghcr.io/org/app); needs subject-digest                  | No       |                     |
+| `subject-digest`   | Image digest (sha256:...) for the attestation of an image                                                            | No       |                     |
+| `push-to-registry` | Push the attestation to the registry of the image, attaching it to the image (needs subject-name and subject-digest) | No       | true                |
+| `github-token`     | Token for the attestation                                                                                            | No       | ${{ github.token }} |
+<!-- /action-docs:inputs -->
+
+Test: `bash tests/sbom.test.sh` (the lockfile check needs `syft`; the CI job installs it).
 
 ---
 
@@ -1138,6 +1197,8 @@ determine-version → ci → draft ─→ installers ─┐
                         └──────→ build (CLI) ─┴→ publish → update-changelog
 ```
 
+The release stays a draft until the CLI archives, the installers, the pinned `latest.json` and `SHA256SUMS` are uploaded; publishing is the last write to it. Callers can therefore turn on immutable releases (a published release, its assets and its tag can no longer be changed). A rerun of a failed run works while the release is a draft; a rerun after publishing fails with a clear message instead of changing assets.
+
 **Usage:**
 
 ```yaml
@@ -1492,7 +1553,7 @@ jobs:
 | `feed-token`      | Token for the private restore feed | No       |
 | `publish-api-key` | Token for the publish feed         | **Yes**  |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
-| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 > The `publish` job uses `environment: nuget-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1547,7 +1608,7 @@ jobs:
 |----------------------|---------------------------------------------------------|----------|
 | `publish-api-key`    | API token for private feeds; omit for PyPI Trusted Publishing | No |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | GitHub App `GravionLabs CI` (see above): its token pushes the changelog commit of `update-changelog`; the app must be a ruleset bypass actor |
-| `GH_PAT` | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` | No |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 > The `publish` job uses `environment: pypi-publish`. Configure this environment in GitHub repository settings to add approval gates or deployment protection rules.
 
@@ -1607,11 +1668,11 @@ jobs:
 | `registry-username` | **Yes**  | Username for the container registry                  |
 | `registry-token`    | **Yes**  | Token for the container registry (e.g. `GITHUB_TOKEN` for GHCR) |
 | `CI_APP_ID` / `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above); its token pushes the changelog commit of `update-changelog` |
-| `GH_PAT`            | No       | Deprecated, fallback without the app: admin PAT for the changelog commit of `update-changelog` when a ruleset requires a pull request on the default branch; falls back to `GITHUB_TOKEN` |
+| `GH_PAT` | Deprecated and ignored (the fallback was removed, #245): still accepted so a caller that passes it does not fail; use `CI_APP_ID`/`CI_APP_PRIVATE_KEY` | No |
 
 ### GitHub App `GravionLabs CI` (CI token)
 
-The CI automation runs as a GitHub App instead of the user PAT `GH_PAT`: an installation token has its own rate limit, so CI no longer competes with local agents for the 5000 GraphQL points per hour of one user. The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) and `ci.yml` mint the token with the SHA-pinned `actions/create-github-app-token` when both secrets are set, and pass it where `GH_PAT` was used (release PR, changelog commit). Without the app they fall back to `GH_PAT` (deprecated) and then to `github.token`.
+The CI automation runs as a GitHub App instead of the user PAT `GH_PAT`: an installation token has its own rate limit, so CI no longer competes with local agents for the 5000 GraphQL points per hour of one user. The reusable workflows (`nuget-package.yml`, `python-package.yml`, `docker-package.yml`, `tauri-app.yml`, `release-branch.yml`) and `ci.yml` mint the token with the SHA-pinned `actions/create-github-app-token` when both secrets are set, and pass it where `GH_PAT` was used (release PR, changelog commit). The `GH_PAT` fallback was removed (#245): without the app, a step that needs it (release PR, changelog commit, `recreate-branch`) fails with an error naming the two secrets instead of silently using `github.token`; the secret `GH_PAT` is still accepted, and ignored, so a caller that passes it does not fail.
 
 | Secret | Description |
 |---|---|
@@ -1624,7 +1685,7 @@ Setup (maintainer, once):
 2. Generate a private key, install the app on all GravionLabs repositories.
 3. Store `CI_APP_ID` and `CI_APP_PRIVATE_KEY` as organization or per repository secrets (a caller without `secrets: inherit` passes both: `CI_APP_ID: ${{ secrets.CI_APP_ID }}`).
 4. Add the app as bypass actor to the rulesets `main` (changelog commit on the default branch requires a pull request) and, where release PRs are created, as needed.
-5. Delete the secret `GH_PAT` once every repository runs on the app (it stays supported as a fallback until then).
+5. Delete the secret `GH_PAT` and revoke the PAT once every repository runs on the app (the workflows no longer read it; `issues.yml` still takes it as the fallback of `PROJECT_TOKEN`).
 
 Project steps keep a classic PAT: project 17 belongs to the user `GravionLabs`, and a GitHub App cannot access user-owned projects (only organization projects; moving to an organization is GravionLabs/ci#128). `PROJECT_TOKEN` is therefore used for `add-to-project`, the Needs sync and the project Status. The Needs sync and the project Status read and write through the REST `projectsV2` endpoints (`GET /users|orgs/<owner>/projectsV2/<n>/fields` and `/items?fields[]=<id>&q=repo:<o/r>`, `PATCH .../items/<id>`) plus the REST issue endpoints (`sub_issues`, `dependencies/blocked_by`, `dependencies/blocking`, `pulls`), so they draw on the REST budget only and make no GraphQL call. What stays on GraphQL: `actions/add-to-project` (external action) and the field/option/view administration of `Set-ProjectStandard.ps1` (no REST update endpoint for single-select options; not part of the CI steps).
 
@@ -1771,7 +1832,7 @@ jobs:
 | `label`          | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
 | `project-status` | No       | `""`          | Deprecated no-op (warning when set), removed in the next major                                           |
 | `project-url`    | No       | `""`          | Project URL for the Needs sync of the closed issues; empty disables the sync                           |
-| `require-pat`    | No       | `false`       | Fail instead of warning when neither the app secrets nor `GH_PAT` are set                                              |
+| `require-pat`    | No       | `false`       | Deprecated no-op: the workflow always fails without the app secrets                                              |
 | `dry-run`        | No       | `false`       | Print what would change without changing anything                                                        |
 
 **Secrets**
@@ -1779,13 +1840,13 @@ jobs:
 | Secret          | Required | Description                                                                                                  |
 |-----------------|----------|--------------------------------------------------------------------------------------------------------------|
 | `CI_APP_ID`, `CI_APP_PRIVATE_KEY` | No | GitHub App `GravionLabs CI` (see above): its installation token creates the release PR, so the required checks run |
-| `GH_PAT`        | No       | Deprecated, fallback without the app: classic PAT with the scope `repo` (and `workflow`) for the release PR |
-| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs; falls back to `GH_PAT` |
+| `GH_PAT`        | No       | Deprecated and ignored (the fallback was removed, #245); accepted so a caller that passes it does not fail |
+| `PROJECT_TOKEN` | No       | Classic PAT with the scope `project` (plus `repo` for a private repository) for project Status and Needs |
 
 **Token requirements**
 
-- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass the app secrets (or the deprecated `GH_PAT`). Without them the job warns once and uses the `GITHUB_TOKEN`; with `require-pat: true` it fails.
-- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`, or `GH_PAT` carrying `repo`, `workflow` and `project` as one token). Without a project token the project steps warn and the job stays green.
+- A PR created with the `GITHUB_TOKEN` triggers no `pull_request` workflows, so its required checks never run and the PR stays blocked: pass the app secrets. Without them the job fails with an error (the `GH_PAT` fallback and the warning mode were removed, #245; `require-pat` is a no-op).
+- The `GITHUB_TOKEN` cannot write to a user-owned project, and fine-grained tokens cannot access user-owned projects: Status and Needs need a classic PAT with the scope `project` (`PROJECT_TOKEN`). Without a project token the project steps warn and the job stays green.
 - The secret names match `issues.yml`, so `secrets: inherit` works.
 - The actions are referenced at `@v1`, the moving major tag (see "Pinning to a Specific Version").
 - Tests: `bash tests/release-branch-workflow.test.sh`; the `actionlint` job of `ci.yml` lints the workflow.
@@ -1961,7 +2022,7 @@ pwsh scripts/Set-RepoRulesets.ps1 -All -Replace ready -Apply       # every repos
 
 - Work goes through PRs into the rolling `release/next` branch (CI checks run on those PRs). Hotfixes are the exception: `fix/<nr>-<slug>` from `main`, merged directly into `main`, then merge `main` back into `release/next`.
 - `GitVersion.yml` sets only `branches: release: { regex: ^release/next$ }` (no `increment`): the version follows the Conventional Commits, on `release/next` and on `main` alike. `release/next` carries a pre-release version (GitVersion's default label, observed as `1.1.0-beta.1`, not configured here).
-- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1`, never `@main` or a commit SHA.
+- Merging `release/next` into `main` releases the next version; the `release` job of `ci.yml` tags it (`v<x.y.z>`), publishes it and moves the major tag `v<major>` to it (`versioning/move-major-tag`). Callers use `@v1` (repositories with signing secrets pin the SHA of a release tag, see "Pinning to a Specific Version"), never `@main`. `v1` is protected by the ruleset `major tags`: only the CI app moves it, so the release job needs `CI_APP_ID` and `CI_APP_PRIVATE_KEY`.
 - **Self-references follow the major tag.** Every `uses: GravionLabs/ci/...` inside this repository (reusable workflows, composite actions) is `@v<major>` of the next release, so a caller on `@v1` runs the actions of the same line. `tests/self-references.test.sh` fails on `@main`, a SHA or another major; a breaking change (`feat!:`) raises them to `@v2` in the same pull request. A caller pinned to an exact `@v1.x.y` still gets the nested actions of `@v1`.
 - **The bump comes from Conventional Commits.** `ci.yml` runs `determine-version` with `conventional-commits: 'true'`: a `feat:` commit (squashed PR title) on `release/next` makes the merge into `main` a minor, `<type>!:` or a `BREAKING CHANGE:` footer a major, everything else a patch. No `+semver: minor` footer is needed; `+semver:` stays as an escape hatch. Without the rules a plain `--no-ff` merge is only a patch (GitVersion ignores the branch rule on `main`); `tests/determine-version.test.sh` asserts that, `tests/conventional-commits.test.sh` the Conventional Commit cases.
 - Patch releases come only from hotfixes merged directly into `main` (for example `1.1.1`).
@@ -1993,8 +2054,15 @@ how a package is exempted: [docs/project-standard.md](docs/project-standard.md#d
 
 > **Use the moving major tag `@v1`.** The `release` job moves `v1` to every 1.x release: fixes and features arrive
 > without a pull request, a breaking change becomes `v2` and is taken over deliberately. Do not use `@main` (every
-> merge reaches you, breaking or not) or a commit SHA (nobody moves it; the reusable workflows call their actions at
-> `@v1` anyway). Renovate: keep `GravionLabs/ci` out of `helpers:pinGitHubActionDigests` (`pinDigests: false`).
+> merge reaches you, breaking or not). Renovate: a repository that follows `@v1` keeps `GravionLabs/ci` out of
+> `helpers:pinGitHubActionDigests` (`pinDigests: false`).
+>
+> **What a commit SHA pin covers.** `v1` is protected by the ruleset `major tags` (only the CI app moves it), so
+> `@v1` is a reasonable choice. A repository with signing secrets or published packages (poimen, nixe, agentlens,
+> mcp-studio, helix) pins `GravionLabs/ci` to the commit SHA of a release tag and lets Renovate raise it (the preset
+> exempts `GravionLabs/ci` from the minimum release age). The SHA covers the outer reference only: the reusable
+> workflows and composite actions of this repository call each other at `@v1` (a commit cannot contain its own SHA),
+> so the nested actions of a caller pinned by SHA still follow `v1`.
 
 ```yaml
 # Recommended — follows latest v1.x.y patches and features, no breaking changes

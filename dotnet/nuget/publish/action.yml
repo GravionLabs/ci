@@ -41,8 +41,15 @@ runs:
 
       - name: Publish NuGet packages
         shell: bash
+        env:
+          NUPKGS_PATH: ${{ inputs.nupkgs-path }}
+          FEED_URL: ${{ inputs.feed-url }}
+          API_KEY: ${{ inputs.api-key }}
+          SKIP_DUPLICATE: ${{ inputs.skip-duplicate }}
         run: |
-          dotnet nuget push "${{ inputs.nupkgs-path }}" \
-            --source "${{ inputs.feed-url }}" \
-            --api-key "${{ inputs.api-key }}" \
-            ${{ inputs.skip-duplicate == 'true' && '--skip-duplicate' || '' }}
+          args=()
+          [ "$SKIP_DUPLICATE" = "true" ] && args+=(--skip-duplicate)
+          dotnet nuget push "$NUPKGS_PATH" \
+            --source "$FEED_URL" \
+            --api-key "$API_KEY" \
+            "${args[@]}"
