@@ -4,6 +4,7 @@ import run from '../../pr-checks/readiness/run.mjs';
 import {
   closingRefs,
   isReleaseBranch,
+  isRenovatePr,
   parseLabels,
   readinessProblems,
 } from '../../pr-checks/readiness/readiness.mjs';
@@ -67,6 +68,16 @@ describe('parseLabels', () => {
   });
 });
 
+describe('isRenovatePr', () => {
+  const pr = (ref, head, base = 'o/r') => ({ head: { ref, repo: { full_name: head } }, base: { repo: { full_name: base } } });
+  it('needs a renovate/** branch in the same repository', () => {
+    assert.equal(isRenovatePr(pr('renovate/npm-zod', 'o/r')), true);
+    assert.equal(isRenovatePr(pr('renovate/npm-zod', 'x/r')), false);
+    assert.equal(isRenovatePr(pr('feat/renovate/x', 'o/r')), false);
+    assert.equal(isRenovatePr({ head: { ref: 'renovate/x', repo: null }, base: { repo: { full_name: 'o/r' } } }), false);
+  });
+});
+
 describe('isReleaseBranch', () => {
   it('matches release/** only', () => {
     assert.equal(isReleaseBranch('release/next'), true);
@@ -78,7 +89,7 @@ describe('isReleaseBranch', () => {
 });
 
 /** A fake of the github-script objects: one PR, issues by number, blockers by number. */
-function harness({ body, head = 'feat/1-x', issues = {}, blockers = {} }) {
+function harness({ body, head = 'feat/1-x', headRepo = 'o/r', issues = {}, blockers = {} }) {
   const calls = { failed: [], notices: [], summary: '' };
   const summary = {
     addHeading: () => summary,
@@ -89,7 +100,7 @@ function harness({ body, head = 'feat/1-x', issues = {}, blockers = {} }) {
     calls,
     github: {
       rest: {
-        pulls: { get: async () => ({ data: { body, head: { ref: head } } }) },
+        pulls: { get: async () => ({ data: { body, head: { ref: head, repo: { full_name: headRepo } }, base: { repo: { full_name: 'o/r' } } } }) },
         issues: {
           get: async ({ issue_number }) => {
             if (!issues[issue_number]) throw Object.assign(new Error('Not Found'), { status: 404 });
@@ -150,6 +161,24 @@ describe('run', () => {
     const h = harness({ body: '', head: 'release/next' });
     await run({ ...h, inputs: inputs() });
     assert.deepEqual(h.calls.failed, []);
+  });
+
+  it('exempts Renovate PRs of this repository from require-issue', async () => {
+    const h = harness({ body: '', head: 'renovate/npm-zod-vulnerability' });
+    await run({ ...h, inputs: inputs() });
+    assert.deepEqual(h.calls.failed, []);
+  });
+
+  it('does not exempt a renovate/** branch of a fork', async () => {
+    const h = harness({ body: '', head: 'renovate/x', headRepo: 'evil/r' });
+    await run({ ...h, inputs: inputs() });
+    assert.match(h.calls.failed[0], /closes no issue/);
+  });
+
+  it('still checks the issues a Renovate PR closes', async () => {
+    const h = harness({ body: 'Closes #1', head: 'renovate/x', issues: { 1: { labels: ['needs-decision'] } } });
+    await run({ ...h, inputs: inputs() });
+    assert.match(h.calls.failed[0], /needs-decision/);
   });
 
   it('skips references that are pull requests', async () => {

@@ -1,6 +1,6 @@
 name: PR readiness
 description: >-
-  Fails when a pull request closes no issue (release PRs exempt) or closes an issue that is not ready:
+  Fails when a pull request closes no issue (release and Renovate PRs exempt) or closes an issue that is not ready:
   it carries a not-ready label or is blocked by an issue that is still open.
   Run it on `pull_request`; the token needs `issues: read` and `pull-requests: read`.
 
@@ -10,7 +10,7 @@ inputs:
     required: false
     default: needs-refinement,needs-decision
   require-issue:
-    description: 'Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false)'
+    description: 'Fail when the PR body closes no issue; PRs from release/** branches and renovate/** branches of this repository are exempt (true or false)'
     required: false
     default: 'true'
   token:

@@ -19,7 +19,7 @@ versioning/
   close-milestones/    — After the release tag `v<x.y.z>`, closes the open milestones that shipped with it (no open issue; a PR of the release or an issue it closes belongs to it) and renames `M<nnn> [<Topic>]` to `… (x.y.z)` (legacy `x.y.z` closed as is); pre-releases close nothing; run by `gh-release` (`close-milestones`) and `tauri-app.yml`; test `tests/close-milestones.test.sh`
 
 pr-checks/
-  readiness/            — Fails a PR that closes no issue (release PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
+  readiness/            — Fails a PR that closes no issue (release and Renovate PRs exempt) or closes an issue with a not-ready label or an open blocker (inputs `not-ready-labels`, `require-issue`)
   adr/                  — Fails a PR that touches `governance.adrPaths` or closes a `needs-decision` issue without an added/changed ADR in `governance.adrDir`; new ADRs need a `Status:` line and a free number; config from the base branch, `governance.skipLabels` (default `skip-adr`) skips
   spec/                 — Warns (`specMode: warn`, default) or fails (`require`) when a PR changes files under a `governance.specMap` glob without the mapped spec; tests and `.md` not counted; PR body line `no spec change needed` turns a failure into a warning
   persistence/          — Fails a PR whose added lines install background persistence (scheduled tasks, Run keys, autostart, services, LaunchAgents, systemd timers, cron) or whose NSIS/WiX scripts start a script host; `persistence-allowed: <accepted ADR>` in the file passes (#231)

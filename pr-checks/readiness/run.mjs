@@ -1,4 +1,4 @@
-import { closingRefs, isReleaseBranch, parseLabels, readinessProblems } from './readiness.mjs';
+import { closingRefs, isReleaseBranch, isRenovatePr, parseLabels, readinessProblems } from './readiness.mjs';
 
 /** Checks that the issues a PR closes are ready; fails the job with every problem listed. */
 export default async function run({ github, context, core, inputs }) {
@@ -12,7 +12,7 @@ export default async function run({ github, context, core, inputs }) {
     core.summary.addHeading('PR readiness', 3).addRaw(`${text}\n`).write();
 
   if (refs.length === 0) {
-    if (inputs.requireIssue && !isReleaseBranch(pr.head.ref)) {
+    if (inputs.requireIssue && !isReleaseBranch(pr.head.ref) && !isRenovatePr(pr)) {
       const message = `This PR closes no issue: add "Closes #n" to its body, for example: gh pr edit ${pull_number} --body "Closes #n"`;
       await summary(`Not ready:\n\n- ${message}`);
       core.setFailed(message);
