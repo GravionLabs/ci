@@ -1,5 +1,5 @@
 # Reusable pull request checks. Call it from a workflow on `pull_request` (see README, "pr-checks.yml").
-# - readiness: the PR body closes an issue (Closes|Fixes|Resolves #n; release PRs from release/** are exempt) and each
+# - readiness: the PR body closes an issue (Closes|Fixes|Resolves #n; release and Renovate PRs are exempt) and each
 #   closed issue is ready: none of the not-ready labels, no open "blocked by" issue.
 # - adr: a PR that touches governance.adrPaths (.agents/config.json of the base branch) or closes a needs-decision issue
 #   adds or changes an ADR in governance.adrDir; new ADRs have a Status line and a free number.
@@ -59,7 +59,7 @@ on:
         required: false
         default: 'needs-refinement,needs-decision'
       require-issue:
-        description: 'Fail a PR that closes no issue; PRs from release/** branches are exempt'
+        description: 'Fail a PR that closes no issue; PRs from release/** branches and renovate/** branches of this repository are exempt'
         type: boolean
         required: false
         default: true

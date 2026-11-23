@@ -25,6 +25,15 @@ export function isReleaseBranch(ref) {
 }
 
 /**
+ * A Renovate pull request: a `renovate/**` branch in this repository (never a fork, whose branch names anyone can
+ * choose). Renovate writes its own body and changes it on every update, so it cannot carry a `Closes #n` line.
+ */
+export function isRenovatePr(pr) {
+  const headRepo = pr.head?.repo?.full_name;
+  return /^renovate\//.test(pr.head?.ref ?? '') && !!headRepo && headRepo === pr.base?.repo?.full_name;
+}
+
+/**
  * Why an issue is not ready to be closed by a PR: a not-ready label, or a "blocked by" issue that is
  * still open. `blockers` are the issues it is blocked by, each `{ number, state }`.
  */

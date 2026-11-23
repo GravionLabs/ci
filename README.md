@@ -779,7 +779,7 @@ Reusable workflow with the pull request checks of a repository. Call it from a w
 | `title` | `true` | Run the title job |
 | `persistence` | `true` | Run the persistence job |
 | `not-ready-labels` | `needs-refinement,needs-decision` | Labels that make a closed issue not ready |
-| `require-issue` | `true` | Fail a PR that closes no issue (release PRs exempt) |
+| `require-issue` | `true` | Fail a PR that closes no issue (release and Renovate PRs exempt) |
 | `retarget`, `release-branch` | | Deprecated no-ops, kept for one major. The retarget job is gone: a pull request may target the default branch; `release/next` is for the work of a milestone |
 
 The `governance` keys of `.agents/config.json` (names fixed here; GravionLabs/skills#65 that documents them in the skills is pending):
@@ -826,13 +826,13 @@ Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-work
 
 ### `pr-checks/readiness`
 
-Fails when a pull request closes no issue (release PRs exempt) or closes an issue that is not ready: it carries a not-ready label or is blocked by an issue that is still open. Run it on `pull_request`; needs `issues: read` and `pull-requests: read`. The PR body is read through the API, so an edit after the event is seen.
+Fails when a pull request closes no issue (release and Renovate PRs exempt) or closes an issue that is not ready: it carries a not-ready label or is blocked by an issue that is still open. Run it on `pull_request`; needs `issues: read` and `pull-requests: read`. The PR body is read through the API, so an edit after the event is seen.
 
 <!-- action-docs:inputs source="pr-checks/readiness/action.yml" -->
 | Name               | Description                                                                                    | Required | Default                         |
 |--------------------|------------------------------------------------------------------------------------------------|----------|---------------------------------|
 | `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
-| `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches are exempt (true or false) | No       | true                            |
+| `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches and renovate/** branches of this repository are exempt (true or false) | No       | true                            |
 | `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
 <!-- /action-docs:inputs -->
 
