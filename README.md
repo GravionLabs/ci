@@ -632,10 +632,11 @@ steps:
 
 ### `versioning/close-merged-issues`
 
-On every push to a `release/*` branch (incl. `release/next`), closes the open issues delivered to it as completed and comments once on each: ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (without a milestone: `ships with the next release`; a commit without PR number is named by its short SHA).
+On every push to a `release/*` branch (incl. `release/next`), closes the open issues delivered to it as completed, sets the release milestone and comments once on each: ``Merged into `<branch>` in #<pr>, ships with <milestone title>.`` (without a milestone: `ships with the next release`; a commit without PR number is named by its short SHA).
 
 - **Closing references:** `Closes`, `Fixes` and `Resolves #n` in the bodies of the PRs merged into the branch since it left the base, and in the footer lines of the commit messages of `base...branch` (not the subject line). `Refs #n` never closes: partial deliveries use it with `## Not delivered`. Pull requests and closed issues are skipped.
 - **Parents** labeled `pbi` or `feature` (same repository) whose sub-issues are all closed are closed too, repeating upwards; an `epic` never.
+- **Release milestone:** the open milestone with the lowest `M<nnn>` number (`M007` < `M007.1` < `M008`); when no `M<nnn>` milestone is open, the lowest open legacy `x.y.z` version. Each closed issue labeled `pbi` or `bug` gets it before the comment, so the comment names it. An issue with an open milestone keeps it (a closed one is replaced); epics, features, objectives and `release-test` issues are never changed. None open: warning `no open milestone, #<n> left without`, the issue is still closed. A dry run prints `would set <milestone> on #<n>`.
 - The label `merged` (set by `mark-merged-issues`) is removed from every issue it closes, so issues labelled before are closed on the first run through the same references.
 - Idempotent: a closed issue is skipped, and the comment is written only after the close succeeded, so a rerun closes and comments nothing. Missing permissions only warn (exit 0).
 
@@ -670,9 +671,10 @@ steps:
 **Outputs**
 
 <!-- action-docs:outputs source="versioning/close-merged-issues/action.yml" -->
-| Name     | Description                                                                                   |
-|----------|-----------------------------------------------------------------------------------------------|
-| `closed` | Space-separated numbers of the issues closed in this run (empty when none, also on a dry run) |
+| Name         | Description                                                                                                           |
+|--------------|-----------------------------------------------------------------------------------------------------------------------|
+| `closed`     | Space-separated numbers of the issues closed in this run (empty when none, also on a dry run)                         |
+| `milestoned` | Space-separated numbers of the issues that got the release milestone in this run (empty when none, also on a dry run) |
 <!-- /action-docs:outputs -->
 
 Test: `GITHUB_REPOSITORY=<owner/repo> RELEASE_BRANCH=release/next DRY_RUN=true bash versioning/close-merged-issues/close.sh` (`GH_TOKEN` set); unit tests against a fake `gh`: `bash tests/versioning.test.sh`.
@@ -1778,7 +1780,7 @@ jobs:
 Reusable workflow for pushes to a release branch. One job, three steps in order; it has no triggers of its own, the caller triggers it on `push` to `release/**`:
 
 1. `versioning/release-pr` keeps the PR `release: <x.y>` (`release: next` for `release/next`) from the release branch to the default branch open and current (never merges).
-2. `versioning/close-merged-issues` closes the open issues merged into the branch (it replaces `mark-merged-issues`, which labelled them). Its output `closed` holds the issues closed in the run. The inputs `label` and `project-status` stay for one major as no-ops: a caller that passes them gets a deprecation warning, not a failure.
+2. `versioning/close-merged-issues` closes the open issues merged into the branch (it replaces `mark-merged-issues`, which labelled them) and sets the release milestone (the lowest open `M<nnn>`, else the lowest open `x.y.z`) on every closed PBI and Bug without an open one; features, epics, objectives and `release-test` issues stay unchanged ([rules](#versioningclose-merged-issues)). Its output `closed` holds the issues closed in the run. The inputs `label` and `project-status` stay for one major as no-ops: a caller that passes them gets a deprecation warning, not a failure.
 3. [`project/needs`](#projectneeds) syncs the project field `Needs` of exactly those issues (input `issues`), with parents and dependents. Skipped when `project-url` is empty or nothing was closed; on a dry run it only prints that it would sync (a dry run closes nothing). Only issues closed in the run are synced: a failed sync is not retried by a rerun, because those issues are then already closed.
 
 A reverted PR: its issues stay closed; reopen them by hand.

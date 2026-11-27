@@ -342,11 +342,14 @@ echo "# close-merged: closes the issues with a closing keyword, never Refs, PRs 
 # (milestone, labelled merged), Refs #15. PR #42 (merged before): Closes #19. Commits: Closes #10 footer of the squash
 # commit of #40 (and Refs #11), Fixes #13 (already closed), #17 only in the subject, #18 only inline, Resolves #16 in a
 # commit without PR. Parents: #20 (feature) of #10 and #14 under the epic #30; #22 (pbi) of #16 with the open #23.
-milestone() { local f="$GH_FIX/GET_repos_o_r_issues_$1.json"; jq --arg t "$2" '.milestone = {title: $t}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; }
+milestone() { local f="$GH_FIX/GET_repos_o_r_issues_$1.json"; jq --arg t "$2" --arg s "${3:-open}" '.milestone = {title: $t, state: $s}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; }
+# milestones <title>...: the open milestones, numbered 1.. in the given order
+milestones() { fix GET_repos_o_r_milestones "$(jq -cn '[$ARGS.positional | to_entries[] | {number: (.key + 1), title: .value}]' --args "$@")"; }
 sub() { printf '{"number":%s,"state":"%s","repository_url":"https://api.github.com/repos/%s"}' "$1" "$2" "${3:-o/r}"; }
 close_merged_fixture() {
   setup
   fix repo-view-o_r '{"defaultBranchRef":{"name":"main"}}'
+  milestones
   fix "GET_repos_o_r_compare_main...release_next" '{"ahead_by":4,
     "merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},
     "commits":[{"sha":"aaaaaaa111","commit":{"message":"feat: a (#40)\n\nCloses #10\n\nRefs #11"}},
@@ -392,7 +395,7 @@ has "closes the feature #20 once its sub-issues are closed" "gh issue close 20 -
 has "parent comment" 'repos/o/r/issues/20/comments --silent -f body=Merged into `release/next` in #41' "$log"
 hasnt "epic #30 never closed" "close 30" "$log"
 hasnt "pbi #22 with an open sub-issue stays open" "close 22" "$log"
-[ "$output" = "closed=10 14 16 20" ] && ok "output closed=10 14 16 20" || fail "output: $output"
+[ "$output" = $'closed=10 14 16 20\nmilestoned=' ] && ok "output closed=10 14 16 20" || fail "output: $output"
 
 echo "# close-merged: idempotent rerun"
 close_merged_fixture
@@ -402,7 +405,7 @@ run_close_merged
 hasnt "closes nothing" "issue close" "$log"
 hasnt "comments nothing" "-X POST" "$log"
 hasnt "removes nothing" "-X DELETE" "$log"
-[ "$output" = "closed=" ] && ok "output closed empty" || fail "output: $output"
+[ "$output" = $'closed=\nmilestoned=' ] && ok "output closed empty" || fail "output: $output"
 
 echo "# close-merged: issues labelled merged before (first run) are closed and unlabelled"
 close_merged_fixture; issue 10 open pbi,merged; run_close_merged
@@ -434,7 +437,71 @@ hasnt "no epic" "would close #30" "$out"
 hasnt "no close" "issue close" "$log"
 hasnt "no comment" "-X POST" "$log"
 hasnt "no label removal" "-X DELETE" "$log"
-[ "$output" = "closed=" ] && ok "dry run: output closed empty" || fail "output: $output"
+[ "$output" = $'closed=\nmilestoned=' ] && ok "dry run: output closed empty" || fail "output: $output"
+
+echo "# close-merged: release milestone, lowest M<nnn> (M007.1 before M008)"
+close_merged_fixture; milestones "M008" "M007.1 Topic" "0.1.0" "Backlog"; issue 16 open bug; run_close_merged
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code: $out"
+has "sets the lowest milestone on the PBI #10" "gh api -X PATCH repos/o/r/issues/10 -F milestone=2 --silent" "$log"
+has "sets it on the Bug #16" "gh api -X PATCH repos/o/r/issues/16 -F milestone=2 --silent" "$log"
+has "comment names the new milestone" 'repos/o/r/issues/10/comments --silent -f body=Merged into `release/next` in #40, ships with M007.1 Topic.' "$log"
+first=$(grep -nF -- "-X PATCH repos/o/r/issues/10 " <<<"$log" | cut -d: -f1); second=$(grep -nF "issues/10/comments" <<<"$log" | cut -d: -f1)
+[ -n "$first" ] && [ -n "$second" ] && [ "$first" -lt "$second" ] && ok "milestone set before the comment" || fail "order: $first $second"
+hasnt "open milestone of #14 kept" "-X PATCH repos/o/r/issues/14 " "$log"
+has "comment names the kept milestone" 'issues/14/comments --silent -f body=Merged into `release/next` in #41, ships with M3 (1.2.0).' "$log"
+hasnt "feature #20 untouched" "-X PATCH repos/o/r/issues/20 " "$log"
+has "feature comment without milestone" 'issues/20/comments --silent -f body=Merged into `release/next` in #41, ships with the next release.' "$log"
+count_is "milestones read once" "repos/o/r/milestones" 1 "$log"
+[ "$output" = $'closed=10 14 16 20\nmilestoned=10 16' ] && ok "output milestoned=10 16" || fail "output: $output"
+
+echo "# close-merged: M007 before M007.1, numeric order per part"
+close_merged_fixture; milestones "M010" "M007.1" "M007 (1.4.0)"; run_close_merged
+has "M007 wins" "-X PATCH repos/o/r/issues/10 -F milestone=3" "$log"
+
+echo "# close-merged: legacy titles, the lowest open version"
+close_merged_fixture; milestones "1.10.0" "1.9.0" "Backlog"; run_close_merged
+has "sets 1.9.0" "-X PATCH repos/o/r/issues/10 -F milestone=2" "$log"
+has "comment names 1.9.0" "ships with 1.9.0." "$log"
+
+echo "# close-merged: no open milestone"
+close_merged_fixture; milestones "Backlog"; run_close_merged
+[ "$code" = 0 ] && ok "exit 0" || fail "exit $code"
+has "warns" "::warning::no open milestone, #10 left without" "$out"
+has "still closes #10" "gh issue close 10" "$log"
+hasnt "no milestone write" "-X PATCH" "$log"
+hasnt "no warning for the feature" "#20 left without" "$out"
+
+echo "# close-merged: a closed milestone is replaced"
+close_merged_fixture; milestones "M008"; milestone 14 "M007 (1.3.0)" closed; run_close_merged
+has "replaces the closed milestone of #14" "-X PATCH repos/o/r/issues/14 -F milestone=1" "$log"
+
+echo "# close-merged: excluded labels"
+for l in epic feature objective release-test; do
+  close_merged_fixture; milestones "M008"; issue 10 open "pbi,$l"; run_close_merged
+  hasnt "$l untouched" "-X PATCH repos/o/r/issues/10 " "$log"
+done
+
+echo "# close-merged: a PBI parent gets the milestone"
+close_merged_fixture; milestones "M008"; issue 20 open pbi; run_close_merged
+has "sets it on the parent #20" "-X PATCH repos/o/r/issues/20 -F milestone=1" "$log"
+
+echo "# close-merged: milestone failures warn and still close and comment"
+close_merged_fixture; touch "$GH_FIX/GET_repos_o_r_milestones.fail"; run_close_merged
+[ "$code" = 0 ] && ok "list failure exits 0" || fail "exit $code"
+has "list failure warns" "::warning::Cannot read the milestones, #10 left without" "$out"
+has "list failure still closes" "gh issue close 14" "$log"
+close_merged_fixture; milestones "M008"; touch "$GH_FIX/PATCH_repos_o_r_issues_10.fail"; run_close_merged
+[ "$code" = 0 ] && ok "set failure exits 0" || fail "exit $code"
+has "set failure warns" "::warning::Cannot set the milestone M008 on #10." "$out"
+has "set failure: comment without the milestone" 'issues/10/comments --silent -f body=Merged into `release/next` in #40, ships with the next release.' "$log"
+[ "$output" = $'closed=10 14 16 20\nmilestoned=' ] && ok "set failure: not in milestoned" || fail "output: $output"
+
+echo "# close-merged: milestone dry run"
+close_merged_fixture; milestones "M008"; DRY_RUN=true run_close_merged
+has "prints would set" "would set M008 on #10" "$out"
+has "comment names it" 'would close #10: Merged into `release/next` in #40, ships with M008.' "$out"
+hasnt "no write" "-X PATCH" "$log"
+[ "$output" = $'closed=\nmilestoned=' ] && ok "dry run: outputs empty" || fail "output: $output"
 
 echo "# close-merged: custom base, no-op branches"
 close_merged_fixture
@@ -446,7 +513,7 @@ close_merged_fixture; BRANCH=main run_close_merged
 [ "$code" = 0 ] && ok "not a release branch: exit 0" || fail "exit $code"
 has "not a release branch: nothing to do" "not a release/* branch" "$out"
 [ -z "$log" ] && ok "not a release branch: no gh call" || fail "gh called: $log"
-[ "$output" = "closed=" ] && ok "not a release branch: output closed empty" || fail "output: $output"
+[ "$output" = $'closed=\nmilestoned=' ] && ok "not a release branch: output closed empty" || fail "output: $output"
 close_merged_fixture
 fix "GET_repos_o_r_compare_main...release_next" '{"ahead_by":0,"merge_base_commit":{"commit":{"committer":{"date":"2026-01-01T00:00:00Z"}}},"commits":[]}'
 run_close_merged
@@ -468,7 +535,7 @@ close_merged_fixture; touch "$GH_FIX/issue-close-10.fail"; run_close_merged
 [ "$code" = 0 ] && ok "close failure exits 0" || fail "exit $code"
 has "close failure warns" "::warning::Cannot close #10" "$out"
 hasnt "no comment without a close" "issues/10/comments" "$log"
-[ "$output" = "closed=" ] && ok "close failure: output closed empty" || fail "output: $output"
+[ "$output" = $'closed=\nmilestoned=' ] && ok "close failure: output closed empty" || fail "output: $output"
 close_merged_fixture; touch "$GH_FIX/POST_repos_o_r_issues_10_comments.fail"; run_close_merged
 [ "$code" = 0 ] && ok "comment failure exits 0" || fail "exit $code"
 has "comment failure warns" "::warning::Cannot comment on #10." "$out"
