@@ -38,6 +38,8 @@ commit_preprocessors = [
 commit_parsers = [
   { message = "^feat", group = "Features" },
   { message = "^fix", group = "Bug Fixes" },
+  # The release tooling's own changelog commit is not a change; must precede "^doc".
+  { message = "^docs: update CHANGELOG\\.md for ", skip = true },
   { message = "^doc", group = "Documentation" },
   { message = "^perf", group = "Performance" },
   { message = "^refactor", group = "Refactoring" },
