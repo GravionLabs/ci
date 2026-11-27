@@ -3,8 +3,11 @@ description: >
   On a push to a release/* branch (incl. release/next), closes the open issues delivered to that
   branch as completed: Closes/Fixes/Resolves #n in the PRs merged into it since it left the base,
   plus Closes/Fixes/Resolves footer lines in the commit messages of base...branch ("Refs #n" never
-  closes). Each closed issue gets one comment naming the branch, the PR and the milestone it ships
-  with. Parents labeled pbi or feature whose sub-issues are all closed are closed too (repeating
+  closes). Each closed PBI or Bug (label pbi or bug; never an epic, feature, objective or
+  release-test issue) without an open milestone gets the release milestone: the open milestone with
+  the lowest M<nnn> number (M007 < M007.1 < M008), without an M<nnn> title the lowest open x.y.z
+  version; none open only warns. Each closed issue gets one comment naming the branch, the PR and
+  the milestone it ships with. Parents labeled pbi or feature whose sub-issues are all closed are closed too (repeating
   upwards; epics never). The label merged is removed from the closed issues. Pull requests and
   closed issues are skipped. Idempotent. Missing permissions only warn.
   Requires contents: read, issues: write and pull-requests: read.
@@ -31,6 +34,9 @@ outputs:
   closed:
     description: 'Space-separated numbers of the issues closed in this run (empty when none, also on a dry run)'
     value: ${{ steps.close.outputs.closed }}
+  milestoned:
+    description: 'Space-separated numbers of the issues that got the release milestone in this run (empty when none, also on a dry run)'
+    value: ${{ steps.close.outputs.milestoned }}
 
 runs:
   using: 'composite'
