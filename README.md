@@ -506,6 +506,8 @@ steps:
 
 Creates the version tag and the GitHub Release (notes from git-cliff, a CHANGELOG.md section or GitHub), runs `close-release-issues` (`close-issues`) as a safety net for the issues delivered by a merged release PR that are still open (`close-merged-issues` closes them at merge), and optionally recreates the rolling release branch.
 
+**Re-runs:** when the tip of the branch is already the `docs: update <changelog-file> for <tag> [skip ci]` commit of this release (the first attempt pushed it, then failed, e.g. at the tag push), no further commit is made and the tag goes on that commit. Your `cliff.toml` should skip these commits, before the `^doc` parser: `{ message = "^docs: update CHANGELOG\\.md for ", skip = true }` (adjust it for another `changelog-file`).
+
 **`recreate-branch`** (default empty = off): set it to `release/next` and, after the release, the branch is pushed from the released commit when it does not exist on origin. An existing branch is never moved or force-pushed. **Callers whose repository has `delete_branch_on_merge` should set it**: merging the release PR then deletes `release/next`, and without this input the next cycle starts only after a manual `github-release cut`. The recreated branch has no commits ahead of the default branch, so `versioning/release-pr` opens no (empty) release PR for it; GitVersion gives it the next minor from the caller's branch config. The step needs only `contents: write`. A push made with the default `GITHUB_TOKEN` triggers no workflows: pass a PAT as `token` (it is also what the changelog commit needs on a protected default branch) when the new branch must trigger them, e.g. `release-branch.yml`. The `*-package.yml` workflows pass the input through (`recreate-branch`).
 
 ```yaml
@@ -829,11 +831,11 @@ Tests: `node --test "tests/pr-checks/*.test.mjs"` and `bash tests/pr-checks-work
 Fails when a pull request closes no issue (release and Renovate PRs exempt) or closes an issue that is not ready: it carries a not-ready label or is blocked by an issue that is still open. Run it on `pull_request`; needs `issues: read` and `pull-requests: read`. The PR body is read through the API, so an edit after the event is seen.
 
 <!-- action-docs:inputs source="pr-checks/readiness/action.yml" -->
-| Name               | Description                                                                                    | Required | Default                         |
-|--------------------|------------------------------------------------------------------------------------------------|----------|---------------------------------|
-| `not-ready-labels` | Comma-separated labels that make an issue not ready                                            | No       | needs-refinement,needs-decision |
+| Name               | Description                                                                                                                                | Required | Default                         |
+|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------------|
+| `not-ready-labels` | Comma-separated labels that make an issue not ready                                                                                        | No       | needs-refinement,needs-decision |
 | `require-issue`    | Fail when the PR body closes no issue; PRs from release/** branches and renovate/** branches of this repository are exempt (true or false) | No       | true                            |
-| `token`            | Token with issues and pull-requests read access                                                | No       | ${{ github.token }}             |
+| `token`            | Token with issues and pull-requests read access                                                                                            | No       | ${{ github.token }}             |
 <!-- /action-docs:inputs -->
 
 ### `pr-checks/title`
