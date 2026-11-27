@@ -6,11 +6,17 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ---
 
+## [1.20.0] — 2026-11-27
+
+### Bug Fixes
+- **gh-release**: A re-run after a failed tag push writes a second changelog commit (#281) (#283)
+
+
+### Features
+- **versioning**: Close-merged-issues sets the release milestone at merge (#282) (#284)
+
+
 ## [1.19.0] — 2026-11-23
-
-### Documentation
-- Update CHANGELOG.md for v1.18.0 [skip ci]
-
 
 ### Features
 - **pr-checks**: Exempt Renovate pull requests from require-issue (#273) (#274)
@@ -18,19 +24,11 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.18.0] — 2026-11-19
 
-### Documentation
-- Update CHANGELOG.md for v1.17.0 [skip ci]
-
-
 ### Features
 - **project**: The project standard sets the security settings (#271)
 
 
 ## [1.17.0] — 2026-11-19
-
-### Documentation
-- Update CHANGELOG.md for v1.16.0 [skip ci]
-
 
 ### Features
 - **renovate**: Exempt the helix packages from the minimum release age (#255)
@@ -48,10 +46,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.16.0] — 2026-11-18
 
-### Documentation
-- Update CHANGELOG.md for v1.15.1 [skip ci]
-
-
 ### Features
 - **renovate**: Pull requests against the default branch, two at a time (#261)
 
@@ -66,25 +60,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Renovate workflow names its repository and targets release/next (#250)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.15.0 [skip ci]
-
-
 ## [1.15.0] — 2026-11-18
-
-### Documentation
-- Update CHANGELOG.md for v1.14.0 [skip ci]
-
 
 ### Features
 - **renovate**: Shared preset with a 7-day minimum release age (#241) (#248)
 
 
 ## [1.14.0] — 2026-11-17
-
-### Documentation
-- Update CHANGELOG.md for v1.13.0 [skip ci]
-
 
 ### Features
 - **checks**: Block background persistence in pull requests (#231) (#235)
@@ -94,18 +76,8 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.13.0] — 2026-11-10
 
-### Documentation
-- Update CHANGELOG.md for v1.12.2 [skip ci]
-
-
 ### Features
 - **workflows**: A reopened issue gets the project status Todo (#228) (#229)
-
-
-## [1.12.2] — 2026-11-10
-
-### Documentation
-- Update CHANGELOG.md for v1.12.1 [skip ci]
 
 
 ## [1.12.1] — 2026-11-09
@@ -114,18 +86,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **pages**: Vitepress-pages.yml finds the lockfile of a pnpm workspace (#221) (#222)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.12.0 [skip ci]
-
-
 ## [1.12.0] — 2026-11-08
 
 ### Bug Fixes
 - Only deploying runs use the pages-deploy concurrency group (#218) (#219)
-
-
-### Documentation
-- Update CHANGELOG.md for v1.11.0 [skip ci]
 
 
 ### Features
@@ -140,10 +104,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **tauri-app**: Publish creates assets/ in the caller checkout (#208) (#210)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.10.1 [skip ci]
-
-
 ### Features
 - **tauri-app**: Recreate release/next after the release (#138) (#202)
 - **tauri-app**: SHA256SUMS over the installers and build provenance attestation (#198) (#203)
@@ -151,10 +111,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 
 ## [1.10.1] — 2026-11-07
-
-### Documentation
-- Update CHANGELOG.md for v1.10.0 [skip ci]
-
 
 ### Refactoring
 - Drop the APM package layout (#194)
@@ -164,10 +120,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ### Bug Fixes
 - **github-project**: Runs abort when an item is archived during the run (#185) (#192)
-
-
-### Documentation
-- Update CHANGELOG.md for v1.9.0 [skip ci]
 
 
 ### Features
@@ -188,10 +140,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - CHANGELOG lacks the #166 breaking change and #167, breaking footer not recognised (#174) (#177)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.8.1 [skip ci]
-
-
 ### Features
 - **github-project**: Field Current marks the current milestone of each repository (#167) (#171)
 - **github-project**: Standard views Milestones and Current milestone, drop Release next (#168) (#172)
@@ -208,10 +156,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **rust-ci**: Refresh the apt index and verify the Linux packages after the cache step (#161)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.8.0 [skip ci]
-
-
 ## [1.8.0] — 2026-11-06
 
 ### Bug Fixes
@@ -223,7 +167,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 
 ### Documentation
-- Update CHANGELOG.md for v1.7.0 [skip ci]
 - Apt-cache-version scope, squash convention and postinst caveat (#157) (#159)
 
 
@@ -239,21 +182,12 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **github**: Set-Sprint.ps1 and Set-ProjectStandard.ps1 miss project items when the items walk ends early on a large project (#89) (#143)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.6.0 [skip ci]
-- Update CHANGELOG.md for v1.6.0 [skip ci]
-
-
 ### Features
 - **gh-release**: Commit caller version files with the changelog (#134) (#139)
 - **pr-checks**: Spec job in pr-checks.yml (#95) (#140)
 
 
 ## [1.6.0] — 2026-11-01
-
-### Documentation
-- Update CHANGELOG.md for v1.5.1 [skip ci]
-
 
 ### Features
 - **ci**: Run CI automation as a GitHub App instead of the user PAT (#127) (#135)
@@ -270,19 +204,11 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **scripts**: Set-RepoRulesets.ps1 sends bypass_actors as an array
 
 
-### Documentation
-- Update CHANGELOG.md for v1.5.0 [skip ci]
-
-
 ## [1.5.0] — 2026-11-01
 
 ### Bug Fixes
 - **scripts**: Set-RepoRulesets.ps1 recognises the local pr-checks caller (#124) (#125)
 - **versioning**: Release-pr accepts release/next (#55) (#126)
-
-
-### Documentation
-- Update CHANGELOG.md for v1.4.1 [skip ci]
 
 
 ### Features
@@ -330,25 +256,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Push the changelog commit with GH_PAT
 
 
-### Documentation
-- Update CHANGELOG.md for v1.1.1 [skip ci]
-
-
 ## [1.1.1] — 2026-10-29
 
 ### Bug Fixes
 - Do not fail the run when the item is already in the project
 
 
-### Documentation
-- Update CHANGELOG.md for v1.1.0 [skip ci]
-
-
 ## [1.1.0] — 2026-10-26
-
-### Documentation
-- Update CHANGELOG.md for v1.0.60 [skip ci]
-
 
 ### Features
 - Mark-merged-issues sets project status (#58) (#71)
@@ -357,16 +271,9 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Reusable release-branch workflow (#59) (#84)
 
 
-## [1.0.60] — 2026-10-25
-
-### Documentation
-- Update CHANGELOG.md for v1.0.59 [skip ci]
-
-
 ## [1.0.59] — 2026-10-16
 
 ### Documentation
-- Update CHANGELOG.md for v1.0.58 [skip ci]
 - Document mark-merged-issues and the label removal (#54)
 
 
@@ -375,17 +282,7 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **versioning**: Close-release-issues removes the merged label (#54)
 
 
-## [1.0.58] — 2026-10-12
-
-### Documentation
-- Update CHANGELOG.md for v1.0.57 [skip ci]
-
-
 ## [1.0.57] — 2026-10-12
-
-### Documentation
-- Update CHANGELOG.md for v1.0.56 [skip ci]
-
 
 ### Features
 - Add versioning/release-pr action (#51)
@@ -394,8 +291,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 ## [1.0.56] — 2026-10-12
 
 ### Documentation
-- Update CHANGELOG.md for v1.0.54 [skip ci]
-- Update CHANGELOG.md for v1.0.55 [skip ci]
 - README, AGENTS.md repo map and migration guide (#35)
 
 
@@ -412,10 +307,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.54] — 2026-10-12
 
-### Documentation
-- Update CHANGELOG.md for v1.0.53 [skip ci]
-
-
 ### Features
 - Add versioning/close-release-issues action (#44)
 - Call close-release-issues from gh-release by default (#44)
@@ -427,19 +318,11 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - A version with a pre-release label is published as a pre-release
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.52 [skip ci]
-
-
 ## [1.0.52] — 2026-10-11
 
 ### Bug Fixes
 - Set node package version in publish action after artifact download
 - Validate artifact-path in node/publish
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.51 [skip ci]
 
 
 ### Features
@@ -448,20 +331,11 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.51] — 2026-10-11
 
-### Documentation
-- Update CHANGELOG.md for v1.0.50 [skip ci]
-
-
 ### Features
 - Extra Linux packages for the Tauri setup and installers
 
 
 ## [1.0.50] — 2026-10-11
-
-### Documentation
-- Update CHANGELOG.md for v1.0.48 [skip ci]
-- Update CHANGELOG.md for v1.0.49 [skip ci]
-
 
 ### Features
 - Rust/release-binary packs several binaries into one archive
@@ -475,20 +349,11 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.48] — 2026-10-11
 
-### Documentation
-- Update CHANGELOG.md for v1.0.47 [skip ci]
-
-
 ### Features
 - Add tauri/draft-release and tauri/installers (#33)
 
 
 ## [1.0.47] — 2026-10-11
-
-### Documentation
-- Update CHANGELOG.md for v1.0.45 [skip ci]
-- Update CHANGELOG.md for v1.0.46 [skip ci]
-
 
 ### Features
 - Add the rust/release-binary action (#32)
@@ -502,18 +367,8 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.45] — 2026-10-11
 
-### Documentation
-- Update CHANGELOG.md for v1.0.44 [skip ci]
-
-
 ### Features
 - Add the rust/setup action (#30)
-
-
-## [1.0.44] — 2026-10-10
-
-### Documentation
-- Update CHANGELOG.md for v1.0.43 [skip ci]
 
 
 ## [1.0.43] — 2026-09-05
@@ -522,18 +377,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Only set UV_PUBLISH_URL/TOKEN when feed-url/api-key are non-empty
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.42 [skip ci]
-
-
 ## [1.0.42] — 2026-09-03
 
 ### Bug Fixes
 - Replace unsupported --skip-existing with --check-url in uv publish
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.41 [skip ci]
 
 
 ## [1.0.41] — 2026-09-03
@@ -542,18 +389,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Install uv before running uv publish in python/pypi/publish
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.40 [skip ci]
-
-
 ## [1.0.40] — 2026-06-21
 
 ### Bug Fixes
 - Set package version from GitVersion before publish (#15)
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.39 [skip ci]
 
 
 ## [1.0.39] — 2026-06-21
@@ -562,31 +401,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Use GitVersion to set package version before publish (#14)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.38 [skip ci]
-
-
 ## [1.0.38] — 2026-06-19
 
 ### Bug Fixes
 - Remove duplicate artifact-path input from node and angular workflows (#13)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.37 [skip ci]
-
-
-## [1.0.37] — 2026-06-18
-
-### Documentation
-- Update CHANGELOG.md for v1.0.36 [skip ci]
-
-
 ## [1.0.36] — 2026-06-17
-
-### Documentation
-- Update CHANGELOG.md for v1.0.35 [skip ci]
-
 
 ### Features
 - Add artifact-path input to angular and node workflows for dist subdirectory upload; fix README npm-auth-type
@@ -598,25 +419,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Write npm-auth-type to project .npmrc instead of pnpm config set (#12)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.34 [skip ci]
-
-
 ## [1.0.34] — 2026-06-14
 
 ### Bug Fixes
 - Use pnpm config set for npm-auth-type (not npm config set) (#11)
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.33 [skip ci]
-
-
 ## [1.0.33] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.32 [skip ci]
-
 
 ### Features
 - Add artifact-path input to workflows, fix pnpm auth to use user-level .npmrc (#10)
@@ -624,29 +433,17 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.32] — 2026-06-14
 
-### Documentation
-- Update CHANGELOG.md for v1.0.31 [skip ci]
-
-
 ### Refactoring
 - Rename pnpm-version to package-manager-version, update run conditions
 
 
 ## [1.0.31] — 2026-06-14
 
-### Documentation
-- Update CHANGELOG.md for v1.0.30 [skip ci]
-
-
 ### Refactoring
 - Remove standalone CI workflows, set Angular defaults in angular-package
 
 
 ## [1.0.30] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.29 [skip ci]
-
 
 ### Features
 - Add node/ci composite action with lint, build, test and artifact handoff
@@ -658,37 +455,13 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Allow pnpm version auto-detection from packageManager field
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.28 [skip ci]
-
-
-## [1.0.28] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.27 [skip ci]
-
-
-## [1.0.27] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.26 [skip ci]
-
-
 ## [1.0.26] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.25 [skip ci]
-
 
 ### Features
 - Add package-manager input to workflows and update commands for better flexibility
 
 
 ## [1.0.25] — 2026-06-14
-
-### Documentation
-- Update CHANGELOG.md for v1.0.24 [skip ci]
-
 
 ### Features
 - Add node-package.yml and angular-package.yml reusable workflows
@@ -700,18 +473,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Write pnpm auth directly to .npmrc instead of pnpm config set
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.23 [skip ci]
-
-
 ## [1.0.23] — 2026-06-14
 
 ### Bug Fixes
 - Use --location=project for pnpm config; remove invalid npm-registry-server
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.22 [skip ci]
 
 
 ### Features
@@ -719,10 +484,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 
 ## [1.0.22] — 2026-06-13
-
-### Documentation
-- Update CHANGELOG.md for v1.0.21 [skip ci]
-
 
 ### Features
 - Add node/publish composite action for GitHub Packages auth + publish (#8)
@@ -734,18 +495,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - **test**: Add continue-on-error to publishing steps
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.20 [skip ci]
-
-
 ## [1.0.20] — 2026-06-08
 
 ### Bug Fixes
 - Remove --if-present flag from build commands (not supported by pnpm)
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.19 [skip ci]
 
 
 ## [1.0.19] — 2026-06-08
@@ -754,18 +507,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 - Install pnpm via npm install -g for reliability
 
 
-### Documentation
-- Update CHANGELOG.md for v1.0.18 [skip ci]
-
-
 ## [1.0.18] — 2026-06-08
 
 ### Bug Fixes
 - Use shell case instead of if for corepack enable in composite action
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.17 [skip ci]
 
 
 ## [1.0.17] — 2026-06-08
@@ -776,10 +521,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.16] — 2026-06-08
 
-### Documentation
-- Update CHANGELOG.md for v1.0.15 [skip ci]
-
-
 ### Features
 - Add package-manager input to support pnpm and yarn
 
@@ -787,15 +528,10 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 ## [1.0.15] — 2026-05-10
 
 ### Documentation
-- Update CHANGELOG.md for v1.0.14 [skip ci]
 - Add Pages Actions section to README.md
 
 
 ## [1.0.14] — 2026-05-10
-
-### Documentation
-- Update CHANGELOG.md for v1.0.13 [skip ci]
-
 
 ### Features
 - **pages**: Add DocFX build action
@@ -803,35 +539,17 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ## [1.0.13] — 2026-04-03
 
-### Documentation
-- Update CHANGELOG.md for v1.0.12 [skip ci]
-
-
 ### Features
 - **versioning**: Add token input to gh-release action
 
 
 ## [1.0.12] — 2026-03-29
 
-### Documentation
-- Update CHANGELOG.md for v1.0.11 [skip ci]
-
-
 ### Features
 - **versioning**: Write version summary to job summary in Report versions step
 
 
-## [1.0.11] — 2026-03-27
-
-### Documentation
-- Update CHANGELOG.md for v1.0.10 [skip ci]
-
-
 ## [1.0.10] — 2026-03-26
-
-### Documentation
-- Update CHANGELOG.md for v1.0.9 [skip ci]
-
 
 ### Refactoring
 - Update Node.js and Angular CI workflows for improved build commands and structure
@@ -841,10 +559,6 @@ Callers should pin to a major version tag (e.g. `@v1`) rather than `@main`.
 
 ### Bug Fixes
 - Add missing permissions for contents in Node.js CI workflow
-
-
-### Documentation
-- Update CHANGELOG.md for v1.0.8 [skip ci]
 
 
 ## [1.0.8] — 2026-03-26
