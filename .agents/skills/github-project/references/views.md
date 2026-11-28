@@ -2,6 +2,8 @@
 
 Views are matched by name. `Set-ProjectStandard.ps1` creates missing ones via REST `POST /users/<owner>/projectsV2/<n>/views` (`/orgs/<org>/...` for organizations) and never touches other views. Sorting cannot be set through the API (`sort_by` on Closed returns HTTP 400), so it is a manual step.
 
+Note: the view `Milestones` is sorted by Milestone ascending in the UI (manual step, not set by `apply`), so the `M<nnn>` titles read in number order.
+
 | View              | Layout | Filter                                             | Group                                                   | Fields                                                                  | Why                                                                                      |
 | :---------------- | :----- | :------------------------------------------------- | :------------------------------------------------------ | :---------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- |
 | Hierarchy         | table  | `is:open`                                          | none (enable "Show hierarchy" in the UI)                | Title, Level, Status, Sub-issues progress, Linked pull requests, Labels | Epic → Feature → PBI → Task tree of everything open.                                     |
